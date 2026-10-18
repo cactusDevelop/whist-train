@@ -598,6 +598,7 @@ def render(st, rows):
         meta["measured_spec_hash"] = st["spec_hash"]
     write_summary(rows, meta)
     out = {"format": FORMAT, "note_formula": NOTE_FORMULA, **meta, "dims": list(DIMS), "verdicts": list(ORDER), "jokers": rows}
+    os.makedirs(os.path.dirname(GODOT_FILE), exist_ok=True)  # absent sur un runner neuf
     with open(GODOT_FILE, "w", encoding="utf-8", newline="\n") as f:
         json.dump(out, f, ensure_ascii=False, indent=1)
     return meta
@@ -644,6 +645,7 @@ def record_iteration(it, iter_agg, n_matches):
         f.write(json.dumps({"iter": it, **meta, "iteration": table(iter_agg), "cumul": rows}, ensure_ascii=False) + "\n")
     write_summary(rows, meta)
     out = {"format": FORMAT, "note_formula": NOTE_FORMULA, **meta, "dims": list(DIMS), "verdicts": list(ORDER), "jokers": rows}
+    os.makedirs(os.path.dirname(GODOT_FILE), exist_ok=True)  # absent sur un runner neuf
     with open(GODOT_FILE, "w", encoding="utf-8", newline="\n") as f:
         json.dump(out, f, ensure_ascii=False, indent=1)
     return {v: sum(1 for r in rows if r["verdict"] == v) for v in ORDER}
