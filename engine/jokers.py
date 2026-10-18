@@ -28,12 +28,15 @@ import random
 
 from engine.cards import NUM_PLAYERS, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "043f0376f53115aa"
+JOKER_SPEC_HASH = "68f81468d34a321a"
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
 # texte ou de cablage seulement) : un reseau entraine sous l'une d'elles est
 # reexporte tel quel avec JOKER_SPEC_HASH. Une regle qui change -> vider la
 # liste (sauf le hash courant) et reentrainer.
-RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH}
+RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH, "043f0376f53115aa"}
+# 68f8 (whist-4-it, 18/10) : niveaux de difficulte supprimes, rogue_match.gd appelle server_add_ai_bot sans
+# WhistExpertBot.DIFFICULTY (ExpertBot sur les sieges 1-3 comme avant) -> regles identiques a 043f, les
+# checkpoints 043f du cloud (whist-train) restent valables.
 # 043f (whist-4-it 7b320b0, mesure de rentabilite du 2026-10-18) : Kermesse camp du proprietaire seulement,
 # Main de Fer apres l'annonce du proprietaire (emballer sa proposition reste permis), Treizieme Carte 2 derniers
 # plis (sans effet dans sa misere), Rachat salle (sans Soupcon), Pacte dette 5, Faux Pas +3 au proprietaire,
