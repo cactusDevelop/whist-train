@@ -1,0 +1,73 @@
+name: train
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        options: [ppo, jokers]
+        default: ppo
+      init:
+        description: "Jokers : repartir de l'archive (--init) au lieu de --resume"
+        type: boolean
+        default: false
+  schedule:
+    - cron: "17 */6 * * *"
+
+concurrency:
+  group: train-${{ inputs.mode || 'ppo' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  train:
+    if: vars.TRAINING_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    env:
+      MODE: ${{ inputs.mode || 'ppo' }}
+      INIT: ${{ inputs.init || false }}
+      GH_TOKEN: ${{ github.token }}
+      STATE_KEY: ${{ secrets.STATE_KEY }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - id: restore
+        name: Restore state
+        run: |
+          gh release download checkpoint-latest -p "state-$MODE.tar.gz.enc" -D .
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass env:STATE_KEY \
+            -in "state-$MODE.tar.gz.enc" | tar xz
+          rm "state-$MODE.tar.gz.enc"
+
+      - id: train
+        name: Train
+        run: bash "ci/run_$MODE.sh" 2>&1 | tee "train_log_$MODE.txt"
+
+      # Only after a successful restore: an empty state must never overwrite the release.
+      - name: Save state
+        if: always() && steps.restore.outcome == 'success'
+        run: |
+          tar cz $(while read -r f; do [ -e "$f" ] && echo "$f"; done < "ci/state_$MODE.txt") \
+            | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass env:STATE_KEY \
+              -out "state-$MODE.tar.gz.enc"
+          gh release upload checkpoint-latest "state-$MODE.tar.gz.enc" --clobber
+          tail -c 200000 "train_log_$MODE.txt" > "log-$MODE.txt"
+          gh release upload checkpoint-latest "log-$MODE.txt" --clobber
+
+      - name: Chain next run
+        if: success() && vars.TRAINING_ENABLED == 'true'
+        run: gh workflow run train.yml -f mode="$MODE" -f init=false

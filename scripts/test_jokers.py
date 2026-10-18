@@ -1,0 +1,361 @@
+"""Tests du port Python des jokers (engine/jokers.py) contre les regles de
+whist-4-it/roguelike/joker_effects.gd + joker_rules.gd.
+
+Usage : venv/Scripts/python.exe scripts/test_jokers.py
+"""
+
+import random
+import sys
+
+sys.path.insert(0, ".")
+
+from engine import jokers as J
+from engine.team_trump import TeamTrumpDeal
+
+H, D, C, S = 0, 1, 2, 3
+
+
+def card(suit, rank):  # rank : 2..14 (As = 14)
+    return suit * 13 + rank - 2
+
+
+def setup(trump=S, partner_of=(2, 3, 0, 1)):
+    state = J.MatchState([[], [], [], []], random.Random(0))
+    rules = J.JokerRules(state)
+    hands = [[card(s, r) for s in range(4) for r in range(2 + i * 3, 2 + i * 3 + 3)] + [card(H, 14 - i)]
+             for i in range(4)]
+    game = TeamTrumpDeal([sorted(h) for h in hands], 0, 2, trump, 8, 0, "emballage", "emballage", "defenseur")
+    contract = {"type": "emballage", "declarer": 0, "partner": 2, "suit": trump, "level": 8}
+    rules.new_hand(game, contract)
+    return state, rules, game
+
+
+def check(name, got, want):
+    ok = got == want
+    print("%s %s : %r%s" % ("OK " if ok else "KO ", name, got, "" if ok else " (attendu %r)" % (want,)))
+    return ok
+
+
+def main():
+    oks = []
+    # Embuscade (siege 1) : la coupe d'un adversaire (siege 0) ne gagne pas.
+    state, rules, game = setup()
+    rules.effects.append(J.make_effect("embuscade", 1))
+    plays = [(1, card(H, 5)), (2, card(H, 9)), (3, card(H, 3)), (0, card(S, 2))]
+    oks.append(check("embuscade bloque la coupe adverse", rules.trick_winner(plays, H, S), 2))
+    rules.on_trick_resolved(2, plays)
+    oks.append(check("embuscade depensee apres usage", rules.effects, []))
+    # ... mais pas la coupe du partenaire de contrat (siege 2 = partner_of[0]).
+    state, rules, game = setup()
+    rules.effects.append(J.make_effect("embuscade", 0))
+    plays = [(1, card(H, 5)), (3, card(H, 9)), (0, card(H, 3)), (2, card(S, 2))]
+    oks.append(check("embuscade laisse couper le partenaire", rules.trick_winner(plays, H, S), 2))
+    # Camps tires du contrat (whist-4-it a3d70cf) : les defenseurs sont allies.
+    state, rules, game = setup()
+    rules.effects.append(J.make_effect("embuscade", 1))
+    plays = [(0, card(H, 5)), (1, card(H, 9)), (2, card(H, 3)), (3, card(S, 2))]
+    oks.append(check("defenseurs : embuscade laisse couper l'autre defenseur", rules.trick_winner(plays, H, S), 3))
+    rules.bind(game, {"type": "misere", "kind": "grande", "declarers": [1, 3]})
+    oks.append(check("misere : deux declarants adversaires", rules.is_opponent(1, 3), True))
+    oks.append(check("misere : defenseurs allies", rules.is_opponent(0, 2), False))
+    rules.bind(game, {"type": "solo", "suit": S, "level": 6, "declarer": 1})
+    oks.append(check("solo : defenseurs allies", (rules.is_opponent(0, 2), rules.is_opponent(0, 1)), (False, True)))
+    rules.bind(game, None)
+    oks.append(check("sans contrat : tous adversaires", rules.is_opponent(0, 2), True))
+    # Coup de Vent : pas d'atout pour ce pli.
+    state, rules, game = setup()
+    rules.effects.append(J.make_effect("coup_de_vent", 1))
+    oks.append(check("coup de vent : atout du pli", rules.trick_trump(), None))
+    plays = [(0, card(H, 5)), (1, card(H, 9)), (2, card(H, 3)), (3, card(S, 14))]
+    oks.append(check("coup de vent : la coupe ne gagne plus", rules.trick_winner(plays, H, None), 1))
+    rules.on_trick_resolved(1, plays)
+    oks.append(check("coup de vent : portee du pli", rules.effects, []))
+    # Kermesse : pli gagne par une figure = 2, par un As = 1.
+    state, rules, game = setup()
+    rules.effects.append(J.make_effect("kermesse", 1))
+    oks.append(check("kermesse figure", rules.trick_value(1, [(1, card(H, 13))]), 2))
+    oks.append(check("kermesse as", rules.trick_value(1, [(1, card(H, 14))]), 1))
+    rules.effects.append(J.make_effect("kermesse", 3))
+    oks.append(check("deux kermesses s'empilent", rules.trick_value(1, [(1, card(H, 12))]), 3))
+    # Voeu de pauvrete (043f) : un joker pioche tous les 3 plis perdus.
+    state, rules, game = setup()
+    state.draw_pile[1] = ["main_lourde", "embuscade"]
+    rules.effects.append(J.make_effect("voeu_de_pauvrete", 1))
+    for w in (0, 1, 2):
+        rules.on_trick_resolved(w, [])
+    oks.append(check("voeu : 2 plis perdus, rien", state.joker_hand[1], []))
+    rules.on_trick_resolved(3, [])
+    oks.append(check("voeu : 3e pli perdu, une pioche", (len(state.joker_hand[1]), state.energy[1]), (1, 0)))
+    # Kermesse (043f) : plis du camp du proprietaire seulement.
+    state, rules, game = setup()
+    rules.effects.append(J.make_effect("kermesse", 1))
+    oks.append(check("kermesse : figure adverse, rien", rules.trick_value(0, [(0, card(H, 13))]), 1))
+    # Economie : pioche, cout, passif arme a la pioche, defausse recyclee.
+    state = J.MatchState([[], ["kermesse", "voeu_de_pauvrete", "main_lourde"], [], []], random.Random(1))
+    rules = J.JokerRules(state)
+    state.start_hand()
+    oks.append(check("pioche 3 / energie 3", (len(state.joker_hand[1]), state.energy[1]), (3, 3)))
+    oks.append(check("passif arme a la pioche", [e.id for e in rules.effects], ["voeu_de_pauvrete"]))
+    oks.append(check("passif non jouable", state.play_error(1, "voeu_de_pauvrete"), "passive"))
+    state.energy[1] = 1
+    oks.append(check("energie insuffisante", state.play_error(1, "kermesse"), "energy"))
+    state.end_hand()
+    state.draw_jokers(1, 2)
+    oks.append(check("defausse remelangee dans la pioche", len(state.joker_hand[1]) + len(state.draw_pile[1]), 3))
+    # JokerHand : la valeur du pli et le meneur suivant passent dans le moteur.
+    state, rules, game = setup(trump=S)
+    hand = J.JokerHand(game, {"type": "emballage", "declarer": 0, "partner": 2, "suit": S, "level": 8}, state, rules)
+    rules.effects.append(J.make_effect("kermesse", 1))
+    hand.step(0, card(H, 2))
+    hand.step(1, card(H, 13) if card(H, 13) in game.hands[1] else game.hands[1][0])
+    hand.step(2, game.hands[2][0])
+    hand.step(3, game.hands[3][0])
+    oks.append(check("tricks_won total = valeur du pli", sum(game.tricks_won) in (1, 2), True))
+    oks.append(check("le gagnant mene", game.turn, [s for s in range(4) if game.tricks_won[s]][0]))
+    oks += v2_tests()
+    print("%d/%d" % (sum(oks), len(oks)))
+    sys.exit(0 if all(oks) else 1)
+
+
+def v2_tests():
+    """Catalogue complet (v2, 2026-10-13) contre joker_effects.gd."""
+    oks = []
+    contract = {"type": "emballage", "declarer": 0, "partner": 2, "suit": S, "level": 8}
+
+    def trick_with(jid, owner, plays, trump=S):
+        state, rules, game = setup(trump=trump)
+        e = J.make_effect(jid, owner)
+        rules.effects.append(e)
+        if isinstance(e, J.TrickJoker):
+            rules.joker_cards[owner] = jid
+        return rules.trick_winner(plays, suit_of_card(plays[0][1]), rules.trick_trump()), rules
+
+    def suit_of_card(c):
+        return c // 13
+
+    # Cartes de pli (le joueur 0 et son partenaire 2 contre 1 et 3).
+    w, _ = trick_with("cameleon", 0, [(1, card(H, 9)), (2, card(H, 3)), (3, card(H, 10)), (0, card(H, 12))])
+    oks.append(check("cameleon : vaut une Dame", w, 0))
+    w, _ = trick_with("zero", 0, [(1, card(H, 9)), (2, card(H, 3)), (3, card(H, 4)), (0, card(H, 2))])
+    oks.append(check("zero : ne gagne jamais", w, 1))
+    w, _ = trick_with("traitre", 0, [(1, card(H, 9)), (2, card(H, 3)), (3, card(H, 4)), (0, card(H, 2))])
+    oks.append(check("traitre : la plus faible (hors traitre) gagne", w, 2))
+    w, _ = trick_with("borgne", 0, [(1, card(H, 9)), (2, card(H, 3)), (3, card(S, 4)), (0, card(H, 14))])
+    oks.append(check("borgne : perd si quelqu'un coupe", w, 3))
+    w, _ = trick_with("borgne", 0, [(1, card(H, 9)), (2, card(H, 3)), (3, card(H, 4)), (0, card(H, 14))])
+    oks.append(check("borgne : As sans coupe", w, 0))
+    w, _ = trick_with("collet", 0, [(1, card(H, 14)), (2, card(H, 3)), (3, card(H, 4)), (0, card(H, 2))])
+    oks.append(check("collet : l'As adverse ne gagne pas", w, 3))
+    _, rules = trick_with("carte_fantome", 0, [(1, card(H, 9)), (2, card(H, 3)), (3, card(H, 4)), (0, card(H, 2))])
+    oks.append(check("carte fantome : pli a 0", rules.trick_value(1, [(1, card(H, 9))]), 0))
+    _, rules = trick_with("double_valet", 0, [(1, card(H, 9)), (0, card(H, 11))])
+    oks.append(check("double valet : pli a 2 pour son proprietaire", rules.trick_value(0, [(0, card(H, 11))]), 2))
+    w, _ = trick_with("inversion", 1, [(1, card(H, 9)), (2, card(H, 3)), (3, card(S, 4)), (0, card(H, 2))])
+    oks.append(check("inversion : la plus faible de la couleur demandee", w, 0))
+    # JokerHand.step_joker_card : la main ne diminue pas, le pli se resout.
+    state, rules, game = setup(trump=S)
+    hand = J.JokerHand(game, contract, state, rules)
+    game.turn = 1
+    hand.step(1, card(H, 5))
+    hand.step(2, card(H, 8))
+    hand.step(3, card(H, 11))
+    before = list(game.hands[0])
+    rules.effects.append(J.make_effect("cameleon", 0))
+    hand.step_joker_card(0, card(H, 12), "cameleon")
+    oks.append(check("carte de joker : main intacte", game.hands[0], before))
+    oks.append(check("carte de joker : pli resolu", (game.trick_count, game.tricks_won[0], game.turn), (1, 1, 0)))
+    # Sorts et pieges.
+    state, rules, game = setup()
+    rules.effects.append(J.make_effect("fausse_piste", 0))
+    oks.append(check("fausse piste : sort adverse annule", rules.play(1, "coup_de_vent"), {"cancelled": True}))
+    oks.append(check("fausse piste : une seule fois", rules.play(3, "coup_de_vent"), {}))
+    state, rules, game = setup()
+    rules.effects.append(J.make_effect("silence_du_cercle", 0))
+    oks.append(check("silence : aucun joker adverse, aura comprise",
+                     [rules.play(1, "coup_de_vent"), rules.play(1, "kermesse")], [{"error": "silence"}] * 2))
+    oks.append(check("silence : le proprietaire et son partenaire jouent",
+                     [rules.blocked("main_lourde", 0), rules.blocked("main_lourde", 2)], [False, False]))
+    for _ in range(5):
+        rules.on_trick_resolved(0, [])
+    oks.append(check("silence : toute la donne (043f)", rules.blocked("coup_de_vent", 1), True))
+    state, rules, game = setup(trump=H)
+    rules.effects.append(J.make_effect("lune_noire", 0))
+    oks.append(check("lune noire : atout rouge annule", rules.trick_trump(), None))
+    oks.append(check("lune noire : injouable sans atout rouge", state.play_error(0, "lune_noire"), "not_in_hand"))
+    state, rules, game = setup(trump=S)
+    state.joker_hand[0] = ["lune_noire"]
+    state.energy[0] = 3
+    oks.append(check("lune noire : pointless a pique", state.play_error(0, "lune_noire"), "pointless"))
+    state, rules, game = setup(trump=S)
+    e = J.make_effect("brouillard_de_la_senne", 0)
+    e.on_play(rules)
+    rules.effects.append(e)
+    oks.append(check("brouillard : coeur au premier pli", rules.trick_trump(), H))
+    game.trick_count = 2
+    oks.append(check("brouillard : trefle au troisieme", rules.trick_trump(), C))
+    state, rules, game = setup()
+    rules.effects.append(J.make_effect("gueule_de_bois", 0))
+    oks.append(check("gueule de bois : l'adversaire joue sa plus faible",
+                     rules.bot_card(1, card(H, 14), [card(H, 14), card(H, 5), card(H, 9)]), card(H, 5)))
+    oks.append(check("gueule de bois : pas le partenaire",
+                     rules.bot_card(2, card(H, 14), [card(H, 14), card(H, 5)]), card(H, 14)))
+    state, rules, game = setup()
+    oks.append(check("dette : cible adverse seulement", rules.play(0, "dette_de_jeu", 2), {"error": "target"}))
+    rules.play(0, "dette_de_jeu", 1)
+    rules.on_trick_resolved(1, [])
+    oks.append(check("dette : 5 points cedes", rules.score_bonus, [5, -5, 0, 0]))
+    state, rules, game = setup()
+    rules.trick_winners = [0, 1, 3]
+    game.tricks_won[3] = 1
+    rules.play(0, "remonte_pli")
+    oks.append(check("remonte-pli : dernier pli adverse", (game.tricks_won[0], game.tricks_won[3]), (1, 0)))
+    state, rules, game = setup()
+    rules.play(0, "horloge_arretee")
+    oks.append(check("horloge : la donne s'arrete apres ce pli", rules.hand_tricks(), 1))
+    # Enchere et ecarts.
+    state, rules, game = setup()
+    rules.play(0, "main_de_fer")
+    from engine.bidding import Bidding
+    bid = Bidding(3)
+    solo = {"action": "solo", "suit": S, "level": 6}
+    oks.append(check("main de fer : rien avant l'annonce du proprietaire", rules.forces_pass(1, solo, bid), False))
+    bid.last_action[0] = "pass"
+    oks.append(check("main de fer : proprietaire passe, rien", rules.forces_pass(1, solo, bid), False))
+    bid.last_action[0] = "propose"
+    bid.pending_proposals[S] = 0
+    oks.append(check("main de fer : apres l'annonce, les bots passent",
+                     [rules.forces_pass(s, solo, bid) for s in range(4)], [False, True, True, True]))
+    oks.append(check("main de fer : emballer la proposition du proprietaire reste permis",
+                     rules.forces_pass(2, {"action": "emballer", "suit": S}, bid), False))
+    c = {"type": "solo", "suit": S, "level": 6, "declarer": 0}
+    rules.effects = [J.make_effect("bluff", 0)]
+    oks.append(check("bluff : demi-perte (vers 0)", rules.adjust_deltas([-7, 3, 3, 1], c), [-3, 3, 3, 1]))
+    rules.effects = []
+    rules.curses = [J.make_effect("pacte_du_tenancier", 0)]
+    oks.append(check("pacte : -5 par contrat rate (043f)", rules.adjust_deltas([-7, 3, 3, 1], c), [-12, 3, 3, 1]))
+    # Economie du joueur : amelioration, maudits, Soupcon, Oeil.
+    oks.append(check("amelioration : cout -1", (J.jcost("inversion+"), J.known("zero+")), (2, False)))
+    state = J.MatchState([["cartes_marquees", "regard_furtif", "livre_de_comptes"], [], [], []], random.Random(2), 9)
+    rules = J.JokerRules(state)
+    state.arm_curses()
+    oks.append(check("maudit arme, jamais pioche", (state.curses[0], len(state.draw_pile[0])), (["cartes_marquees"], 2)))
+    oks.append(check("cartes marquees : sorts a 0", rules.cost_of(0, "regard_furtif"), 0))
+    state.joker_hand[0] = ["regard_furtif"]
+    state.spend(0, "regard_furtif")
+    oks.append(check("soupcon : +2 (arriere-salle), plafonne", state.suspicion, 10))
+    J.watch_eye(state, rules, "points", "regard_furtif")
+    oks.append(check("oeil : sanction points et jauge videe", (rules.score_bonus[0], state.suspicion), (-20, 0)))
+    oks += review_20261014_tests()
+    return oks
+
+
+def review_20261014_tests():
+    """whist-4-it 2c63f60 + 6bf4a7c (tests/roguelike_catalog_runner.gd)."""
+    from engine import joker_match as jm
+    from engine.solitaire import new_solitaire_deal
+    oks = []
+    # Inversion : aura, chaque pli de la donne a la plus faible.
+    state, rules, game = setup()
+    rules.play(0, "inversion")
+    plays = [(0, card(S, 13)), (1, card(S, 3)), (2, card(S, 14)), (3, card(S, 5))]
+    oks.append(check("inversion : le 3 prend", rules.trick_winner(plays, S, S), 1))
+    rules.on_trick_resolved(1, plays)
+    plays = [(0, card(C, 13)), (1, card(C, 3)), (2, card(C, 14)), (3, card(C, 5))]
+    oks.append(check("inversion : aura, le pli suivant aussi", rules.trick_winner(plays, C, S), 1))
+    oks.append(check("inversion : lancee par les bots en misere", ("inversion" in J.CASTABLE, J.jtype("inversion")), (True, "aura")))
+    # Rachat : un pli de plus au decompte.
+    state, rules, game = setup()
+    hands = [[card(S, r) for r in range(2, 15)], [card(H, r) for r in range(2, 15)],
+             [card(D, r) for r in range(2, 15)], [card(C, r) for r in range(2, 15)]]
+    g = new_solitaire_deal(hands, 0, S, 6, 0)
+    c = {"type": "solo", "suit": S, "level": 6, "declarer": 0}
+    rules.bind(g, c)
+    rules.scorer = jm.base_score
+    rules.effects = [J.make_effect("rachat", 0)]
+    g.tricks_won[:] = [5, 3, 3, 2]
+    failed = jm.base_score(g, c)
+    g.tricks_won[:] = [6, 3, 3, 2]
+    made = jm.base_score(g, c)
+    g.tricks_won[:] = [5, 3, 3, 2]
+    oks.append(check("rachat : solo a un pli rachete = fait", rules.adjust_deltas(failed, c), made))
+    oks.append(check("rachat : plis de la table intacts", g.tricks_won, [5, 3, 3, 2]))
+    c = {"type": "solo", "suit": S, "level": 6, "declarer": 1}
+    g2 = new_solitaire_deal(hands, 1, S, 6, 0)
+    rules.bind(g2, c)
+    g2.tricks_won[:] = [3, 6, 2, 2]
+    their_made = jm.base_score(g2, c)
+    g2.tricks_won[:] = [4, 5, 2, 2]
+    their_failed = jm.base_score(g2, c)
+    g2.tricks_won[:] = [3, 6, 2, 2]
+    oks.append(check("rachat : en defense, un pli pris au declarant", rules.adjust_deltas(their_made, c), their_failed))
+    oks.append(check("rachat : rien en misere", rules.adjust_deltas([1, 2, 3, 4], {"type": "misere", "kind": "petite", "declarers": [0]}), [1, 2, 3, 4]))
+    oks.append(check("rachat : salle sans soupcon (043f), pot-de-vin a 1", (J.jsuspicion("rachat") > 0, J.jcost("pot_de_vin")), (False, 1)))
+    # Cartes sur Table : le contrat porte la main exposee.
+    state, rules, game = setup()
+    rules.bind(None, None)
+    rules.play(0, "cartes_sur_table")
+    c = {"type": "solo", "suit": S, "level": 6, "declarer": 1}
+    oks.append(check("cartes sur table : contrat expose", (rules.on_contract(c), c.get("exposed"), state.energy[0]), (True, [0], 1)))
+    from agents.expert_bot import PublicView
+    g3 = new_solitaire_deal([list(h) for h in hands], 1, S, 6, 0)
+    g3.set_public_context(dealer=0, bid_summary=None, whisted=False, level_known=True)
+    g3.exposed = [0]
+    oks.append(check("cartes sur table : l'ExpertBot voit la main", sorted(PublicView(g3, 1).revealed), [0]))
+    # Fossoyeur : emballage aussi.
+    state, rules, game = setup()
+    rules.effects = [J.make_effect("fossoyeur_de_plis", 0)]
+    rules.on_trick_resolved(2, [])
+    oks.append(check("fossoyeur : pli du partenaire d'emballage", rules.score_bonus[0], 1))
+    # Brim Dore : agit depuis le deck.
+    st = J.MatchState([["brimborion_dore", "zero"], [], [], []], random.Random(1))
+    oks.append(check("brim dore : jamais pioche", (st.curses[0], st.draw_pile[0]), (["brimborion_dore"], ["zero"])))
+    # Manche Truquee.
+    state, rules, game = setup(trump=H)
+    rules.play(0, "manche_truquee")
+    plays = [(1, card(S, 14)), (2, card(S, 3)), (3, card(S, 5)), (0, card(S, 2))]
+    oks.append(check("manche truquee : le 2 compte comme atout", rules.trick_winner(plays, S, H), 0))
+    rules.on_trick_resolved(0, plays)
+    oks.append(check("manche truquee : portee du pli", rules.trick_winner(plays, S, H), 1))
+    rules.bind(game, {"type": "misere", "kind": "grande", "declarers": [1]})
+    game.trump_suit = None
+    oks.append(check("manche truquee : pointless sans atout", J.make_effect("manche_truquee", 0).pointless(rules), True))
+    # Coup du Chapeau.
+    state, rules, game = setup()
+    rules.play(0, "coup_du_chapeau")
+    for w in (0, 0):
+        rules.on_trick_resolved(w, [])
+    oks.append(check("coup du chapeau : deux de suite, rien", rules.score_bonus[0], 0))
+    rules.on_trick_resolved(0, [])
+    oks.append(check("coup du chapeau : le troisieme, +6", rules.score_bonus[0], 6))
+    # Pourboire.
+    state, rules, game = setup()
+    rules.play(0, "pourboire")
+    rules.on_trick_resolved(0, [])
+    rules.play(0, "pourboire")
+    rules.on_trick_resolved(1, [])
+    oks.append(check("pourboire : +1 sou si pli pris", state.sous_won, 1))
+    # Chope Vide.
+    state, rules, game = setup()
+    rules.play(0, "chope_vide")
+    rules.adjust_deltas([0, 0, 0, 0], {"type": "emballage", "declarer": 0, "partner": 2})
+    oks.append(check("chope vide : un joker de plus a la suivante", state.next_hand_draws, [1, 0, 0, 0]))
+    state, rules, game = setup()
+    rules.play(0, "chope_vide")
+    state.played_this_hand[0] = 1
+    rules.adjust_deltas([0, 0, 0, 0], {"type": "emballage", "declarer": 0, "partner": 2})
+    oks.append(check("chope vide : un joker joue, rien", state.next_hand_draws, [0, 0, 0, 0]))
+    # Faux Pas.
+    state, rules, game = setup()
+    rules.play(0, "faux_pas")
+    plays = [(0, card(S, 14)), (1, card(H, 2)), (2, card(S, 3)), (3, card(S, 5))]
+    rules.trick_winner(plays, S, S)
+    rules.on_trick_resolved(1, plays)
+    plays = [(0, card(C, 14)), (1, card(D, 2)), (2, card(C, 3)), (3, card(C, 5))]
+    rules.trick_winner(plays, C, S)
+    rules.on_trick_resolved(0, plays)
+    oks.append(check("faux pas : 3 cedes au proprietaire, une fois (043f)", rules.score_bonus, [3, -3, 0, 0]))
+    return oks
+
+
+if __name__ == "__main__":
+    main()
