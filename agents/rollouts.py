@@ -140,9 +140,20 @@ def play_out_greedy_batched(games, nets):
             active = [g for g in active if not g.done]
 
 
-def action_values(game, seat, nets, score_fn, rng, samples):
+def play_out_expert(games):
+    """Joue toutes les donnes jusqu'au bout avec l'ExpertBot aux 4 sieges."""
+    from agents import expert_bot
+    for g in games:
+        while not g.done:
+            g.step(g.turn, expert_bot.choose_card(g, g.turn))
+
+
+def action_values(game, seat, nets, score_fn, rng, samples, policy="nets"):
     """-> (cartes legales, Q moyen de chacune pour `seat`) ou None si une
-    seule carte legale. `score_fn(donne_terminee)` -> score des 4 sieges."""
+    seule carte legale. `score_fn(donne_terminee)` -> score des 4 sieges.
+    `policy` : "nets" (suite jouee par les reseaux) ou "expert" (suite jouee
+    par l'ExpertBot : un pas d'amelioration de politique au-dessus du bot,
+    PIMC -- voir scripts/train.py:ROLLOUT_POLICY_DEFAULT)."""
     legal = [c for c, ok in enumerate(game.legal_action_mask(seat)) if ok]
     if len(legal) < 2:
         return None
@@ -153,7 +164,10 @@ def action_values(game, seat, nets, score_fn, rng, samples):
             g = clone_with_hands(game, hands)
             g.step(seat, card)
             sims.append((i, g))
-    play_out_greedy_batched([g for _i, g in sims], nets)
+    if policy == "expert":
+        play_out_expert([g for _i, g in sims])
+    else:
+        play_out_greedy_batched([g for _i, g in sims], nets)
     q = [0.0] * len(legal)
     for i, g in sims:
         q[i] += score_fn(g)[seat] / samples

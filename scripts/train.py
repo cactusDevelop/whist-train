@@ -213,6 +213,14 @@ ROLLOUT_SURCOUPE_SAMPLES_DEFAULT = 0  # 16 = ancienne valeur
 # Marge (unites de retour : plis ; points/10 pour defenseur) sous laquelle une
 # carte compte parmi les meilleures -- absorbe le bruit des 4 mondes.
 ROLLOUT_MARGIN_DEFAULT = 0.25
+# Politique qui joue la SUITE de la donne dans les rollouts (2026-10-19).
+# "nets" (historique) : les reseaux eux-memes -- leurs propres faiblesses
+# faussent Q (surcoupe 26/09 : l'IA a cesse de prendre les plis). "expert" :
+# l'ExpertBot aux 4 sieges = PIMC au-dessus du bot, un pas d'amelioration de
+# politique qui le BAT par construction ; c'est ce professeur plus fort que le
+# bot qui manquait au PPO, plafonne au niveau du bot depuis le 29/09 (duplicate :
+# defense IA +0.27 pli concede/donne, stable 3 semaines).
+ROLLOUT_POLICY_DEFAULT = "nets"
 DECISIONS_PER_DEAL = 52
 
 # Imitation de l'ExpertBot (agents/expert_bot.py ; accord utilisateur
@@ -644,7 +652,8 @@ def play_out(game, nets, rollout=None, teacher=None, visitors=None, rng=None):
                 samples = rollout["samples"]
         if samples:
             t0 = time.time()
-            q = rollouts.action_values(game, seat, nets, rollout["score_fn"], rollout["rng"], samples)
+            q = rollouts.action_values(game, seat, nets, rollout["score_fn"], rollout["rng"], samples,
+                                       rollout.get("policy", "nets"))
             if q is not None:
                 target = rollouts.best_set_target(q[0], q[1], rollout["margin"], credit.return_scale(role))
                 rollout["count"] += 1
@@ -1326,6 +1335,8 @@ def main():
                          help="mondes (mains cachees tirees au hasard) par decision analysee")
     parser.add_argument("--rollout-surcoupe-samples", type=int, default=ROLLOUT_SURCOUPE_SAMPLES_DEFAULT,
                          help="mondes par occasion de surcoupe analysee (hors misere) ; 0 pour desactiver")
+    parser.add_argument("--rollout-policy", choices=("nets", "expert"), default=ROLLOUT_POLICY_DEFAULT,
+                        help="qui joue la suite de la donne dans les rollouts (voir ROLLOUT_POLICY_DEFAULT)")
     parser.add_argument("--rollout-margin", type=float, default=ROLLOUT_MARGIN_DEFAULT,
                          help="ecart de valeur (plis ; points/10 pour defenseur) sous lequel une carte compte "
                               "parmi les meilleures")
@@ -1357,7 +1368,8 @@ def main():
     if args.bid_greedy_prob is None:
         args.bid_greedy_prob = bid_ppo_mod.GREEDY_TABLE_PROB
 
-    if args.teacher_coef > 0 and (args.rollout_per_deal > 0 or args.rollout_surcoupe_samples > 0):
+    if (args.teacher_coef > 0 and args.rollout_policy == "nets"
+            and (args.rollout_per_deal > 0 or args.rollout_surcoupe_samples > 0)):
         raise SystemExit("imitation de l'ExpertBot et rollouts partagent la meme perte de cible : "
                          "choisir l'un ou l'autre (--teacher-coef 0 pour les rollouts)")
     if args.bidder_pop_size < 4:
@@ -1510,7 +1522,7 @@ def main():
         rollout = {"prob": args.rollout_per_deal / DECISIONS_PER_DEAL, "samples": args.rollout_samples,
                    "surcoupe_samples": args.rollout_surcoupe_samples,
                    "margin": args.rollout_margin, "rng": random.Random(rng.random()),
-                   "score_fn": None, "count": 0, "corrective": 0, "surcoupes": 0, "seconds": 0.0}
+                   "score_fn": None, "policy": args.rollout_policy, "count": 0, "corrective": 0, "surcoupes": 0, "seconds": 0.0}
         print("Rollouts : chaque occasion de surcoupe hors misere (%d mondes) + ~%.1f decision(s)/donne au "
               "hasard (%d mondes), marge=%.2f, poids %.2f a cote de PPO." % (
                   args.rollout_surcoupe_samples, args.rollout_per_deal, args.rollout_samples,
