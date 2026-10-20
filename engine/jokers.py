@@ -28,12 +28,16 @@ import random
 
 from engine.cards import NUM_PLAYERS, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "68f81468d34a321a"
+JOKER_SPEC_HASH = "540be9ef11c379a9"
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
 # texte ou de cablage seulement) : un reseau entraine sous l'une d'elles est
 # reexporte tel quel avec JOKER_SPEC_HASH. Une regle qui change -> vider la
 # liste (sauf le hash courant) et reentrainer.
-RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH, "043f0376f53115aa"}
+RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH, "68f81468d34a321a", "043f0376f53115aa"}
+# 540b (whist-4-it cdc86f6, Chantier Duel 03b) : Soupcon par siege ; Tournee Generale / Livre de Comptes
+# agissent sur la jauge de LEUR lanceur (jokers non castables par les bots -> seul le joueur les lance, effet
+# inchange en partie roguelike) ; is_opponent via _bot_contract (Trahison) et Oeil "points" du 2e joueur :
+# Duel seulement -> regles identiques a 68f8.
 # 68f8 (whist-4-it, 18/10) : niveaux de difficulte supprimes, rogue_match.gd appelle server_add_ai_bot sans
 # WhistExpertBot.DIFFICULTY (ExpertBot sur les sieges 1-3 comme avant) -> regles identiques a 043f, les
 # checkpoints 043f du cloud (whist-train) restent valables.

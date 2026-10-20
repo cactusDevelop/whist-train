@@ -1337,6 +1337,9 @@ def main():
                          help="mondes par occasion de surcoupe analysee (hors misere) ; 0 pour desactiver")
     parser.add_argument("--rollout-policy", choices=("nets", "expert"), default=ROLLOUT_POLICY_DEFAULT,
                         help="qui joue la suite de la donne dans les rollouts (voir ROLLOUT_POLICY_DEFAULT)")
+    parser.add_argument("--rollout-workers", type=int, default=0,
+                        help="processus qui jouent les rollouts --rollout-policy expert en parallele "
+                             "(0 ou 1 = en serie dans le processus principal)")
     parser.add_argument("--rollout-margin", type=float, default=ROLLOUT_MARGIN_DEFAULT,
                          help="ecart de valeur (plis ; points/10 pour defenseur) sous lequel une carte compte "
                               "parmi les meilleures")
@@ -1527,6 +1530,10 @@ def main():
               "hasard (%d mondes), marge=%.2f, poids %.2f a cote de PPO." % (
                   args.rollout_surcoupe_samples, args.rollout_per_deal, args.rollout_samples,
                   args.rollout_margin, args.distill_coef), flush=True)
+        if args.rollout_policy == "expert" and args.rollout_workers > 1:
+            import multiprocessing
+            rollouts.set_pool(multiprocessing.Pool(args.rollout_workers), args.rollout_workers)
+            print("  rollouts ExpertBot repartis sur %d processus." % args.rollout_workers, flush=True)
     teacher = None
     teacher_deals = load_teacher_deals()
     if teacher_coef_at(teacher_deals, args.teacher_coef, args.teacher_decay_deals) > 0:

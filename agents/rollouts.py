@@ -146,6 +146,28 @@ def play_out_expert(games):
     for g in games:
         while not g.done:
             g.step(g.turn, expert_bot.choose_card(g, g.turn))
+    return games
+
+
+# Pool de processus (multiprocessing.Pool) pour les rollouts "expert", installe
+# par scripts/train.py (--rollout-workers, 2026-10-20) : la suite jouee par
+# l'ExpertBot est du Python pur, sans reseau -> les mondes d'une decision se
+# repartissent sur les coeurs (donnes picklables, ~700 octets chacune).
+_POOL = None
+_POOL_SIZE = 1
+
+
+def set_pool(pool, size):
+    global _POOL, _POOL_SIZE
+    _POOL, _POOL_SIZE = pool, size
+
+
+def _play_out_expert_parallel(games):
+    if _POOL is None or _POOL_SIZE < 2 or len(games) < 2:
+        return play_out_expert(games)
+    step = -(-len(games) // _POOL_SIZE)
+    chunks = [games[i:i + step] for i in range(0, len(games), step)]
+    return [g for chunk in _POOL.map(play_out_expert, chunks) for g in chunk]
 
 
 def action_values(game, seat, nets, score_fn, rng, samples, policy="nets"):
@@ -165,7 +187,7 @@ def action_values(game, seat, nets, score_fn, rng, samples, policy="nets"):
             g.step(seat, card)
             sims.append((i, g))
     if policy == "expert":
-        play_out_expert([g for _i, g in sims])
+        sims = list(zip([i for i, _g in sims], _play_out_expert_parallel([g for _i, g in sims])))
     else:
         play_out_greedy_batched([g for _i, g in sims], nets)
     q = [0.0] * len(legal)
