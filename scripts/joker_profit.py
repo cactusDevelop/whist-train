@@ -67,7 +67,7 @@ OFF_POINTS = {
     "pourboire": "gain en sous (run), pas en points",
 }
 # Mesures par CONTREFACTUEL DE DECK (match entier avec / sans le joker dans le deck).
-DECK_CF = sorted(i for i in [i for i, v in J.CATALOG.items() if v[1] == "maudit"] + list(OFF_POINTS)
+DECK_CF = sorted(i for i in [i for i, v in J.CATALOG.items() if v[1] == "maudit" and i not in J.OPPONENT_ONLY] + list(OFF_POINTS)
                  if i not in UNMEASURED)
 ADMIN_KEPT_FILE = "admin_kept_jokers.json"  # ids gardes par un admin (whist-4-it) : plus jamais a_supprimer
 

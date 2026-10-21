@@ -133,6 +133,7 @@ class Bidding:
         self.lie_contract_index = [-1] * NUM_PLAYERS
         self.solo_only_suit = [None] * NUM_PLAYERS
         self.own_suit = [None] * NUM_PLAYERS  # couleur du 1er propose/emballer de ce siege
+        self.free_solo = [False] * NUM_PLAYERS  # solo simple en toute couleur : Cavalier Seul (dc78)
         self.has_acted = [False] * NUM_PLAYERS
         # Genre de la derniere annonce de chaque siege (last_action[seat]["action"]
         # de game/bidding.gd, None = pas encore parle) : Main de Fer (043f).
@@ -240,7 +241,7 @@ class Bidding:
         restant, ou (ayant deja agi une fois) une couleur deja emballee par
         quelqu'un d'autre. Ne s'applique PAS a Abondance/Solo Chelem
         (couleur libre, voir can_abondance/can_solo_chelem)."""
-        if self.own_suit[seat] == suit:
+        if self.free_solo[seat] or self.own_suit[seat] == suit:
             return True
         if self._sole_remaining_free_agent(seat):
             return True

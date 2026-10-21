@@ -420,13 +420,16 @@ def elite_tests():
         seen.add((f1, f3))
         if f1 == f3 or m.adapts != ([1, 3] if m.config["act"] >= 3 else []):
             break
-        if sorted(m.state.draw_pile[1]) != sorted(J.SPECIALTY_DECKS[f1]):
+        deck = J.SPECIALTY_DECKS[f1]  # dc78 : les maudits (cavalier_seul) vont dans les curses
+        if (sorted(m.state.draw_pile[1]) != sorted(j for j in deck if not J.acts_from_deck(j))
+                or ("cavalier_seul" in m.state.curses[1]) != (f1 == "solo")):
             break
     oks.append(check("elites : 2 familles differentes, deck fixe, adaptees a l'acte III", seed, 39))
     oks.append(check("elites : les 6 paires de familles sortent", len(seen), 6))
     m = Match({"kind": "boss", "boss": "grand_maitre", "act": 3, "eye": "points", "mise": 0}, 1)
-    oks.append(check("boss : deck du Grand Maitre (3d47)", sorted(m.state.draw_pile[2]),
-                     sorted(J.BOSS_DECKS["grand_maitre"])))
+    oks.append(check("boss : deck du Grand Maitre (dc78), sceau dans les curses",
+                     (sorted(m.state.draw_pile[2]), "sceau_du_grand_maitre" in m.state.curses[2]),
+                     (sorted(J.BOSS_DECKS["grand_maitre"][:-1]), True)))
 
     state = J.MatchState([[], ["main_lourde", "kermesse"], [], []], random.Random(0))
     state.joker_hand[1] = ["main_lourde", "kermesse"]

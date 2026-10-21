@@ -28,12 +28,14 @@ import random
 
 from engine.cards import NUM_PLAYERS, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "e49fe1d080d59e67"
+JOKER_SPEC_HASH = "dc78cb7389ecb3e7"
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
 # texte ou de cablage seulement) : un reseau entraine sous l'une d'elles est
 # reexporte tel quel avec JOKER_SPEC_HASH. Une regle qui change -> vider la
 # liste (sauf le hash courant) et reentrainer.
 RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH}
+# dc78 (whist-4-it 15cae20) : Soliste = maudit cavalier_seul (solo simple en toute couleur, free_solo), sa
+# proposition de couleur retiree ; maudits ContratImpose (sans regle) des boss ; OPPONENT_ONLY -> reentrainement.
 # e49f (whist-4-it fdf0754) : l'elite Solo sans solo legal propose sa couleur de solo -> reentrainement.
 # d8f1 (whist-4-it c4bce36) : marge d'enchere par famille (emballage 1, solo 2, misere 2) -> reentrainement.
 # 3d47 (whist-4-it a9a23cb, Chantier Elites 01) : contrat attitre par elite (deck fixe a doublons, biais
@@ -125,7 +127,15 @@ CATALOG = {
     "joueur_fantome": ("passif", "maudit", 0, False),
     "pacte_du_tenancier": ("passif", "maudit", 0, False),
     "heritage_empoisonne": ("passif", "maudit", 0, False),
+    # maudits des adversaires (dc78) : raison du contrat impose d'un boss, solo libre de la Soliste
+    "regle_du_moine": ("passif", "maudit", 0, False),
+    "gant_de_la_baronne": ("passif", "maudit", 0, False),
+    "pelle_du_fossoyeur": ("passif", "maudit", 0, False),
+    "sceau_du_grand_maitre": ("passif", "maudit", 0, False),
+    "cavalier_seul": ("passif", "maudit", 0, False),
 }
+# JokerCatalog.OPPONENT_ONLY : jamais proposes au joueur (chaise_vide, deck simule)
+OPPONENT_ONLY = ("regle_du_moine", "gant_de_la_baronne", "pelle_du_fossoyeur", "sceau_du_grand_maitre", "cavalier_seul")
 STARTING_DECK = ["cameleon", "coup_de_vent", "embuscade"]  # JokerCatalog.STARTING_DECK
 UPGRADE_SUFFIX = "+"  # JokerDef : cout -1 (jamais un cout 0 ni un maudit)
 MAX_COPIES = 2
@@ -175,11 +185,12 @@ RARITIES_BY_ACT = {1: ("comptoir", "salle"), 2: ("comptoir", "salle", "arriere_s
                    3: ("comptoir", "salle", "arriere_salle", "cave")}
 BOSS_SEAT = 2  # en face du joueur (rapport 2026-10-15)
 PLAYER = 0
-BOSS_DECKS = {  # RogueBosses.DEFS (3d47 : decks pour leur contrat)
-    "moine": ["inversion", "inversion", "coup_du_chapeau", "faux_pas"],
-    "baronne": ["kermesse", "kermesse", "coup_de_vent", "coup_de_vent", "inversion"],
-    "fossoyeur": ["coup_de_vent", "coup_de_vent", "inversion", "kermesse", "kermesse"],
-    "grand_maitre": ["kermesse", "kermesse", "kermesse", "coup_de_vent", "coup_de_vent", "inversion", "main_lourde"],
+BOSS_DECKS = {  # RogueBosses.DEFS (3d47 : decks pour leur contrat ; dc78 : + contract_joker en fin)
+    "moine": ["inversion", "inversion", "coup_du_chapeau", "faux_pas", "regle_du_moine"],
+    "baronne": ["kermesse", "kermesse", "coup_de_vent", "coup_de_vent", "inversion", "gant_de_la_baronne"],
+    "fossoyeur": ["coup_de_vent", "coup_de_vent", "inversion", "kermesse", "kermesse", "pelle_du_fossoyeur"],
+    "grand_maitre": ["kermesse", "kermesse", "kermesse", "coup_de_vent", "coup_de_vent", "inversion", "main_lourde",
+                     "sceau_du_grand_maitre"],
 }
 BOSS_SANCTIONS = {"moine": "points", "baronne": "confisque", "fossoyeur": "allumettes", "grand_maitre": "confisque"}
 FACE_RANKS = (9, 10, 11)  # J, Q, K (engine/cards.py : rang 12 = As)
@@ -225,7 +236,7 @@ def can_upgrade(jid):
 # --- elites (elite_decks.gd, 3d47) --------------------------------------------
 SPECIALTY_DECKS = {  # EliteDecks.SPECIALTIES[fam].deck
     "emballage": ["coup_de_vent", "coup_de_vent", "inversion", "kermesse"],
-    "solo": ["kermesse", "kermesse", "coup_de_vent", "main_lourde"],
+    "solo": ["kermesse", "kermesse", "coup_de_vent", "main_lourde", "cavalier_seul"],
     "misere": ["inversion", "inversion", "coup_du_chapeau", "faux_pas"],
 }
 FAMILIES = ["emballage", "solo", "misere"]
@@ -355,6 +366,10 @@ class Effect:
         """bot_bid : True = l'annonce `action` ({"action": ...}) du bot `seat`
         devient un passe (Main de Fer, Pot-de-Vin)."""
         return False
+
+    def prepare_bidding(self, bidding):
+        """RuleModifiers.prepare_bidding : enchere neuve, avant toute annonce (dc78)."""
+        pass
 
     def next_leader(self, winner):
         return -1
@@ -527,6 +542,17 @@ class PacteDuTenancier(Curse):
 
 class HeritageEmpoisonne(Curse):
     pass
+
+
+class ContratImpose(Curse):
+    """Maudit d'un boss (dc78) : sans regle, le contrat reste boss_contract."""
+    pass
+
+
+class CavalierSeul(Curse):
+    """Maudit de la Soliste (dc78) : solo simple dans n'importe quelle couleur."""
+    def prepare_bidding(self, bidding):
+        bidding.free_solo[self.owner] = True
 
 
 class Miroir(TrickJoker):
@@ -1012,6 +1038,8 @@ EFFECTS = {
     "treizieme_carte": TreiziemeCarte, "livre_de_comptes": LivreDeComptes, "cartes_marquees": CartesMarquees,
     "joueur_fantome": JoueurFantome, "pacte_du_tenancier": PacteDuTenancier,
     "heritage_empoisonne": HeritageEmpoisonne, "manche_truquee": MancheTruquee,
+    "regle_du_moine": ContratImpose, "gant_de_la_baronne": ContratImpose, "pelle_du_fossoyeur": ContratImpose,
+    "sceau_du_grand_maitre": ContratImpose, "cavalier_seul": CavalierSeul,
     "coup_du_chapeau": CoupDuChapeau, "pourboire": Pourboire, "chope_vide": ChopeVide, "faux_pas": FauxPas,
 }
 assert set(EFFECTS) == set(CATALOG)
@@ -1327,6 +1355,10 @@ class JokerRules:
 
     def forces_pass(self, seat, action, bidding):
         return any(e.forces_pass(seat, action, bidding) for e in self.live())
+
+    def prepare_bidding(self, bidding):
+        for e in self.live():
+            e.prepare_bidding(bidding)
 
     def hides_suspicion(self, seat):
         return any(e.hides_suspicion(seat) for e in self.live())

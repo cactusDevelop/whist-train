@@ -153,6 +153,8 @@ def run_bot_bidding(hands, dealer, match=None):
     trou = detect_trou(hands)
     if trou is not None:
         bidding.seed_trou(trou)
+    elif match is not None:  # WhistTable._start_bidding -> RuleModifiers.prepare_bidding (Cavalier Seul, dc78)
+        match.rules.prepare_bidding(bidding)
     while not bidding.finished:
         seat = bidding.turn
         if match is not None and seat == PLAYER:
@@ -213,12 +215,6 @@ def specialty_bid(family, hand, bidding, seat):
             c = expert_bot._cheapest_solo(by_kind, est, s, hand, ("solo",))
             if c is not None and (choice is None or est > best_est):
                 choice, best_est = c, est
-        if choice is None:  # solo seul legal dans une couleur proposee par soi : proposer sa couleur de solo
-            for a, info in by_kind.get("propose", []):
-                est = expert_bot.estimate_tricks(hand, info["suit"]) + slack
-                if (est >= expert_bot.SOLO_MIN and expert_bot.solo_suit_ok(hand, info["suit"], expert_bot.SOLO_MIN)
-                        and (choice is None or est > best_est)):
-                    choice, best_est = a, est
     elif family == "misere":
         offered = {info["kind"]: a for a, info in by_kind.get("misere", [])}
         spread = expert_bot.misere_slack(hand)
@@ -392,7 +388,7 @@ def player_deck(act, rng):
             deck.append(jid)
     deck = [d + J.UPGRADE_SUFFIX if J.can_upgrade(d) and rng.random() < UPGRADE_PROB else d for d in deck]
     if rng.random() < CURSE_PROB:
-        deck.append(rng.choice(sorted(i for i, v in J.CATALOG.items() if v[1] == "maudit")))
+        deck.append(rng.choice(sorted(i for i, v in J.CATALOG.items() if v[1] == "maudit" and i not in J.OPPONENT_ONLY)))
     return deck
 
 
