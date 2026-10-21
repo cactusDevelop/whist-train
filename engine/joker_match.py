@@ -52,12 +52,23 @@ class Match:
                 decks[s] = elite_deck(config["act"], self.rng)
         else:
             decks[BOSS_SEAT] = list(BOSS_DECKS[config["boss"]])
+        spammers = [s for s in range(NUM_PLAYERS) if s != PLAYER and decks[s]]
+        for s in spammers:  # RogueMatch : elites/boss = spammers (79ac)
+            decks[s] = decks[s] + J.SPAMMER_EXTRA
         decks[PLAYER] = list(config.get("deck", []))
+        mise = config.get("mise", 0)
         self.state = MatchState(decks, random.Random(self.rng.random()), config.get("suspicion", 0))
+        self.state.spammers = spammers
+        self.state.spammer_energy = J.spammer_energy(mise)
+        self.state.energy_malus = J.mise_energy_malus(mise, config["act"])
+        self.state.eye_threshold = J.eye_threshold(mise)
         self.rules = JokerRules(self.state, random.Random(self.rng.random()))
-        if config["kind"] == "boss" and config["boss"] == "baronne":
-            self.rules.curses.append(J.BaronneSees("baronne", BOSS_SEAT))
+        boss = config.get("boss", "")
+        # regle du boss + celle d'un autre en Mise Doree (RogueMises.second_rule)
+        self.bosses = tuple(b for b in (boss, J.second_rule(mise, boss)) if b)
         self.state.arm_curses()
+        if "baronne" in self.bosses:
+            self.rules.curses.append(J.BaronneSees("baronne", BOSS_SEAT))
         self.player = Player(config, random.Random(self.rng.random()))
         self.chain = DeckChain(1.0, self.rng)  # entrainement 100 % whiste
 
@@ -98,7 +109,7 @@ class Match:
             hand.dealer = dealer
             hand.player = self.player
             hand.eye = self.config.get("eye", "")
-            hand.boss = self.config.get("boss", "")
+            hand.boss = self.bosses
             return hand
 
     def finish(self, hand):
@@ -137,8 +148,7 @@ def run_bot_bidding(hands, dealer, match=None):
     while not bidding.finished:
         seat = bidding.turn
         if match is not None and seat == PLAYER:
-            match.player.bidding_turn(match.state, match.rules, match.config.get("eye", ""),
-                                      match.config.get("boss", ""))
+            match.player.bidding_turn(match.state, match.rules, match.config.get("eye", ""), match.bosses)
         if match is not None and seat != PLAYER:
             choice = expert_bot.choose_bid(bidding, seat, hands[seat])
             info = {"action": "raise"} if isinstance(choice, tuple) else bid_action_to_dict(choice)
@@ -332,7 +342,8 @@ def random_config(rng):
             break
         x -= p
     cfg.update({"deck": player_deck(cfg["act"], rng), "suspicion": rng.randint(0, 7),
-                "style": style, "cast_prob": round(rng.uniform(0.15, 0.6), 3)})
+                "style": style, "cast_prob": round(rng.uniform(0.15, 0.6), 3),
+                "mise": rng.randrange(J.MISE_COUNT)})  # Mises 0..3 (79ac)
     return cfg
 
 
@@ -366,7 +377,7 @@ class Player:
             t = J.jtype(jid)
             if (t == "enchere") != bidding or state.play_error(PLAYER, jid) != "":
                 continue
-            if boss == "moine" and t in ("pli", "aura"):  # RogueBosses.blocks_joker
+            if "moine" in boss and t in ("pli", "aura"):  # RogueBosses.blocks_joker (boss = regles des boss)
                 continue
             if t == "pli" and rules.led_suit() is None:
                 continue

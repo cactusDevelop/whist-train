@@ -368,6 +368,38 @@ def review_20261014_tests():
     rules.trick_winner(plays, C, S)
     rules.on_trick_resolved(0, plays)
     oks.append(check("faux pas : 3 cedes au proprietaire, une fois (043f)", rules.score_bonus, [3, -3, 0, 0]))
+    oks.extend(spammer_tests())
+    return oks
+
+
+def spammer_tests():
+    """79ac : elites/boss piochent tout leur deck (+ Pacte du Tenancier),
+    3 + SPAMMER_ENERGY[mise] + 2 ⚡ ; Mises Rouge/Noire/Doree."""
+    from engine.joker_match import Match
+    oks = []
+    for mise in range(4):
+        m = Match({"kind": "elite", "act": 3, "eye": "points", "deck": ["pourboire"], "mise": mise}, 7)
+        m.rules.new_hand(None, None)
+        m.state.start_hand()
+        deck1 = len(m.state.draw_pile[1]) + len(m.state.discard[1]) + len(m.state.joker_hand[1])
+        oks.append(check("spammer mise %d : allumettes elites / joueur" % mise,
+                         (m.state.energy[1], m.state.energy[3], m.state.energy[0]),
+                         (6 + mise, 6 + mise, 3 - (1 if mise >= 1 else 0))))
+        oks.append(check("spammer mise %d : tout le deck pioche" % mise,
+                         (len(m.state.joker_hand[1]), m.state.draw_pile[1]), (deck1, [])))
+        oks.append(check("spammer mise %d : pacte dans le deck, seuil de l'Oeil" % mise,
+                         ("pacte_du_tenancier" in m.state.curses[1], m.state.eye_threshold),
+                         (True, 8 if mise >= 2 else 10)))
+    for boss, mise, want in (("moine", 2, ("moine",)), ("moine", 3, ("moine", "baronne")),
+                             ("baronne", 3, ("baronne", "moine")), ("fossoyeur", 3, ("fossoyeur", "baronne"))):
+        m = Match({"kind": "boss", "boss": boss, "act": 2, "eye": "points", "mise": mise}, 3)
+        oks.append(check("mise %d %s : regles de boss" % (mise, boss),
+                         (m.bosses, any(isinstance(e, J.BaronneSees) for e in m.rules.curses), m.state.spammers),
+                         (want, "baronne" in want, [2])))
+    m = Match({"kind": "boss", "boss": "moine", "act": 1, "eye": "points", "mise": 0}, 5)
+    m.rules.new_hand(None, None)
+    m.state.start_hand()
+    oks.append(check("boss mise 0 : 6 allumettes, joueur 3", (m.state.energy[2], m.state.energy[0]), (6, 3)))
     return oks
 
 

@@ -4,7 +4,7 @@ de la carte reste celui de l'ExpertBot.
 
 Source de verite : whist-4-it/roguelike/{joker_catalog, joker_def,
 joker_effects, joker_rules, match_state, rule_modifiers, rogue_match,
-rogue_bosses}.gd. JOKER_SPEC_HASH ci-dessous = l'empreinte
+rogue_bosses, rogue_mises}.gd. JOKER_SPEC_HASH ci-dessous = l'empreinte
 (tools/joker_spec.mjs) des regles portees ici ; a chaque modification des
 jokers cote jeu, porter le diff, mettre a jour le hash, reentrainer
 (scripts/train_jokers.py) et reexporter.
@@ -18,7 +18,7 @@ du catalogue. Les bots ne lancent toujours que les jokers `bot_casts`
 
 Ecarts connus (sans effet sur les decisions des bots) : Brimborion Dore
 inerte (pas de donne a points doubles dans la simulation), pas de
-recyclage cote joueur, pas de mises (seuil de l'Oeil = SUSPICION_MAX).
+recyclage cote joueur.
 Cartes de pli : une carte de joker est un vrai entier carte (couleur/rang)
 pour le moteur et l'ExpertBot, comme dans le jeu ; JokerRules.joker_cards
 retient quel siege l'a posee dans le pli en cours.
@@ -28,12 +28,14 @@ import random
 
 from engine.cards import NUM_PLAYERS, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "592eb5f71d019ba4"
+JOKER_SPEC_HASH = "79ac5d7e435fa56a"
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
 # texte ou de cablage seulement) : un reseau entraine sous l'une d'elles est
 # reexporte tel quel avec JOKER_SPEC_HASH. Une regle qui change -> vider la
 # liste (sauf le hash courant) et reentrainer.
 RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH}
+# 79ac (whist-4-it ebaf225) : elites/boss « spammers » (tout le deck pioche a chaque donne, Pacte du Tenancier
+# en plus, +1..+4 ⚡ selon la Mise) ; mises portees (Rouge/Noire/Doree) -> reentrainement.
 # 592e (whist-4-it 8a6f635) : joker joue comme une carte perd l egalite face a la vraie carte -> reentrainement.
 # 540b (whist-4-it cdc86f6, Chantier Duel 03b) : Soupcon par siege ; Tournee Generale / Livre de Comptes
 # agissent sur la jauge de LEUR lanceur (jokers non castables par les bots -> seul le joueur les lance, effet
@@ -137,6 +139,34 @@ ELITE_SEATS = (1, 3)
 ELITE_EYE = "points"
 EYE_POINTS = 20  # RogueMatch
 NO_ENERGY = 99
+# Elites et boss « spammers » (RogueMatch.SPAMMER_EXTRA, RogueMises.SPAMMER_ENERGY, 79ac)
+SPAMMER_EXTRA = ["pacte_du_tenancier"]
+SPAMMER_ENERGY = [1, 2, 3, 4]
+MISE_COUNT = 4
+RED_ACT = 3  # RogueMises
+RED_MALUS = 1
+BLACK_EARLIER = 2
+
+
+def spammer_energy(mise):
+    return SPAMMER_ENERGY[min(max(mise, 0), MISE_COUNT - 1)]
+
+
+def mise_energy_malus(mise, act):
+    """Mise Rouge : -1 ⚡ par donne au joueur en acte III."""
+    return RED_MALUS if mise >= 1 and act == RED_ACT else 0
+
+
+def eye_threshold(mise):
+    """Mise Noire : l'Oeil prend des 8 de Soupcon."""
+    return SUSPICION_MAX - (BLACK_EARLIER if mise >= 2 else 0)
+
+
+def second_rule(mise, boss):
+    """Mise Doree : la regle d'un autre boss ("" sinon)."""
+    if mise < 3 or boss == "":
+        return ""
+    return "moine" if boss == "baronne" else "baronne"
 RARITIES_BY_ACT = {1: ("comptoir", "salle"), 2: ("comptoir", "salle", "arriere_salle"),
                    3: ("comptoir", "salle", "arriere_salle", "cave")}
 BOSS_SEAT = 2  # en face du joueur (rapport 2026-10-15)
@@ -980,6 +1010,10 @@ class MatchState:
         self.sous_won = 0  # Pourboire (joueur seulement)
         self.confiscated = []
         self.rules = None
+        self.spammers = []  # sieges qui piochent tout leur deck (79ac)
+        self.spammer_energy = 0
+        self.energy_malus = 0  # Mise Rouge (joueur)
+        self.eye_threshold = SUSPICION_MAX  # Mise Noire
         for pile in self.draw_pile:
             self.rng.shuffle(pile)
 
@@ -992,9 +1026,11 @@ class MatchState:
     def start_hand(self):
         for seat in range(NUM_PLAYERS):
             bonus = sum(e.energy_bonus() for e in self.rules.curses if e.owner == seat) if self.rules else 0
-            malus = self.next_hand_malus if seat == PLAYER else 0
-            self.energy[seat] = max(0, ENERGY_PER_HAND + bonus - malus)
-            self.draw_jokers(seat, DRAW_PER_HAND + self.next_hand_draws[seat] + (self.rules.draw_bonus(seat) if self.rules else 0))
+            malus = self.next_hand_malus + self.energy_malus if seat == PLAYER else 0
+            extra = self.spammer_energy if seat in self.spammers else 0
+            self.energy[seat] = max(0, ENERGY_PER_HAND + extra + bonus - malus)
+            n = len(self.draw_pile[seat]) + len(self.discard[seat]) if seat in self.spammers else DRAW_PER_HAND
+            self.draw_jokers(seat, n + self.next_hand_draws[seat] + (self.rules.draw_bonus(seat) if self.rules else 0))
         self.next_hand_malus = 0
         self.next_hand_draws = [0] * NUM_PLAYERS
         self.played_this_hand = [0] * NUM_PLAYERS
@@ -1366,7 +1402,7 @@ class JokerHand:
 def watch_eye(state, rules, sanction, jid):
     """RogueMatch._watch_eye : un joker suspect qui remplit la jauge est
     pris ; la sanction tombe, la jauge se vide."""
-    if sanction == "" or state.suspicion < SUSPICION_MAX or jsuspicion(jid) == 0:
+    if sanction == "" or state.suspicion < state.eye_threshold or jsuspicion(jid) == 0:
         return
     if rules.absorbs_sanction():
         sanction = "absorbed"
