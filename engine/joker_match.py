@@ -193,30 +193,31 @@ def _best_scored(entries, needed_of, hand, propose):
 
 def specialty_bid(family, hand, bidding, seat):
     """EliteDecks.specialty_bid : la ou ExpertBot passe, l'annonce de la
-    famille avec BID_SLACK pli de marge, ou None."""
+    famille avec sa marge BID_SLACK, ou None."""
     by_kind = {}
     for a in legal_action_ids_with_hand(bidding, seat, hand):
         info = bid_action_to_dict(a)
         by_kind.setdefault(info["action"], []).append((a, info))
+    slack = J.BID_SLACK[family]
     choice = None
     if family == "emballage":
         choice = _best_scored(by_kind.get("emballer", []),
-                              lambda s: expert_bot.emballer_min(bidding, s) - J.BID_SLACK, hand, False)
+                              lambda s: expert_bot.emballer_min(bidding, s) - slack, hand, False)
         if choice is None:
             choice = _best_scored(by_kind.get("propose", []),
-                                  lambda s: expert_bot.PROPOSE_MIN - J.BID_SLACK, hand, True)
+                                  lambda s: expert_bot.PROPOSE_MIN - slack, hand, True)
     elif family == "solo":
         best_est = 0
         for s in range(4):
-            est = expert_bot.estimate_tricks(hand, s) + J.BID_SLACK
+            est = expert_bot.estimate_tricks(hand, s) + slack
             c = expert_bot._cheapest_solo(by_kind, est, s, hand, ("solo",))
             if c is not None and (choice is None or est > best_est):
                 choice, best_est = c, est
     elif family == "misere":
         offered = {info["kind"]: a for a, info in by_kind.get("misere", [])}
-        slack = expert_bot.misere_slack(hand)
+        spread = expert_bot.misere_slack(hand)
         for kind in ("etalee", "grande"):
-            if choice is None and kind in offered and slack <= expert_bot.MISERE_SLACK_MAX[kind] + J.BID_SLACK:
+            if choice is None and kind in offered and spread <= expert_bot.MISERE_SLACK_MAX[kind] + slack:
                 choice = offered[kind]
     return choice
 
