@@ -28,12 +28,13 @@ import random
 
 from engine.cards import NUM_PLAYERS, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "540be9ef11c379a9"
+JOKER_SPEC_HASH = "592eb5f71d019ba4"
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
 # texte ou de cablage seulement) : un reseau entraine sous l'une d'elles est
 # reexporte tel quel avec JOKER_SPEC_HASH. Une regle qui change -> vider la
 # liste (sauf le hash courant) et reentrainer.
-RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH, "68f81468d34a321a", "043f0376f53115aa"}
+RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH}
+# 592e (whist-4-it 8a6f635) : joker joue comme une carte perd l egalite face a la vraie carte -> reentrainement.
 # 540b (whist-4-it cdc86f6, Chantier Duel 03b) : Soupcon par siege ; Tournee Generale / Livre de Comptes
 # agissent sur la jauge de LEUR lanceur (jokers non castables par les bots -> seul le joueur les lance, effet
 # inchange en partie roguelike) ; is_opponent via _bot_contract (Trahison) et Oeil "points" du 2e joueur :
@@ -1191,19 +1192,24 @@ class JokerRules:
         if not competing:
             return plays[0][0]
         best = competing[0]
-        if any(e.inverts() for e in live):
-            # joker_rules.gd : la plus faible de la couleur demandee gagne
-            for p in competing:
+
+        def as_played(p):
+            if trump is not None and any(e.plays_as_trump(p, self) for e in live):
+                return trump * 13 + rank_of(p[1])
+            return p[1]
+        inverted = any(e.inverts() for e in live)
+        # 592e (whist-4-it 8a6f635) : un joker qui se joue comme une carte perd l'egalite face a la
+        # vraie carte (couleur apres plays_as_trump, meme rang) ; entre deux jokers, le premier pose garde le pli.
+        for p in competing:
+            if inverted:
+                # joker_rules.gd : la plus faible de la couleur demandee gagne
                 if suit_of(p[1]) == led and (suit_of(best[1]) != led or rank_of(p[1]) < rank_of(best[1])):
                     best = p
-        else:
-            def as_played(p):
-                if trump is not None and any(e.plays_as_trump(p, self) for e in live):
-                    return trump * 13 + rank_of(p[1])
-                return p[1]
-            for p in competing:
-                if beats(as_played(p), as_played(best), led, trump):
-                    best = p
+            elif beats(as_played(p), as_played(best), led, trump):
+                best = p
+            if (best[0] in self.joker_cards and p[0] not in self.joker_cards
+                    and suit_of(as_played(p)) == suit_of(as_played(best)) and rank_of(p[1]) == rank_of(best[1])):
+                best = p
         return best[0]
 
     def trick_value(self, winner, plays):

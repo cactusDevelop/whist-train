@@ -136,6 +136,20 @@ def v2_tests():
     # Cartes de pli (le joueur 0 et son partenaire 2 contre 1 et 3).
     w, _ = trick_with("cameleon", 0, [(1, card(H, 9)), (2, card(H, 3)), (3, card(H, 10)), (0, card(H, 12))])
     oks.append(check("cameleon : vaut une Dame", w, 0))
+    # 592e (whist-4-it 8a6f635) : egalite joker / vraie carte -> la vraie carte gagne, entre deux jokers le premier.
+    w, _ = trick_with("cameleon", 0, [(1, card(H, 12)), (2, card(H, 3)), (3, card(H, 10)), (0, card(H, 12))])
+    oks.append(check("cameleon : perd l'egalite face a la vraie Dame posee avant", w, 1))
+    w, _ = trick_with("cameleon", 0, [(0, card(H, 12)), (1, card(H, 12)), (2, card(H, 3)), (3, card(H, 10))])
+    oks.append(check("cameleon : perd l'egalite face a la vraie Dame posee apres", w, 1))
+    w, rules = trick_with("cameleon", 0, [(0, card(H, 12)), (1, card(H, 9)), (2, card(H, 12)), (3, card(H, 10))])
+    oks.append(check("cameleon : vraie Dame du partenaire", w, 2))
+    state, rules, game = setup(trump=S)
+    rules.effects += [J.make_effect("cameleon", 0), J.make_effect("cameleon", 1)]
+    rules.joker_cards.update({0: "cameleon", 1: "cameleon"})
+    w = rules.trick_winner([(0, card(H, 12)), (1, card(H, 12)), (2, card(H, 3)), (3, card(H, 10))], H, rules.trick_trump())
+    oks.append(check("deux jokers a egalite : le premier pose garde le pli", w, 0))
+    w, _ = trick_with("cameleon", 0, [(1, card(H, 12)), (2, card(H, 3)), (3, card(D, 12)), (0, card(H, 12))])
+    oks.append(check("cameleon : pas d'egalite avec une autre couleur", w, 1))
     w, _ = trick_with("zero", 0, [(1, card(H, 9)), (2, card(H, 3)), (3, card(H, 4)), (0, card(H, 2))])
     oks.append(check("zero : ne gagne jamais", w, 1))
     w, _ = trick_with("traitre", 0, [(1, card(H, 9)), (2, card(H, 3)), (3, card(H, 4)), (0, card(H, 2))])
