@@ -28,12 +28,13 @@ import random
 
 from engine.cards import NUM_PLAYERS, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "d8f11cc39788465b"
+JOKER_SPEC_HASH = "e49fe1d080d59e67"
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
 # texte ou de cablage seulement) : un reseau entraine sous l'une d'elles est
 # reexporte tel quel avec JOKER_SPEC_HASH. Une regle qui change -> vider la
 # liste (sauf le hash courant) et reentrainer.
 RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH}
+# e49f (whist-4-it fdf0754) : l'elite Solo sans solo legal propose sa couleur de solo -> reentrainement.
 # d8f1 (whist-4-it c4bce36) : marge d'enchere par famille (emballage 1, solo 2, misere 2) -> reentrainement.
 # 3d47 (whist-4-it a9a23cb, Chantier Elites 01) : contrat attitre par elite (deck fixe a doublons, biais
 # d'enchere d'un pli la ou ExpertBot passe), elites de l'acte III adaptees en defense, decks des boss refaits

@@ -213,6 +213,12 @@ def specialty_bid(family, hand, bidding, seat):
             c = expert_bot._cheapest_solo(by_kind, est, s, hand, ("solo",))
             if c is not None and (choice is None or est > best_est):
                 choice, best_est = c, est
+        if choice is None:  # solo seul legal dans une couleur proposee par soi : proposer sa couleur de solo
+            for a, info in by_kind.get("propose", []):
+                est = expert_bot.estimate_tricks(hand, info["suit"]) + slack
+                if (est >= expert_bot.SOLO_MIN and expert_bot.solo_suit_ok(hand, info["suit"], expert_bot.SOLO_MIN)
+                        and (choice is None or est > best_est)):
+                    choice, best_est = a, est
     elif family == "misere":
         offered = {info["kind"]: a for a, info in by_kind.get("misere", [])}
         spread = expert_bot.misere_slack(hand)

@@ -459,10 +459,10 @@ def elite_tests():
                 continue
             info = bid_action_to_dict(a)
             kinds[fam].add(info["action"] if fam != "misere" else info["kind"])
-            if fam == "solo" and info["level"] > expert_bot.estimate_tricks(hand, info["suit"]) + J.BID_SLACK["solo"]:
+            if fam == "solo" and info["action"] == "solo" and info["level"] > expert_bot.estimate_tricks(hand, info["suit"]) + J.BID_SLACK["solo"]:
                 bad += 1
     oks.append(check("biais : annonces de la famille seulement", (kinds["emballage"] <= {"propose", "emballer"},
-                     kinds["solo"] <= {"solo"}, kinds["misere"] <= {"etalee", "grande"}, bool(kinds["misere"]), bad),
+                     kinds["solo"] <= {"solo", "propose"}, kinds["misere"] <= {"etalee", "grande"}, bool(kinds["misere"]), bad),
                      (True, True, True, True, 0)))
 
     adapted = borrowed_left = 0
