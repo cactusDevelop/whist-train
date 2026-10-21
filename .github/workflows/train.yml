@@ -50,10 +50,10 @@ jobs:
       - id: restore
         name: Restore state
         run: |
-          gh release download checkpoint-latest -p "state-$MODE.tar.gz.enc" -D .
+          gh release download checkpoint-latest -p "state-$STATE.tar.gz.enc" -D .
           openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass env:STATE_KEY \
-            -in "state-$MODE.tar.gz.enc" | tar xz
-          rm "state-$MODE.tar.gz.enc"
+            -in "state-$STATE.tar.gz.enc" | tar xz
+          rm "state-$STATE.tar.gz.enc"
 
       - id: train
         name: Train
@@ -63,7 +63,7 @@ jobs:
       - name: Upload eval log
         if: always() && env.MODE == 'jokers_eval'
         run: |
-          cp "train_log_$MODE.txt" log-jokers_eval.txt
+          cp "train_log_$MODE.txt" log-jokers_eval.txt 2>/dev/null || echo "pas de log (Train non lance)" > log-jokers_eval.txt
           gh release upload checkpoint-latest log-jokers_eval.txt --clobber
 
       - name: Save state
@@ -71,8 +71,8 @@ jobs:
         run: |
           tar cz $(while read -r f; do [ -e "$f" ] && echo "$f"; done < "ci/state_$MODE.txt") \
             | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass env:STATE_KEY \
-              -out "state-$MODE.tar.gz.enc"
-          gh release upload checkpoint-latest "state-$MODE.tar.gz.enc" --clobber
+              -out "state-$STATE.tar.gz.enc"
+          gh release upload checkpoint-latest "state-$STATE.tar.gz.enc" --clobber
           tail -c 200000 "train_log_$MODE.txt" > "log-$MODE.txt"
           gh release upload checkpoint-latest "log-$MODE.txt" --clobber
 
