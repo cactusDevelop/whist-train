@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Pause: while ci/jokers_paused exists, fail before training so the run does not chain.
+if [ -f ci/jokers_paused ]; then echo "jokers en pause : $(cat ci/jokers_paused)"; exit 1; fi
 # An iteration lasts ~18 min past --until: keep the save step inside the 6 h job cap.
 UNTIL=$(date -u -d '+310 minutes' +%Y-%m-%dT%H:%M)
 if [ "${INIT:-false}" = "true" ]; then
