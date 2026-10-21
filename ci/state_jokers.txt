@@ -2,6 +2,7 @@ checkpoints_jokers/jokers.pt
 checkpoints_jokers/jokers_last.pt
 checkpoints_jokers/joker_profit_state.json
 checkpoints_jokers/archive_3e5d_iter29_exported.pt
+checkpoints_jokers/archive_043f_iter36_exported.pt
 jokers_train.jsonl
 joker_profit.jsonl
 joker_profit_summary.md
