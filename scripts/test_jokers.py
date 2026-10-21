@@ -369,6 +369,7 @@ def review_20261014_tests():
     rules.on_trick_resolved(0, plays)
     oks.append(check("faux pas : 3 cedes au proprietaire, une fois (043f)", rules.score_bonus, [3, -3, 0, 0]))
     oks.extend(spammer_tests())
+    oks.extend(elite_tests())
     return oks
 
 
@@ -400,6 +401,83 @@ def spammer_tests():
     m.rules.new_hand(None, None)
     m.state.start_hand()
     oks.append(check("boss mise 0 : 6 allumettes, joueur 3", (m.state.energy[2], m.state.energy[0]), (6, 3)))
+    return oks
+
+
+
+def elite_tests():
+    """3d47 (elite_decks.gd) : contrat attitre (2 familles differentes, deck
+    fixe), biais d'enchere d'un pli, adaptation en defense a l'acte III
+    (jokers empruntes jamais defausses)."""
+    from agents import expert_bot
+    from engine.bidding import Bidding, bid_action_to_dict
+    from engine.joker_match import Match, specialty_bid
+    oks = []
+    seen = set()
+    for seed in range(40):
+        m = Match({"kind": "elite", "act": 1 + seed % 3, "eye": "points", "deck": [], "mise": 0}, seed)
+        f1, f3 = m.specialties[1], m.specialties[3]
+        seen.add((f1, f3))
+        if f1 == f3 or m.adapts != ([1, 3] if m.config["act"] >= 3 else []):
+            break
+        if sorted(m.state.draw_pile[1]) != sorted(J.SPECIALTY_DECKS[f1]):
+            break
+    oks.append(check("elites : 2 familles differentes, deck fixe, adaptees a l'acte III", seed, 39))
+    oks.append(check("elites : les 6 paires de familles sortent", len(seen), 6))
+    m = Match({"kind": "boss", "boss": "grand_maitre", "act": 3, "eye": "points", "mise": 0}, 1)
+    oks.append(check("boss : deck du Grand Maitre (3d47)", sorted(m.state.draw_pile[2]),
+                     sorted(J.BOSS_DECKS["grand_maitre"])))
+
+    state = J.MatchState([[], ["main_lourde", "kermesse"], [], []], random.Random(0))
+    state.joker_hand[1] = ["main_lourde", "kermesse"]
+    state.draw_pile[1] = []
+    state.energy[1] = 9
+    state.adapt(1, J.DEFENCE["trou"])
+    state.spend(1, "inversion")
+    after_spend = (sorted(state.discard[1]), sorted(state.joker_hand[1]))
+    state.end_hand()
+    oks.append(check("adaptation : main mise de cote, emprunt joue hors defausse", after_spend,
+                     (["kermesse", "main_lourde"], ["coup_de_vent", "coup_de_vent", "inversion"])))
+    oks.append(check("adaptation : empruntes retires en fin de donne", (sorted(state.discard[1]), state.joker_hand[1],
+                     state.borrowed[1]), (["kermesse", "main_lourde"], [], [])))
+
+    rng = random.Random(5)
+    kinds = {"emballage": set(), "solo": set(), "misere": set()}
+    bad = 0
+    for _ in range(400):
+        deck = list(range(52))
+        rng.shuffle(deck)
+        hands = [sorted(deck[i * 13:(i + 1) * 13]) for i in range(4)]
+        for fam in kinds:
+            b = Bidding(0)
+            seat = b.turn
+            hand = hands[seat]
+            if expert_bot.choose_bid(b, seat, hand) != expert_bot.ACTION_PASS:
+                continue
+            a = specialty_bid(fam, hand, b, seat)
+            if a is None:
+                continue
+            info = bid_action_to_dict(a)
+            kinds[fam].add(info["action"] if fam != "misere" else info["kind"])
+            if fam == "solo" and info["level"] > expert_bot.estimate_tricks(hand, info["suit"]) + J.BID_SLACK:
+                bad += 1
+    oks.append(check("biais : annonces de la famille seulement", (kinds["emballage"] <= {"propose", "emballer"},
+                     kinds["solo"] <= {"solo"}, kinds["misere"] <= {"etalee", "grande"}, bool(kinds["misere"]), bad),
+                     (True, True, True, True, 0)))
+
+    adapted = borrowed_left = 0
+    for seed in range(12):
+        m = Match({"kind": "elite", "act": 3, "eye": "points", "deck": [], "mise": 0}, 100 + seed)
+        for _ in range(3):
+            hand = m.next_hand()
+            for s in m.adapts:
+                if m.state.borrowed[s]:
+                    adapted += 1
+                    if s in J.attackers(hand.contract):
+                        borrowed_left += 1
+        m.state.end_hand()
+        borrowed_left += sum(len(b) for b in m.state.borrowed)
+    oks.append(check("acte III : des elites s'adaptent, jamais en attaque", (adapted > 0, borrowed_left), (True, 0)))
     return oks
 
 

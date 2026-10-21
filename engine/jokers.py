@@ -28,12 +28,15 @@ import random
 
 from engine.cards import NUM_PLAYERS, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "79ac5d7e435fa56a"
+JOKER_SPEC_HASH = "3d47b37827ec8b10"
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
 # texte ou de cablage seulement) : un reseau entraine sous l'une d'elles est
 # reexporte tel quel avec JOKER_SPEC_HASH. Une regle qui change -> vider la
 # liste (sauf le hash courant) et reentrainer.
 RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH}
+# 3d47 (whist-4-it a9a23cb, Chantier Elites 01) : contrat attitre par elite (deck fixe a doublons, biais
+# d'enchere d'un pli la ou ExpertBot passe), elites de l'acte III adaptees en defense, decks des boss refaits
+# -> reentrainement.
 # 79ac (whist-4-it ebaf225) : elites/boss « spammers » (tout le deck pioche a chaque donne, Pacte du Tenancier
 # en plus, +1..+4 ⚡ selon la Mise) ; mises portees (Rouge/Noire/Doree) -> reentrainement.
 # 592e (whist-4-it 8a6f635) : joker joue comme une carte perd l egalite face a la vraie carte -> reentrainement.
@@ -134,7 +137,6 @@ ACTION_DIM = 1 + len(CASTABLE)
 DRAW_PER_HAND = 3  # MatchState
 ENERGY_PER_HAND = 3
 SUSPICION_MAX = 10
-ELITE_DECK_SIZE = 4  # RogueRun
 ELITE_SEATS = (1, 3)
 ELITE_EYE = "points"
 EYE_POINTS = 20  # RogueMatch
@@ -171,11 +173,11 @@ RARITIES_BY_ACT = {1: ("comptoir", "salle"), 2: ("comptoir", "salle", "arriere_s
                    3: ("comptoir", "salle", "arriere_salle", "cave")}
 BOSS_SEAT = 2  # en face du joueur (rapport 2026-10-15)
 PLAYER = 0
-BOSS_DECKS = {  # RogueBosses.DEFS
-    "moine": ["coup_de_vent", "embuscade", "main_lourde", "coup_de_vent"],
-    "baronne": ["embuscade", "kermesse", "coup_de_vent", "main_lourde", "embuscade"],
-    "fossoyeur": ["embuscade", "kermesse", "coup_de_vent", "voeu_de_pauvrete", "main_lourde"],
-    "grand_maitre": ["kermesse", "kermesse", "embuscade", "embuscade", "coup_de_vent", "coup_de_vent", "main_lourde"],
+BOSS_DECKS = {  # RogueBosses.DEFS (3d47 : decks pour leur contrat)
+    "moine": ["inversion", "inversion", "coup_du_chapeau", "faux_pas"],
+    "baronne": ["kermesse", "kermesse", "coup_de_vent", "coup_de_vent", "inversion"],
+    "fossoyeur": ["coup_de_vent", "coup_de_vent", "inversion", "kermesse", "kermesse"],
+    "grand_maitre": ["kermesse", "kermesse", "kermesse", "coup_de_vent", "coup_de_vent", "inversion", "main_lourde"],
 }
 BOSS_SANCTIONS = {"moine": "points", "baronne": "confisque", "fossoyeur": "allumettes", "grand_maitre": "confisque"}
 FACE_RANKS = (9, 10, 11)  # J, Q, K (engine/cards.py : rang 12 = As)
@@ -218,10 +220,34 @@ def can_upgrade(jid):
     return not jid.endswith(UPGRADE_SUFFIX) and CATALOG[jid][2] > 0 and CATALOG[jid][1] != "maudit"
 
 
-def elite_deck(act, rng):
-    pool = sorted(i for i, (t, r, _c, bc) in CATALOG.items()
-                  if t in BOT_TYPES and r in RARITIES_BY_ACT[act] and r != "cave" and bc)
-    return [rng.choice(pool) for _ in range(ELITE_DECK_SIZE)]
+# --- elites (elite_decks.gd, 3d47) --------------------------------------------
+SPECIALTY_DECKS = {  # EliteDecks.SPECIALTIES[fam].deck
+    "emballage": ["coup_de_vent", "coup_de_vent", "inversion", "kermesse"],
+    "solo": ["kermesse", "kermesse", "coup_de_vent", "main_lourde"],
+    "misere": ["inversion", "inversion", "coup_du_chapeau", "faux_pas"],
+}
+FAMILIES = ["emballage", "solo", "misere"]
+DEFENCE = {  # contre le type du contrat, pour une elite adaptee en defense
+    "emballage": ["coup_de_vent", "coup_de_vent", "inversion", "kermesse"],
+    "solo": ["kermesse", "kermesse", "coup_de_vent", "inversion"],
+    "misere": ["inversion", "inversion", "coup_du_chapeau", "faux_pas"],
+    "trou": ["coup_de_vent", "coup_de_vent", "inversion", "inversion"],
+}
+ADAPT_FROM_ACT = 3
+BID_SLACK = 1
+
+
+def elite_specialties(rng):
+    """EliteDecks.for_elites : sieges 1 puis 3, deux familles differentes."""
+    pool = list(FAMILIES)
+    return {seat: pool.pop(rng.randint(0, len(pool) - 1)) for seat in ELITE_SEATS}
+
+
+def attackers(contract):
+    """EliteDecks.attackers : les sieges qui jouent le contrat."""
+    if "declarers" in contract:
+        return contract["declarers"]
+    return [contract.get("declarer", -1), contract.get("partner", -1)]
 
 
 def _declares(seat, contract):
@@ -1014,6 +1040,7 @@ class MatchState:
         self.spammer_energy = 0
         self.energy_malus = 0  # Mise Rouge (joueur)
         self.eye_threshold = SUSPICION_MAX  # Mise Noire
+        self.borrowed = [[] for _ in range(NUM_PLAYERS)]  # jokers de defense d'une elite adaptee (3d47)
         for pile in self.draw_pile:
             self.rng.shuffle(pile)
 
@@ -1035,8 +1062,19 @@ class MatchState:
         self.next_hand_draws = [0] * NUM_PLAYERS
         self.played_this_hand = [0] * NUM_PLAYERS
 
+    def adapt(self, seat, jids):
+        """Une elite en defense met sa main de cote pour `jids` (empruntes :
+        joues ou non, ils partent avec la donne, jamais dans son deck)."""
+        self.discard[seat].extend(self.joker_hand[seat])
+        self.joker_hand[seat] = list(jids)
+        self.borrowed[seat] = list(jids)
+
     def end_hand(self):
         for seat in range(NUM_PLAYERS):
+            for jid in self.borrowed[seat]:
+                if jid in self.joker_hand[seat]:
+                    self.joker_hand[seat].remove(jid)
+            self.borrowed[seat] = []
             self.discard[seat].extend(self.joker_hand[seat])
             self.joker_hand[seat] = []
 
@@ -1084,7 +1122,10 @@ class MatchState:
         self.energy[seat] -= self.cost_of(seat, jid)
         self.played_this_hand[seat] += 1
         self.joker_hand[seat].remove(jid)
-        self.discard[seat].append(jid)
+        if jid in self.borrowed[seat]:
+            self.borrowed[seat].remove(jid)
+        else:
+            self.discard[seat].append(jid)
         if seat == PLAYER and not (self.rules is not None and self.rules.hides_suspicion(seat)):
             self.suspicion = min(SUSPICION_MAX, self.suspicion + jsuspicion(jid))
 

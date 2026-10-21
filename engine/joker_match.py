@@ -1,6 +1,7 @@
 """Matchs roguelike simules pour l'IA jokers : un match = plusieurs donnes
 avec la meme economie de jokers (pioche/defausse qui tournent), comme
-RogueMatch. Elites aux sieges 1 et 3 (deck RogueRun.elite_deck de l'acte)
+RogueMatch. Elites aux sieges 1 et 3 (contrat attitre, deck EliteDecks fixe,
+biais d'enchere ; acte III : jokers de defense contre le contrat adverse)
 ou boss au siege 2, en face du joueur (deck, contrat impose et donne arrangee de RogueBosses ;
 regle propre de la Baronne portee, blocage des jokers de pli/aura par le
 Moine aussi). Jeu de la carte ET enchere : ExpertBot partout, comme le jeu
@@ -20,8 +21,7 @@ from agents import expert_bot
 from engine import jokers as J
 from engine.bidding import Bidding, bid_action_to_dict, legal_action_ids_with_hand
 from engine.cards import NUM_PLAYERS, suit_of, rank_of
-from engine.jokers import (BOSS_DECKS, BOSS_SEAT, ELITE_SEATS, PLAYER, JokerHand, JokerRules, MatchState,
-                           elite_deck)
+from engine.jokers import BOSS_DECKS, BOSS_SEAT, ELITE_SEATS, PLAYER, JokerHand, JokerRules, MatchState
 from engine.trou import detect_trou
 from engine.whisted import DeckChain
 
@@ -47,9 +47,14 @@ class Match:
         self.recorded = []
         self.rng = random.Random(seed)
         decks = [[] for _ in range(NUM_PLAYERS)]
+        self.specialties = {}  # {siege: famille} (RogueRun.match_config, 3d47)
+        self.adapts = []
         if config["kind"] == "elite":
+            self.specialties = J.elite_specialties(self.rng)
             for s in ELITE_SEATS:
-                decks[s] = elite_deck(config["act"], self.rng)
+                decks[s] = list(J.SPECIALTY_DECKS[self.specialties[s]])
+            if config["act"] >= J.ADAPT_FROM_ACT:
+                self.adapts = list(ELITE_SEATS)
         else:
             decks[BOSS_SEAT] = list(BOSS_DECKS[config["boss"]])
         spammers = [s for s in range(NUM_PLAYERS) if s != PLAYER and decks[s]]
@@ -100,6 +105,9 @@ class Match:
                 bid_summary = bidding.bid_summary
             from scripts.train import dispatch_play_phase2
             contract = dict(contract)
+            for seat in self.adapts:  # RogueMatch._on_contract_locked, avant rules.on_contract
+                if seat not in J.attackers(contract) and contract.get("type", "") in J.DEFENCE:
+                    self.state.adapt(seat, J.DEFENCE[contract["type"]])
             self.rules.on_contract(contract)  # Rachat
             game = dispatch_play_phase2(contract, hands, dealer, bid_summary, whisted)
             self.rules.bind(game, contract)
@@ -152,13 +160,65 @@ def run_bot_bidding(hands, dealer, match=None):
         if match is not None and seat != PLAYER:
             choice = expert_bot.choose_bid(bidding, seat, hands[seat])
             info = {"action": "raise"} if isinstance(choice, tuple) else bid_action_to_dict(choice)
+            if info["action"] == "pass" and seat in match.specialties:  # JokerRules.bot_bid, avant les effets
+                biased = specialty_bid(match.specialties[seat], hands[seat], bidding, seat)
+                if biased is not None:
+                    choice, info = biased, bid_action_to_dict(biased)
             if match.rules.forces_pass(seat, info, bidding):
                 passes = [a for a in legal_action_ids_with_hand(bidding, seat, hands[seat])
                           if bid_action_to_dict(a)["action"] == "pass"]
                 if passes and bidding.apply(seat, passes[0]):
                     continue
+            ok = bidding.apply_raise_to(seat, choice[1]) if isinstance(choice, tuple) else bidding.apply(seat, choice)
+            if not ok:
+                raise AssertionError("enchere illegale %r siege %d" % (choice, seat))
+            continue
         expert_bot.apply_bid(bidding, seat, hands[seat])
     return bidding
+
+
+def _best_scored(entries, needed_of, hand, propose):
+    """WhistExpertBot._best_scored : max (plis estimes, id) parmi les
+    couleurs qui atteignent needed_of(couleur)."""
+    best = None
+    for a, info in entries:
+        suit = info["suit"]
+        if propose and not expert_bot.propose_suit_ok(hand, suit):
+            continue
+        est = expert_bot.estimate_tricks(hand, suit)
+        if est >= needed_of(suit) and (best is None or (est, a) > best):
+            best = (est, a)
+    return None if best is None else best[1]
+
+
+def specialty_bid(family, hand, bidding, seat):
+    """EliteDecks.specialty_bid : la ou ExpertBot passe, l'annonce de la
+    famille avec BID_SLACK pli de marge, ou None."""
+    by_kind = {}
+    for a in legal_action_ids_with_hand(bidding, seat, hand):
+        info = bid_action_to_dict(a)
+        by_kind.setdefault(info["action"], []).append((a, info))
+    choice = None
+    if family == "emballage":
+        choice = _best_scored(by_kind.get("emballer", []),
+                              lambda s: expert_bot.emballer_min(bidding, s) - J.BID_SLACK, hand, False)
+        if choice is None:
+            choice = _best_scored(by_kind.get("propose", []),
+                                  lambda s: expert_bot.PROPOSE_MIN - J.BID_SLACK, hand, True)
+    elif family == "solo":
+        best_est = 0
+        for s in range(4):
+            est = expert_bot.estimate_tricks(hand, s) + J.BID_SLACK
+            c = expert_bot._cheapest_solo(by_kind, est, s, hand, ("solo",))
+            if c is not None and (choice is None or est > best_est):
+                choice, best_est = c, est
+    elif family == "misere":
+        offered = {info["kind"]: a for a, info in by_kind.get("misere", [])}
+        slack = expert_bot.misere_slack(hand)
+        for kind in ("etalee", "grande"):
+            if choice is None and kind in offered and slack <= expert_bot.MISERE_SLACK_MAX[kind] + J.BID_SLACK:
+                choice = offered[kind]
+    return choice
 
 
 # --- boss (rogue_bosses.gd) --------------------------------------------------
