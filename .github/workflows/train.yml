@@ -5,7 +5,7 @@ on:
     inputs:
       mode:
         type: choice
-        options: [ppo, jokers]
+        options: [ppo, jokers, jokers_eval]
         default: ppo
       init:
         description: "Jokers : repartir de l'archive (--init) au lieu de --resume"
@@ -29,6 +29,8 @@ jobs:
     timeout-minutes: 355
     env:
       MODE: ${{ inputs.mode || 'ppo' }}
+      # jokers_eval measures on the jokers state and never saves it
+      STATE: ${{ inputs.mode == 'jokers_eval' && 'jokers' || inputs.mode || 'ppo' }}
       INIT: ${{ inputs.init || false }}
       GH_TOKEN: ${{ github.token }}
       STATE_KEY: ${{ secrets.STATE_KEY }}
@@ -58,8 +60,14 @@ jobs:
         run: bash "ci/run_$MODE.sh" 2>&1 | tee "train_log_$MODE.txt"
 
       # Only after a successful restore: an empty state must never overwrite the release.
+      - name: Upload eval log
+        if: always() && env.MODE == 'jokers_eval'
+        run: |
+          cp "train_log_$MODE.txt" log-jokers_eval.txt
+          gh release upload checkpoint-latest log-jokers_eval.txt --clobber
+
       - name: Save state
-        if: always() && steps.restore.outcome == 'success'
+        if: always() && steps.restore.outcome == 'success' && env.MODE != 'jokers_eval'
         run: |
           tar cz $(while read -r f; do [ -e "$f" ] && echo "$f"; done < "ci/state_$MODE.txt") \
             | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass env:STATE_KEY \
@@ -69,5 +77,5 @@ jobs:
           gh release upload checkpoint-latest "log-$MODE.txt" --clobber
 
       - name: Chain next run
-        if: success() && vars.TRAINING_ENABLED == 'true'
+        if: success() && vars.TRAINING_ENABLED == 'true' && env.MODE != 'jokers_eval'
         run: gh workflow run train.yml -f mode="$MODE" -f init=false

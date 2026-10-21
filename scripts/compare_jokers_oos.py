@@ -28,6 +28,8 @@ def main():
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--modes", default="net", help="politiques par checkpoint separees par ';', ex. net;hybrid ; + 'rules' une fois ; "
                     "hybrid:joker:cas,... = ces cas de regle ouverts")
+    ap.add_argument("--any-rules", action="store_true",
+                    help="mesure aussi les checkpoints d'autres regles (meme obs, memes CASTABLE), joues sous les regles actuelles")
     args = ap.parse_args()
     torch.set_num_threads(1)
     seeds = [OOS_SEED + i for i in range(args.matches)]
@@ -47,7 +49,8 @@ def main():
             run("regles", None, "rules", "(regles seules)")
         for path in args.ckpts:
             ck = torch.load(path, map_location="cpu", weights_only=False)
-            if not T._compatible(ck):
+            if not (T._compatible(ck) or (args.any_rules and ck.get("castable") == J.CASTABLE
+                                          and ck.get("obs_dim") == O.OBS_DIM)):
                 print("%s : incompatible, ignore" % path)
                 continue
             net = PolicyValueNet(O.OBS_DIM, J.ACTION_DIM)
@@ -55,7 +58,7 @@ def main():
             for mode in modes:
                 if mode != "rules":
                     run("%s[%s]" % (path, mode), T.net_to_numpy(net), mode,
-                        "(iter %d, eval interne %s)" % (ck["iter"], ck["eval"]["vs_heuristic"]))
+                        "(iter %s, %s, eval interne %s)" % (ck["iter"], ck.get("spec_hash"), (ck["eval"] or {}).get("vs_heuristic")))
     paths = list(per)
     for i in range(len(paths)):
         for j in range(i + 1, len(paths)):
