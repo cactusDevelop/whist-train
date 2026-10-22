@@ -430,7 +430,10 @@ class Player:
         self.forced_ok = None
         self.bid_probe = None
 
-    def _target(self, rules):
+    def _target(self, rules, jid=None):
+        if jid is not None and J.make_effect(jid, PLAYER).target_kind() == "suit":  # 6c54 : sa plus longue couleur
+            cards = rules.game.hands[PLAYER] if rules.game is not None else (rules.deal_hands or [[]])[PLAYER]
+            return J.longest_suit(cards)
         opp = [s for s in (1, 2, 3) if rules.is_opponent(PLAYER, s)]
         return self.rng.choice(opp or [1, 2, 3])
 
@@ -468,11 +471,11 @@ class Player:
     def _cast(self, state, rules, eye, jid, target=None):
         """RogueMatch.play_joker : -> resultat de rules.play, None si refuse."""
         if target is None or target < 0:
-            target = self._target(rules)
+            target = self._target(rules, jid)
         played = rules.play(PLAYER, jid, target)
         if played.get("error"):
             return None
-        state.spend(PLAYER, jid)
+        J.spend(state, PLAYER, jid, played)
         if played.get("exhaust") and jid in state.discard[PLAYER]:
             state.discard[PLAYER].remove(jid)
         J.watch_eye(state, rules, eye, jid)

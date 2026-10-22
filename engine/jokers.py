@@ -28,12 +28,18 @@ import random
 
 from engine.cards import NUM_PLAYERS, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "dc78cb7389ecb3e7"
+JOKER_SPEC_HASH = "6c5400e9ac96beb4"
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
 # texte ou de cablage seulement) : un reseau entraine sous l'une d'elles est
 # reexporte tel quel avec JOKER_SPEC_HASH. Une regle qui change -> vider la
 # liste (sauf le hash courant) et reentrainer.
 RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH}
+# 6c54 (whist-4-it, Chantier Rarete 02) : raretes/couts du tableau 01, deck de depart (cameleon, embuscade,
+# main_lourde), DEFENCE = mesure jokers_defence, Main Lourde pioche 2 + defausse 1 (to_discard), Cameleon Valet,
+# Courant d'Air la plus forte, Gueule de Bois la plus forte, Fausse Piste tout type sauf passif, Collet = ta
+# prochaine carte, Zinneke +3, Treizieme 4 plis, Livre sans jauge pleine, Brouillard / Main de Fer cible
+# couleur, Manche Truquee gagne d'office, Pot-de-Vin = 1er pli de sa misere a 0, Valet Borgne max(0, ...),
+# Horloge : plis restants au camp en tete, nouveau pli_refile -> reentrainement.
 # dc78 (whist-4-it 15cae20) : Soliste = maudit cavalier_seul (solo simple en toute couleur, free_solo), sa
 # proposition de couleur retiree ; maudits ContratImpose (sans regle) des boss ; OPPONENT_ONLY -> reentrainement.
 # e49f (whist-4-it fdf0754) : l'elite Solo sans solo legal propose sa couleur de solo -> reentrainement.
@@ -78,8 +84,8 @@ OBS_VERSION = 2  # 2 = enemy_traps rempli (joueur a jokers) ; le jeu ne remplit 
 CATALOG = {
     "cameleon": ("pli", "comptoir", 1, False),
     "zero": ("pli", "comptoir", 0, False),
-    "traitre": ("pli", "salle", 2, False),
-    "coup_de_vent": ("sort", "comptoir", 1, True),
+    "traitre": ("pli", "arriere_salle", 2, False),
+    "coup_de_vent": ("sort", "salle", 1, True),
     "main_lourde": ("sort", "comptoir", 1, True),
     "embuscade": ("piege", "comptoir", 1, True),
     "kermesse": ("aura", "salle", 2, True),
@@ -87,26 +93,26 @@ CATALOG = {
     "regard_furtif": ("sort", "arriere_salle", 1, False),
     "voeu_de_pauvrete": ("passif", "salle", 0, False),
     "miroir": ("pli", "comptoir", 1, False),
-    "borgne": ("pli", "salle", 2, False),
+    "borgne": ("pli", "salle", 1, False),
     "carte_fantome": ("pli", "salle", 1, False),
-    "double_valet": ("pli", "arriere_salle", 2, False),
-    "atout_errant": ("pli", "arriere_salle", 2, False),
+    "double_valet": ("pli", "salle", 2, False),
+    "atout_errant": ("pli", "comptoir", 1, False),
     "courant_d_air": ("sort", "comptoir", 0, False),
     "tournee_generale": ("sort", "comptoir", 1, False),
     "gueule_de_bois": ("sort", "salle", 1, False),
     "remonte_pli": ("sort", "salle", 1, False),
-    "faux_depart": ("sort", "salle", 2, False),
-    "inversion": ("aura", "arriere_salle", 3, True),
+    "faux_depart": ("sort", "salle", 1, False),
+    "inversion": ("aura", "salle", 2, True),
     "fausse_piste": ("piege", "comptoir", 1, False),
-    "collet": ("piege", "salle", 0, False),
-    "contre_espionnage": ("piege", "salle", 1, False),
-    "croupier_endormi": ("piege", "salle", 1, False),
-    "dette_de_jeu": ("piege", "arriere_salle", 2, False),
+    "collet": ("piege", "salle", 1, False),
+    "contre_espionnage": ("piege", "comptoir", 1, False),
+    "croupier_endormi": ("piege", "comptoir", 1, False),
+    "dette_de_jeu": ("piege", "salle", 2, False),
     "fumee_de_pipe": ("aura", "comptoir", 1, False),
-    "silence_du_cercle": ("aura", "comptoir", 1, False),
-    "lune_noire": ("aura", "salle", 2, False),
-    "coeur_de_zinneke": ("aura", "salle", 2, False),
-    "brouillard_de_la_senne": ("aura", "arriere_salle", 3, False),
+    "silence_du_cercle": ("aura", "arriere_salle", 2, False),
+    "lune_noire": ("aura", "comptoir", 2, False),
+    "coeur_de_zinneke": ("aura", "comptoir", 2, False),
+    "brouillard_de_la_senne": ("aura", "cave", 3, False),
     "cartes_sur_table": ("enchere", "comptoir", 0, False),
     "bluff": ("enchere", "salle", 1, False),
     "rachat": ("enchere", "salle", 2, False),
@@ -114,11 +120,12 @@ CATALOG = {
     "pot_de_vin": ("enchere", "arriere_salle", 1, False),
     "fossoyeur_de_plis": ("passif", "salle", 0, False),
     "brimborion_dore": ("passif", "arriere_salle", 0, False),
-    "manche_truquee": ("sort", "arriere_salle", 3, False),
-    "coup_du_chapeau": ("aura", "salle", 2, True),
+    "manche_truquee": ("sort", "arriere_salle", 2, False),
+    "coup_du_chapeau": ("aura", "comptoir", 1, True),
     "pourboire": ("sort", "comptoir", 1, False),
     "chope_vide": ("passif", "comptoir", 0, False),
-    "faux_pas": ("piege", "salle", 1, True),
+    "faux_pas": ("piege", "comptoir", 1, True),
+    "pli_refile": ("sort", "salle", 1, False),
     "valet_borgne": ("sort", "cave", 2, False),
     "horloge_arretee": ("sort", "cave", 2, False),
     "treizieme_carte": ("aura", "cave", 1, False),
@@ -136,7 +143,7 @@ CATALOG = {
 }
 # JokerCatalog.OPPONENT_ONLY : jamais proposes au joueur (chaise_vide, deck simule)
 OPPONENT_ONLY = ("regle_du_moine", "gant_de_la_baronne", "pelle_du_fossoyeur", "sceau_du_grand_maitre", "cavalier_seul")
-STARTING_DECK = ["cameleon", "coup_de_vent", "embuscade"]  # JokerCatalog.STARTING_DECK
+STARTING_DECK = ["cameleon", "embuscade", "main_lourde"]  # JokerCatalog.STARTING_DECK
 UPGRADE_SUFFIX = "+"  # JokerDef : cout -1 (jamais un cout 0 ni un maudit)
 MAX_COPIES = 2
 SUSPICION_BY_RARITY = {"arriere_salle": 2, "cave": 4}  # JokerDef.SUSPICION_BY_RARITY
@@ -240,11 +247,11 @@ SPECIALTY_DECKS = {  # EliteDecks.SPECIALTIES[fam].deck
     "misere": ["inversion", "inversion", "coup_du_chapeau", "faux_pas"],
 }
 FAMILIES = ["emballage", "solo", "misere"]
-DEFENCE = {  # contre le type du contrat, pour une elite adaptee en defense
-    "emballage": ["coup_de_vent", "coup_de_vent", "inversion", "kermesse"],
-    "solo": ["kermesse", "kermesse", "coup_de_vent", "inversion"],
-    "misere": ["inversion", "inversion", "coup_du_chapeau", "faux_pas"],
-    "trou": ["coup_de_vent", "coup_de_vent", "inversion", "inversion"],
+DEFENCE = {  # contre le type du contrat, pour une elite adaptee en defense (6c54 : mesure jokers_defence dc78)
+    "emballage": ["inversion", "inversion", "coup_du_chapeau", "coup_de_vent"],
+    "solo": ["inversion", "inversion", "faux_pas", "coup_du_chapeau"],
+    "misere": ["faux_pas", "faux_pas", "coup_du_chapeau", "coup_du_chapeau"],
+    "trou": ["inversion", "inversion", "coup_du_chapeau", "kermesse"],
 }
 ADAPT_FROM_ACT = 3
 BID_SLACK = {"emballage": 1, "solo": 2, "misere": 2}  # plis de marge par famille (d8f1)
@@ -278,6 +285,16 @@ def _weakest(cards):
     return low
 
 
+def _strongest(cards):
+    """Godot : la carte de plus petit rank_index (la plus forte), premiere
+    rencontree en cas d'egalite."""
+    high = cards[0]
+    for c in cards:
+        if rank_of(c) > rank_of(high):
+            high = c
+    return high
+
+
 def longest_suit(hand):
     counts = [sum(1 for c in hand if suit_of(c) == s) for s in range(4)]
     return counts.index(max(counts))
@@ -305,6 +322,10 @@ class Effect:
 
     def needs_target(self):
         return False
+
+    def target_kind(self):
+        """Ce que needs_target() choisit : "seat", ou "suit" (indice de couleur)."""
+        return "seat"
 
     def on_play(self, rules, target=-1):
         return {}
@@ -349,7 +370,7 @@ class Effect:
         return False
 
     def plays_as_trump(self, play, rules):
-        """True = cette carte compte comme un atout pour ce pli (Manche Truquee)."""
+        """True = cette carte prend le pli comme l'atout le plus fort (Manche Truquee)."""
         return False
 
     def on_hand_end(self, rules):
@@ -405,7 +426,7 @@ class TrickJoker(Effect):
 
 class Cameleon(TrickJoker):
     def make_card(self, led_suit, rules):
-        return led_suit * 13 + 10  # Dame
+        return led_suit * 13 + 9  # Valet (6c54, une Dame avant)
 
 
 class Zero(TrickJoker):
@@ -441,6 +462,10 @@ class CoupDeVent(Effect):
 
 
 class MainLourde(Effect):
+    """6c54 : pioche DRAWS, puis le proprietaire defausse un joker, une fois
+    celui-ci paye (RogueMatch._spend -> MatchState.must_discard)."""
+    DRAWS = 2
+
     def bot_casts(self):
         return True
 
@@ -448,8 +473,8 @@ class MainLourde(Effect):
         return True
 
     def on_play(self, rules, target=-1):
-        rules.state.draw_jokers(self.owner, 1)
-        return {}
+        rules.state.draw_jokers(self.owner, self.DRAWS)
+        return {"discard": 1}
 
 
 class Embuscade(Effect):
@@ -599,11 +624,11 @@ class CourantDAir(Effect):
         hand = g.hands[self.owner]
         if len(hand) <= rules.hand_tricks() - g.trick_count:
             return {"error": "hand"}
-        weakest = _weakest(hand)
-        hand.remove(weakest)
-        rules.vanished.append(weakest)  # JokerRules.set_aside : sous le paquet ramasse (Match.finish)
+        strongest = _strongest(hand)  # 6c54 : la plus forte (la plus faible avant)
+        hand.remove(strongest)
+        rules.vanished.append(strongest)  # JokerRules.set_aside : sous le paquet ramasse (Match.finish)
         rules.state.draw_jokers(self.owner, 1)
-        return {"discarded": weakest}
+        return {"discarded": strongest}
 
 
 class TourneeGenerale(Effect):
@@ -620,7 +645,7 @@ class GueuleDeBois(Effect):
     def bot_card(self, seat, card, legal, rules):
         if not rules.is_opponent(self.owner, seat) or not legal:
             return card
-        return _weakest(legal)
+        return _strongest(legal)  # 6c54 : la plus forte (la plus faible avant)
 
 
 class RemontePli(Effect):
@@ -632,6 +657,22 @@ class RemontePli(Effect):
                 g.tricks_won[self.owner] += 1
                 return {"from": w}
         return {"error": "none"}
+
+
+class PliRefile(Effect):
+    """6c54 : le dernier pli du proprietaire passe a l'adversaire choisi."""
+    def needs_target(self):
+        return True
+
+    def on_play(self, rules, target=-1):
+        if target < 0 or not rules.is_opponent(self.owner, target):
+            return {"error": "target"}
+        g = rules.game
+        if self.owner not in rules.trick_winners or g.tricks_won[self.owner] <= 0:
+            return {"error": "none"}
+        g.tricks_won[self.owner] -= 1
+        g.tricks_won[target] += 1
+        return {"to": target}
 
 
 class FauxDepart(Effect):
@@ -697,24 +738,21 @@ class FauxPas(Trap):
 
 
 class FaussePiste(Trap):
+    """6c54 : tout joker adverse (un passif s'arme a la pioche, il n'est pas lance)."""
     def cancels(self, seat, jid, rules):
-        if self.spent or jtype(jid) != "sort" or not rules.is_opponent(self.owner, seat):
+        if self.spent or jtype(jid) == "passif" or not rules.is_opponent(self.owner, seat):
             return False
         self.spent = True
         return True
 
 
 class Collet(Trap):
-    def _snared(self, play, rules):
-        seat, card = play
-        return (rules.is_opponent(self.owner, seat) and rank_of(card) == ACE
-                and seat not in rules.joker_cards)
-
+    """6c54 : la prochaine carte du proprietaire ne peut pas gagner son pli."""
     def competes(self, play, rules):
-        return self.spent or not self._snared(play, rules)
+        return self.spent or play[0] != self.owner
 
     def on_trick_resolved(self, winner, plays, rules):
-        if any(self._snared(p, rules) for p in plays):
+        if any(p[0] == self.owner for p in plays):
             self.spent = True
 
 
@@ -788,7 +826,7 @@ class LuneNoire(Aura):
 
 
 class CoeurDeZinneke(Aura):
-    BONUS = 2
+    BONUS = 3  # 6c54
 
     def on_trick_resolved(self, winner, plays, rules):
         for seat, card in plays:
@@ -797,16 +835,28 @@ class CoeurDeZinneke(Aura):
 
 
 class BrouillardDeLaSenne(Aura):
+    """6c54 : la couleur choisie au lancement est l'atout des plis qu'entame
+    le proprietaire jusqu'a la fin de la donne."""
     def __init__(self, jid, owner):
         super().__init__(jid, owner)
-        self.start = 0
+        self.suit = None
+
+    def needs_target(self):
+        return True
+
+    def target_kind(self):
+        return "suit"
 
     def on_play(self, rules, target=-1):
-        self.start = rules.game.trick_count
+        if target < 0 or target >= 4:
+            return {"error": "target"}
+        self.suit = target
         return {}
 
     def trump(self, trump, rules):
-        return (rules.game.trick_count - self.start) % 4
+        g = rules.game
+        leader = g.current_trick[0][0] if g.current_trick else g.turn
+        return self.suit if leader == self.owner and self.suit is not None else trump
 
 
 class CartesSurTable(Aura):
@@ -863,33 +913,48 @@ class Rachat(Aura):
 
 
 class MainDeFer(Aura):
-    """043f : rien tant que son proprietaire n'a pas annonce (passe, attente et
-    passe parole ne comptent pas) ; ensuite les bots passent, sauf pour
-    emballer une proposition en attente du proprietaire."""
-    NO_BID = (None, "pass", "wait", "pass_parole")
+    """6c54 : le proprietaire qui declare un emballage ou un solo le joue dans
+    la couleur choisie au lancement (les bots ne faisaient que passer avant)."""
+    TYPES = ("emballage", "solo")
 
-    def forces_pass(self, seat, action, bidding):
-        if seat == self.owner or bidding.last_action[self.owner] in self.NO_BID:
-            return False
-        return not (action["action"] == "emballer" and bidding.pending_proposals.get(action["suit"], -1) == self.owner)
-
-
-class PotDeVin(Aura):
     def __init__(self, jid, owner):
         super().__init__(jid, owner)
-        self.target = -1
+        self.suit = None
 
     def needs_target(self):
         return True
 
+    def target_kind(self):
+        return "suit"
+
     def on_play(self, rules, target=-1):
-        if target < 0 or target == self.owner:
+        if target < 0 or target >= 4:
             return {"error": "target"}
-        self.target = target
+        self.suit = target
         return {}
 
-    def forces_pass(self, seat, action, bidding):
-        return seat == self.target
+    def on_contract(self, contract, rules):
+        if (self.suit is None or contract.get("type", "") not in self.TYPES
+                or contract.get("suit") in (None, self.suit) or not _declares(self.owner, contract)):
+            return False
+        contract["suit"] = self.suit
+        return True
+
+
+class PotDeVin(Aura):
+    """6c54 : dans la misere du proprietaire, le premier pli qu'il remporte
+    ne compte pour personne (le bot vise passait avant)."""
+    def __init__(self, jid, owner):
+        super().__init__(jid, owner)
+        self.used = False
+
+    def trick_value(self, value, winner_play, rules):
+        c = rules.contract or {}
+        if (self.used or winner_play[0] != self.owner or c.get("type", "") != "misere"
+                or self.owner not in (c.get("declarers") or [])):
+            return value
+        self.used = True
+        return 0
 
 
 class FossoyeurDePlis(Aura):
@@ -907,26 +972,53 @@ class ValetBorgne(Aura):
         return {"exhaust": True}
 
     def adjust_deltas(self, deltas, contract, rules):
-        return [0 for _ in deltas]
+        deltas[self.owner] = max(0, deltas[self.owner])  # 6c54 : ses points perdus seulement
+        return deltas
 
 
 class HorlogeArretee(Aura):
+    """6c54 : la donne s'arrete apres ce pli ; les plis restants vont au camp
+    qui en a le plus (aucun en cas d'egalite), a son siege qui en a le plus."""
     def __init__(self, jid, owner):
         super().__init__(jid, owner)
         self.stop_at = 13
+        self.rest = 0
+        self.given = False
 
     def on_play(self, rules, target=-1):
         self.stop_at = rules.game.trick_count + 1
+        self.rest = max(0, rules.hand_tricks() - self.stop_at)
         return {}
 
     def tricks_in_hand(self, classic):
         return min(classic, self.stop_at)
 
+    def on_trick_resolved(self, winner, plays, rules):
+        # Godot : _tricks_done() + 1 < stop_at, pli en cours exclu ; ici trick_count le compte deja
+        if self.given or rules.game.trick_count < self.stop_at:
+            return
+        self.given = True
+        won = rules.game.tricks_won
+        best, top, tie = [], -1, False
+        for side in rules.sides():
+            n = sum(won[s] for s in side)
+            if n > top:
+                best, top, tie = side, n, False
+            elif n == top:
+                tie = True
+        if tie or self.rest == 0:
+            return
+        taker = best[0]
+        for seat in best:
+            if won[seat] > won[taker]:
+                taker = seat
+        won[taker] += self.rest
+
 
 class TreiziemeCarte(Aura):
     """043f : les LAST derniers plis (1 avant), sans effet dans une misere de
     son proprietaire."""
-    LAST = 2
+    LAST = 4  # 6c54 (2 avant)
 
     def pointless(self, rules):
         c = rules.contract or {}
@@ -940,8 +1032,7 @@ class TreiziemeCarte(Aura):
 
 class LivreDeComptes(Effect):
     def on_play(self, rules, target=-1):
-        rules.state.suspicion = SUSPICION_MAX
-        return {"seen_all": True}
+        return {"seen_all": True}  # 6c54 : plus de jauge remplie, le Soupcon de la cave suffit
 
 
 class CartesMarquees(Curse):
@@ -961,7 +1052,8 @@ class JoueurFantome(Curse):
 
 
 class MancheTruquee(Effect):
-    """Pour ce pli, la carte du proprietaire compte comme un atout de son rang."""
+    """6c54 : pour ce pli, la carte du proprietaire le prend comme l'atout le
+    plus fort (avec un atout et sans inversion)."""
     scope = TRICK
 
     def pointless(self, rules):
@@ -1041,6 +1133,7 @@ EFFECTS = {
     "regle_du_moine": ContratImpose, "gant_de_la_baronne": ContratImpose, "pelle_du_fossoyeur": ContratImpose,
     "sceau_du_grand_maitre": ContratImpose, "cavalier_seul": CavalierSeul,
     "coup_du_chapeau": CoupDuChapeau, "pourboire": Pourboire, "chope_vide": ChopeVide, "faux_pas": FauxPas,
+    "pli_refile": PliRefile,
 }
 assert set(EFFECTS) == set(CATALOG)
 
@@ -1071,6 +1164,7 @@ class MatchState:
         self.energy_malus = 0  # Mise Rouge (joueur)
         self.eye_threshold = SUSPICION_MAX  # Mise Noire
         self.borrowed = [[] for _ in range(NUM_PLAYERS)]  # jokers de defense d'une elite adaptee (3d47)
+        self.to_discard = [0] * NUM_PLAYERS  # Main Lourde (6c54)
         for pile in self.draw_pile:
             self.rng.shuffle(pile)
 
@@ -1091,6 +1185,7 @@ class MatchState:
         self.next_hand_malus = 0
         self.next_hand_draws = [0] * NUM_PLAYERS
         self.played_this_hand = [0] * NUM_PLAYERS
+        self.to_discard = [0] * NUM_PLAYERS
 
     def adapt(self, seat, jids):
         """Une elite en defense met sa main de cote pour `jids` (empruntes :
@@ -1100,6 +1195,7 @@ class MatchState:
         self.borrowed[seat] = list(jids)
 
     def end_hand(self):
+        self.to_discard = [0] * NUM_PLAYERS
         for seat in range(NUM_PLAYERS):
             for jid in self.borrowed[seat]:
                 if jid in self.joker_hand[seat]:
@@ -1121,6 +1217,30 @@ class MatchState:
             if jtype(jid) == "passif" and self.rules is not None:
                 self.rules.play(seat, jid)
 
+    def must_discard(self, seat, n):
+        """`seat` doit defausser `n` jokers de sa main ; un bot paie aussitot
+        (d'abord un joker qu'il ne lancerait jamais, sinon le plus recent). Le
+        joueur simule aussi, le plus recent (RogueAutopilot._try_joker)."""
+        self.to_discard[seat] = min(self.to_discard[seat] + n, len(self.joker_hand[seat]))
+        while self.to_discard[seat] > 0:
+            pick = self.joker_hand[seat][-1]
+            if seat != PLAYER:
+                for jid in self.joker_hand[seat]:
+                    if jtype(jid) not in BOT_TYPES or not make_effect(jid, seat).bot_casts():
+                        pick = jid
+                        break
+            self.discard_joker(seat, pick)
+
+    def discard_joker(self, seat, jid):
+        self.joker_hand[seat].remove(jid)
+        if self.rules is not None and jtype(jid) == "passif":
+            self.rules.disarm(seat, jid)
+        if jid in self.borrowed[seat]:
+            self.borrowed[seat].remove(jid)
+        else:
+            self.discard[seat].append(jid)
+        self.to_discard[seat] -= 1
+
     def win_sous(self, seat, n):
         if seat == PLAYER:
             self.sous_won += n
@@ -1139,6 +1259,8 @@ class MatchState:
     def play_error(self, seat, jid):
         if not known(jid) or jid not in self.joker_hand[seat]:
             return "not_in_hand"
+        if self.to_discard[seat] > 0:
+            return "discard"
         if jtype(jid) == "passif":
             return "passive"
         # match_state.gd : "pointless" en phase PLAYING (ici : une donne liee)
@@ -1223,6 +1345,17 @@ class JokerRules:
     def set_directive(self, suit, high=False):
         self.directive = {} if suit is None else {"suit": suit, "high": high}
 
+    def sides(self):
+        """6c54 : les camps de la donne (chaque declarant seul en misere),
+        chacun seul sans contrat."""
+        c = self.contract or {}
+        if "declarers" in c:
+            return [[s] for s in c["declarers"]] + [[s for s in range(NUM_PLAYERS) if s not in c["declarers"]]]
+        if "declarer" not in c:
+            return [[0], [1], [2], [3]]
+        side = [s for s in (c["declarer"], c.get("partner", -1)) if s is not None and s >= 0]
+        return [side, [s for s in range(NUM_PLAYERS) if s not in side]]
+
     def teammates(self):
         return [s for s in (1, 2, 3) if not self.is_opponent(PLAYER, s)]
 
@@ -1298,13 +1431,12 @@ class JokerRules:
         competing = [p for p in plays if all(e.competes(p, self) for e in live)]
         if not competing:
             return plays[0][0]
-        best = competing[0]
-
-        def as_played(p):
-            if trump is not None and any(e.plays_as_trump(p, self) for e in live):
-                return trump * 13 + rank_of(p[1])
-            return p[1]
         inverted = any(e.inverts() for e in live)
+        if trump is not None and not inverted:  # 6c54 : Manche Truquee prend le pli d'office
+            for p in competing:
+                if any(e.plays_as_trump(p, self) for e in live):
+                    return p[0]
+        best = competing[0]
         # 592e (whist-4-it 8a6f635) : un joker qui se joue comme une carte perd l'egalite face a la
         # vraie carte (couleur apres plays_as_trump, meme rang) ; entre deux jokers, le premier pose garde le pli.
         for p in competing:
@@ -1312,10 +1444,10 @@ class JokerRules:
                 # joker_rules.gd : la plus faible de la couleur demandee gagne
                 if suit_of(p[1]) == led and (suit_of(best[1]) != led or rank_of(p[1]) < rank_of(best[1])):
                     best = p
-            elif beats(as_played(p), as_played(best), led, trump):
+            elif beats(p[1], best[1], led, trump):
                 best = p
             if (best[0] in self.joker_cards and p[0] not in self.joker_cards
-                    and suit_of(as_played(p)) == suit_of(as_played(best)) and rank_of(p[1]) == rank_of(best[1])):
+                    and suit_of(p[1]) == suit_of(best[1]) and rank_of(p[1]) == rank_of(best[1])):
                 best = p
         return best[0]
 
@@ -1469,9 +1601,18 @@ class JokerHand:
         if action == 0:
             return
         jid = CASTABLE[action - 1]
-        if self.rules.play(seat, jid).get("error"):
+        played = self.rules.play(seat, jid)
+        if played.get("error"):
             return
-        self.state.spend(seat, jid)
+        spend(self.state, seat, jid, played)
+
+
+def spend(state, seat, jid, played):
+    """RogueMatch._spend : paye une fois le joker sorti de la main, la
+    defausse de Main Lourde ne peut pas le prendre."""
+    state.spend(seat, jid)
+    if played.get("discard", 0) > 0:
+        state.must_discard(seat, played["discard"])
 
 
 def watch_eye(state, rules, sanction, jid):

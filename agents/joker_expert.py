@@ -41,7 +41,8 @@ JACK, QUEEN, KING, ACE = 9, 10, 11, 12
 BOT_PRIORITY = ["inversion", "coup_de_vent", "coup_du_chapeau", "kermesse", "embuscade", "faux_pas", "main_lourde"]
 PLAYER_PRIORITY = [
     # sorts / pieges / auras decisifs, puis cartes de pli, puis le reste
-    "horloge_arretee", "valet_borgne", "inversion", "brouillard_de_la_senne", "remonte_pli", "coup_de_vent",
+    "horloge_arretee", "valet_borgne", "inversion", "brouillard_de_la_senne", "remonte_pli", "pli_refile",
+    "coup_de_vent",
     "manche_truquee", "gueule_de_bois", "dette_de_jeu", "lune_noire", "coup_du_chapeau", "kermesse",
     "treizieme_carte", "coeur_de_zinneke", "silence_du_cercle", "embuscade", "collet", "fausse_piste", "faux_pas",
     "croupier_endormi", "contre_espionnage", "fumee_de_pipe", "tournee_generale", "echange_de_manche",
@@ -108,9 +109,9 @@ def view(hand, me):
         wins = [rules.trick_winner(trick + [(me, x)], led, eff) == me for x in legal]
         v["can_win_now"] = any(wins)
         v["forced_win"] = bool(wins) and all(wins)
-        # cartes de joker hypothetiques (Cameleon D, Double Valet V, Borgne As de la demandee,
+        # cartes de joker hypothetiques (Cameleon V depuis 6c54, Double Valet V, Borgne As de la demandee,
         # Atout Errant 2 d'atout) : gagneraient-elles le pli tel quel ?
-        hyp = {"cameleon": led * 13 + QUEEN, "double_valet": led * 13 + JACK, "borgne": led * 13 + ACE}
+        hyp = {"cameleon": led * 13 + JACK, "double_valet": led * 13 + JACK, "borgne": led * 13 + ACE}
         if eff is not None:
             hyp["atout_errant"] = eff * 13 + 0
         v["wins_with"] = {k: rules.trick_winner(trick + [(me, x)], led, eff) == me for k, x in hyp.items()}
@@ -333,7 +334,8 @@ def _never_info(v):
 def _courant_d_air(v):
     if len(v["hand"]) <= v["remaining"]:
         return NO, "pas_de_carte_en_trop"  # CourantDAir.on_play -> error "hand"
-    return YES, "gratuit_pioche"
+    # 6c54 : defausse la plus FORTE carte -> un joker de misere
+    return (YES, "jette_ma_plus_forte") if v["misere_declarer"] else (NO, "garde_ma_plus_forte")
 
 
 def _tournee_generale(v):
@@ -341,11 +343,10 @@ def _tournee_generale(v):
 
 
 def _gueule_de_bois(v):
-    if not want_trick(v) or v["position"] != 0:
-        return NO, "pas_a_l_entame"
-    if any(rank_of(x) >= QUEEN and suit_of(x) != v["eff_trump"] for x in v["legal"]):
-        return YES, "entame_forte"
-    return NO, "pas_de_haute"
+    # 6c54 : les adversaires jouent leur plus FORTE carte legale -> attaque et defense d'une misere
+    if not v["misere"]:
+        return NO, "hors_misere"
+    return (YES, "force_les_hautes") if v["position"] <= 1 else (NO, "trop_tard_dans_le_pli")
 
 
 def _echange_de_manche(v):
@@ -362,6 +363,13 @@ def _remonte_pli(v):
     if not any(v["tricks_won"][s] > 0 for s in v["opponents"]):
         return NO, "aucun_pli_adverse"
     return YES, "reprend_un_pli"
+
+
+def _pli_refile(v):
+    """6c54 : mon dernier pli passe a l'adversaire choisi (joker de misere)."""
+    if not v["misere"] or v["my_tricks"] <= 0:
+        return NO, "hors_misere_ou_aucun_pli"
+    return (YES, "rend_un_pli") if v["misere_declarer"] else (YES, "charge_le_declarant")
 
 
 def _faux_depart(v):
@@ -393,7 +401,10 @@ def _horloge_arretee(v):
         if v["misere_declarer"] and v["my_tricks"] <= v["level"] and not v["forced_win"]:
             return YES, "fige_la_misere"
         return NO, "misere"
-    if not v["declares"] and v["level"] - v["declarer_tricks"] >= 2 and v["remaining"] >= 2:
+    # 6c54 : les plis restants vont au camp qui en a le plus -> la defense doit mener
+    defence = sum(v["tricks_won"]) - v["declarer_tricks"]
+    if (not v["declares"] and v["level"] - v["declarer_tricks"] >= 2 and v["remaining"] >= 2
+            and defence > v["declarer_tricks"]):
         return YES, "contrat_adverse_pas_fait"
     return NO, "pas_besoin"
 
@@ -410,13 +421,14 @@ def _pourboire(v):
 def _fausse_piste(v):
     if owned(v, "fausse_piste") or v["enemy_jokers"] == 0:
         return NO, "inutile"
-    return (YES, "contre_les_sorts") if v["remaining"] >= 6 else (NO, "tard")
+    return (YES, "contre_les_jokers") if v["remaining"] >= 6 else (NO, "tard")
 
 
 def _collet(v):
-    if v["misere"] or owned(v, "collet"):
-        return NO, "misere_ou_arme"
-    return (YES, "piege_un_as") if v["remaining"] >= 8 else (NO, "tard")
+    # 6c54 : ma prochaine carte ne peut pas gagner son pli -> la sortie d'une misere
+    if not v["misere_declarer"] or owned(v, "collet"):
+        return NO, "hors_ma_misere_ou_arme"
+    return (YES, "evite_un_pli_force") if v["forced_win"] else (NO, "je_peux_passer_dessous")
 
 
 def _contre_espionnage(v):
@@ -466,9 +478,10 @@ def _coeur_de_zinneke(v):
 
 
 def _brouillard(v):
-    if v["misere"] or v["trump"] is None or v["declares"]:
-        return NO, "pas_en_defense_a_l_atout"
-    return (YES, "brouille_l_atout_adverse") if v["level"] >= 8 and v["remaining"] >= 7 else (NO, "petit_contrat")
+    # 6c54 : ma plus longue couleur est l'atout des plis que j'entame
+    if v["misere"]:
+        return NO, "misere"
+    return (YES, "atout_a_mon_entame") if v["remaining"] >= 6 else (NO, "tard")
 
 
 def _treizieme_carte(v):
@@ -484,7 +497,7 @@ RULES = {
     "zero": _zero, "miroir": _miroir, "carte_fantome": _carte_fantome, "traitre": _traitre,
     "coup_d_oeil": _never_info, "regard_furtif": _never_info, "livre_de_comptes": _never_info,
     "courant_d_air": _courant_d_air, "tournee_generale": _tournee_generale, "gueule_de_bois": _gueule_de_bois,
-    "echange_de_manche": _echange_de_manche, "remonte_pli": _remonte_pli, "faux_depart": _faux_depart,
+    "echange_de_manche": _echange_de_manche, "remonte_pli": _remonte_pli, "pli_refile": _pli_refile, "faux_depart": _faux_depart,
     "manche_truquee": _manche_truquee, "valet_borgne": _valet_borgne, "horloge_arretee": _horloge_arretee,
     "pourboire": _pourboire,
     "fausse_piste": _fausse_piste, "collet": _collet, "contre_espionnage": _contre_espionnage,
@@ -500,6 +513,12 @@ def target(v, jid):
     b = J.base_id(jid)
     if b == "dette_de_jeu":
         return v["best_seat"]
+    if b == "brouillard_de_la_senne":
+        return J.longest_suit(v["hand"])  # couleur (6c54)
+    if b == "pli_refile":
+        decl = [s for s in v["opponents"] if s in v["side"]]
+        defs = [s for s in v["opponents"] if s not in v["side"]]
+        return ((defs or decl) if v["misere_declarer"] else (decl or v["opponents"]))[0]
     if b == "faux_depart":
         return v["me"] if aces(v) >= 1 or not v["friends"] else v["friends"][0]
     if b in ("echange_de_manche", "coup_d_oeil", "regard_furtif"):
@@ -580,10 +599,10 @@ def bid_view(cards, state, me=J.PLAYER):
 def bid_rule(bv, jid):
     b = J.base_id(jid)
     strong = bv["est_tricks"] >= 6  # assez pour un solo / un emballage meneur
-    if b == "main_de_fer":
-        return (YES, "main_de_fer:main_forte") if bv["est_tricks"] >= 7 else (NO, "main_de_fer:main_moyenne")
-    if b == "pot_de_vin":
-        return (YES, "pot_de_vin:main_forte") if strong else (NO, "pot_de_vin:main_moyenne")
+    if b == "main_de_fer":  # 6c54 : choisit l'atout de son emballage / solo
+        return (YES, "main_de_fer:main_forte") if strong else (NO, "main_de_fer:main_moyenne")
+    if b == "pot_de_vin":  # 6c54 : 1er pli de sa misere a 0
+        return (YES, "pot_de_vin:misere_probable") if bv["est_tricks"] <= 2 else (NO, "pot_de_vin:pas_de_misere")
     if b == "rachat":
         return YES, "rachat:pli_de_plus"
     if b == "bluff":
@@ -594,8 +613,10 @@ def bid_rule(bv, jid):
     return NO, b + ":information_seulement"
 
 
-def bid_target(jid, me=J.PLAYER):
-    return (me + 1) % NUM_PLAYERS if J.base_id(jid) in ("pot_de_vin", "coup_d_oeil") else -1
+def bid_target(jid, me=J.PLAYER, bv=None):
+    if J.base_id(jid) == "main_de_fer":  # couleur (6c54)
+        return bv["best_suit"] if bv is not None else -1
+    return (me + 1) % NUM_PLAYERS if J.base_id(jid) == "coup_d_oeil" else -1
 
 
 def player_bid_choice(cards, state, candidates):
@@ -604,5 +625,5 @@ def player_bid_choice(cards, state, candidates):
     for jid in sorted(dict.fromkeys(candidates), key=lambda j: (rank.get(J.base_id(j), 999), j)):
         verdict, rid = bid_rule(bv, jid)
         if verdict in (YES, OPEN_YES):
-            return jid, bid_target(jid), rid
+            return jid, bid_target(jid, bv=bv), rid
     return None
