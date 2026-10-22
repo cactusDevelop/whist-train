@@ -5,7 +5,7 @@ on:
     inputs:
       mode:
         type: choice
-        options: [ppo, jokers, jokers_eval]
+        options: [ppo, jokers, jokers_eval, jokers_defence]
         default: ppo
       init:
         description: "Jokers : repartir de l'archive (--init) au lieu de --resume"
@@ -29,8 +29,9 @@ jobs:
     timeout-minutes: 355
     env:
       MODE: ${{ inputs.mode || 'ppo' }}
-      # jokers_eval measures on the jokers state and never saves it
-      STATE: ${{ inputs.mode == 'jokers_eval' && 'jokers' || inputs.mode || 'ppo' }}
+      # jokers_eval / jokers_defence measure on the jokers state and never save it
+      MEASURE: ${{ inputs.mode == 'jokers_eval' || inputs.mode == 'jokers_defence' }}
+      STATE: ${{ (inputs.mode == 'jokers_eval' || inputs.mode == 'jokers_defence') && 'jokers' || inputs.mode || 'ppo' }}
       INIT: ${{ inputs.init || false }}
       GH_TOKEN: ${{ github.token }}
       STATE_KEY: ${{ secrets.STATE_KEY }}
@@ -61,13 +62,13 @@ jobs:
 
       # Only after a successful restore: an empty state must never overwrite the release.
       - name: Upload eval log
-        if: always() && env.MODE == 'jokers_eval'
+        if: always() && env.MEASURE == 'true'
         run: |
-          cp "train_log_$MODE.txt" log-jokers_eval.txt 2>/dev/null || echo "pas de log (Train non lance)" > log-jokers_eval.txt
-          gh release upload checkpoint-latest log-jokers_eval.txt --clobber
+          cp "train_log_$MODE.txt" "log-$MODE.txt" 2>/dev/null || echo "pas de log (Train non lance)" > "log-$MODE.txt"
+          gh release upload checkpoint-latest "log-$MODE.txt" --clobber
 
       - name: Save state
-        if: always() && steps.restore.outcome == 'success' && env.MODE != 'jokers_eval'
+        if: always() && steps.restore.outcome == 'success' && env.MEASURE != 'true'
         run: |
           tar cz $(while read -r f; do [ -e "$f" ] && echo "$f"; done < "ci/state_$MODE.txt") \
             | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass env:STATE_KEY \
@@ -77,5 +78,5 @@ jobs:
           gh release upload checkpoint-latest "log-$MODE.txt" --clobber
 
       - name: Chain next run
-        if: success() && vars.TRAINING_ENABLED == 'true' && env.MODE != 'jokers_eval'
+        if: success() && vars.TRAINING_ENABLED == 'true' && env.MEASURE != 'true'
         run: gh workflow run train.yml -f mode="$MODE" -f init=false
