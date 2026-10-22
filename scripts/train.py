@@ -127,7 +127,7 @@ from engine.trou import detect_trou, new_trou_deal
 from engine.trou import final_scores as trou_final_scores
 from engine.whisted import DeckChain
 from scripts import export_to_godot, godot_sync, record_game
-from scripts.team_errors import surcoupe_situation
+from scripts.team_errors import coupe_situation, surcoupe_situation
 
 DEFENSEUR = "defenseur"
 
@@ -210,6 +210,13 @@ ROLLOUT_SAMPLES_DEFAULT = 8  # mondes (mains cachees tirees) par decision
 # ../whist-ai-backups/checkpoints_v2_20260926_2237_degrade_rollouts_surcoupe,
 # reprise depuis la sauvegarde de 14h55 + observation v4 (bloc N).
 ROLLOUT_SURCOUPE_SAMPLES_DEFAULT = 0  # 16 = ancienne valeur
+# Analyse CIBLEE des renonces non coupees (signalement utilisateur 2026-10-22 :
+# le coequipier entame dans la renonce de l'IA, qui defausse au lieu de couper ;
+# scripts/team_errors.py:coupe_situation). Meme mecanisme que la surcoupe, mais
+# avec la suite jouee par l'ExpertBot (--rollout-policy expert) : le vrai score
+# de la donne juge chaque carte, aucune restriction ni malus -- si defausser
+# est meilleur (coequipier deja maitre...), c'est la defausse qui est apprise.
+ROLLOUT_COUPE_SAMPLES_DEFAULT = 0
 # Marge (unites de retour : plis ; points/10 pour defenseur) sous laquelle une
 # carte compte parmi les meilleures -- absorbe le bruit des 4 mondes.
 ROLLOUT_MARGIN_DEFAULT = 0.25
@@ -648,6 +655,9 @@ def play_out(game, nets, rollout=None, teacher=None, visitors=None, rng=None):
                     and surcoupe_situation(game, seat) is not None):
                 samples = rollout["surcoupe_samples"]
                 rollout["surcoupes"] += 1
+            elif rollout.get("coupe_samples") and coupe_situation(game, seat) is not None:
+                samples = rollout["coupe_samples"]
+                rollout["coupes"] += 1
             elif rollout["prob"] > 0 and rollout["rng"].random() < rollout["prob"]:
                 samples = rollout["samples"]
         if samples:
@@ -1335,6 +1345,9 @@ def main():
                          help="mondes (mains cachees tirees au hasard) par decision analysee")
     parser.add_argument("--rollout-surcoupe-samples", type=int, default=ROLLOUT_SURCOUPE_SAMPLES_DEFAULT,
                          help="mondes par occasion de surcoupe analysee (hors misere) ; 0 pour desactiver")
+    parser.add_argument("--rollout-coupe-samples", type=int, default=ROLLOUT_COUPE_SAMPLES_DEFAULT,
+                        help="mondes par renonce non coupee possible (coequipier entame dans notre renonce, "
+                             "un atout prendrait) ; 0 pour desactiver")
     parser.add_argument("--rollout-policy", choices=("nets", "expert"), default=ROLLOUT_POLICY_DEFAULT,
                         help="qui joue la suite de la donne dans les rollouts (voir ROLLOUT_POLICY_DEFAULT)")
     parser.add_argument("--rollout-workers", type=int, default=0,
@@ -1521,8 +1534,8 @@ def main():
         print("  + a chaque evaluation : mesure des surcoupes (%d donnes reelles + %d forcees) -> %s." % (
             team_errors_deals, team_errors_deals, team_errors_file), flush=True)
     rollout = None
-    if args.rollout_per_deal > 0 or args.rollout_surcoupe_samples > 0:
-        rollout = {"prob": args.rollout_per_deal / DECISIONS_PER_DEAL, "samples": args.rollout_samples,
+    if args.rollout_per_deal > 0 or args.rollout_surcoupe_samples > 0 or args.rollout_coupe_samples > 0:
+        rollout = {"coupe_samples": args.rollout_coupe_samples, "coupes": 0, "prob": args.rollout_per_deal / DECISIONS_PER_DEAL, "samples": args.rollout_samples,
                    "surcoupe_samples": args.rollout_surcoupe_samples,
                    "margin": args.rollout_margin, "rng": random.Random(rng.random()),
                    "score_fn": None, "policy": args.rollout_policy, "count": 0, "corrective": 0, "surcoupes": 0, "seconds": 0.0}
@@ -1583,6 +1596,7 @@ def main():
                        for role in PLAY_ROLES}
             if rollout is not None:
                 rollout["count"], rollout["corrective"], rollout["surcoupes"], rollout["seconds"] = 0, 0, 0, 0.0
+                rollout["coupes"] = 0
             if teacher is not None:
                 teacher["count"], teacher["agree"] = 0, 0
             batch_start_episodes = total_episodes
@@ -1672,9 +1686,10 @@ def main():
             if rich_counts:
                 print("  donnes riches (hors stats) : %s" % rich_counts, flush=True)
             if rollout is not None:
-                print("  rollouts : %d decisions analysees dont %d occasions de surcoupe (%d avec une carte "
-                      "nettement moins bonne), %.0fs" % (
-                          rollout["count"], rollout["surcoupes"], rollout["corrective"], rollout["seconds"]),
+                print("  rollouts : %d decisions analysees dont %d occasions de surcoupe, %d renonces a couper (%d avec une "
+                      "carte nettement moins bonne), %.0fs" % (
+                          rollout["count"], rollout["surcoupes"], rollout["coupes"], rollout["corrective"],
+                          rollout["seconds"]),
                       flush=True)
             if teacher is not None:
                 print("  imitation ExpertBot : poids %.3f, %d decisions ciblees, accord IA/bot %.1f%% "
