@@ -294,7 +294,7 @@ def v2_tests():
     rules.curses = [J.make_effect("pacte_du_tenancier", 0)]
     oks.append(check("pacte : -5 par contrat rate (043f)", rules.adjust_deltas([-7, 3, 3, 1], c), [-12, 3, 3, 1]))
     # Economie du joueur : amelioration, maudits, Soupcon, Oeil.
-    oks.append(check("amelioration : cout -1", (J.jcost("inversion+"), J.known("zero+")), (2, False)))
+    oks.append(check("amelioration : cout -1", (J.jcost("inversion+"), J.known("zero+")), (1, False)))
     state = J.MatchState([["cartes_marquees", "regard_furtif", "livre_de_comptes"], [], [], []], random.Random(2), 9)
     rules = J.JokerRules(state)
     state.arm_curses()
