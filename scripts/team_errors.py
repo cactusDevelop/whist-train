@@ -35,7 +35,7 @@ import torch
 sys.path.insert(0, ".")
 
 from agents.play_guards import ai_play_mask
-from engine.cards import NUM_PLAYERS, trick_winner
+from engine.cards import NUM_PLAYERS, suit_of, trick_winner
 
 TEAM_ERRORS_FILE_DEFAULT = "team_errors.jsonl"
 TEAM_ERRORS_DEALS_DEFAULT = 600  # par jeu de donnes ("reel" et "force")
@@ -73,6 +73,28 @@ def surcoupe_situation(game, seat):
     return stealing
 
 
+def coupe_situation(game, seat):
+    """Renonce non coupee (signalement utilisateur 2026-10-22) : un coequipier
+    a entame dans une couleur ou l'on n'a plus de carte, il y a un atout et on
+    tient au moins un atout qui prendrait le pli maintenant. None si ce n'est
+    pas une occasion, sinon (atouts gagnants, coequipier deja maitre ?)."""
+    trump = game.trump_suit
+    if trump is None or getattr(game, "pending_discards", None) or not game.current_trick:
+        return None
+    mates = teammates(game, seat)
+    leader, lead_card = game.current_trick[0]
+    if leader not in mates:
+        return None
+    hand = game.hands[seat]
+    if any(suit_of(c) == suit_of(lead_card) for c in hand) or suit_of(lead_card) == trump:
+        return None
+    winning = {c for c in hand
+               if suit_of(c) == trump and trick_winner(game.current_trick + [(seat, c)], trump) == seat}
+    if not winning:
+        return None
+    return winning, trick_winner(game.current_trick, trump) in mates
+
+
 def new_tally():
     return {}
 
@@ -81,6 +103,12 @@ def _bump(tally, key, occasions, errors):
     entry = tally.setdefault(key, {"occasions": 0, "surcoupes": 0})
     entry["occasions"] += occasions
     entry["surcoupes"] += errors
+
+
+def _bump_coupe(tally, key, err):
+    entry = tally.setdefault(key, {"occasions": 0, "defausses": 0})
+    entry["occasions"] += 1
+    entry["defausses"] += err
 
 
 def play_greedy_and_count(game, nets, tally, family):
@@ -99,6 +127,15 @@ def play_greedy_and_count(game, nets, tally, family):
             _bump(tally, "%s/%s" % (family, camp), 1, err)
             _bump(tally, "total/%s" % camp, 1, err)
             _bump(tally, "total", 1, err)
+        coupe = coupe_situation(game, seat)
+        if coupe is not None:
+            winning, mate_master = coupe
+            camp = "defense" if role == "defenseur" else "declarant"
+            err = 0 if suit_of(card) == game.trump_suit else 1
+            ct = tally.setdefault("_coupe", {})
+            _bump_coupe(ct, "%s/%s" % (family, camp), err)
+            _bump_coupe(ct, "total/%s" % ("coequipier_maitre" if mate_master else "coequipier_battu"), err)
+            _bump_coupe(ct, "total", err)
         game.step(seat, card)
 
 
@@ -150,8 +187,11 @@ def measure(nets, population, deals, total_episodes=0, elapsed=0.0, out_file=TEA
             run_real(nets, population, rng, deals, tally)
         else:
             run_forced(nets, rng, deals, tally)
+        coupe = tally.pop("_coupe", {})
         record["sets"][name] = {k: dict(v, taux=None if rate(v) is None else round(rate(v), 4))
                                 for k, v in sorted(tally.items())}
+        record.setdefault("renonce_non_coupee", {})[name] = {
+            k: dict(v, taux=round(v["defausses"] / v["occasions"], 4)) for k, v in sorted(coupe.items())}
     print("\n=== Erreurs d'equipe : SURCOUPE du coequipier (IA greedy, %d donnes/jeu) ===" % deals, flush=True)
     for name, tally in record["sets"].items():
         print("  [%s]" % name, flush=True)
@@ -159,6 +199,13 @@ def measure(nets, population, deals, total_episodes=0, elapsed=0.0, out_file=TEA
             if v["occasions"]:
                 print("    %-28s %5.1f%%  (%d/%d)" % (key, 100 * v["taux"], v["surcoupes"], v["occasions"]),
                       flush=True)
+    print("=== RENONCE NON COUPEE : coequipier entame dans notre renonce, on defausse au lieu de couper ===",
+          flush=True)
+    for name, tally in record["renonce_non_coupee"].items():
+        print("  [%s]" % name, flush=True)
+        for key, v in tally.items():
+            print("    %-28s %5.1f%%  (%d/%d)" % (key, 100 * v["taux"], v["defausses"], v["occasions"]),
+                  flush=True)
     with open(out_file, "a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
     print("  (ajoute a %s)\n" % out_file, flush=True)
