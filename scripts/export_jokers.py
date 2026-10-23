@@ -34,12 +34,14 @@ from engine import jokers as J
 from engine import joker_obs as O
 from scripts import joker_profit as P
 from scripts.export_to_godot import fp16_rounded
+from scripts.godot_paths import find_godot_project
 from scripts.train_jokers import CHECKPOINT, logits_np, net_to_numpy
 
 OUT_DIR = "godot_export"
 GD_NAME = "whist_ai_weights_data_v2_jokers.gd"
 EXPERT_CASES = "joker_expert_cases.json"
-GODOT_GAME_DIR = os.path.join("..", "whist-4-it", "game")
+GODOT_PROJECT = find_godot_project()  # WHIST_4_IT_DIR ou dossier voisin
+GODOT_GAME_DIR = os.path.join(GODOT_PROJECT or os.path.join("..", "whist-4-it"), "game")
 
 TEMPLATE = '''class_name WhistAIWeightsDataV2Jokers
 extends RefCounted
