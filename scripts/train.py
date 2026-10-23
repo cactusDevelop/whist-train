@@ -227,6 +227,10 @@ ROLLOUT_MARGIN_DEFAULT = 0.25
 # politique qui le BAT par construction ; c'est ce professeur plus fort que le
 # bot qui manquait au PPO, plafonne au niveau du bot depuis le 29/09 (duplicate :
 # defense IA +0.27 pli concede/donne, stable 3 semaines).
+# "dds" (2026-10-23, « ExpertBot est horrible aussi ! Ce n'est pas une
+# reference ») : la suite est jouee PARFAITEMENT a cartes ouvertes dans chaque
+# monde (engine/dds.c) -- aucun bot a regles dans la cible. Contrats a atout
+# seulement (emballage, trou, solo) ; ailleurs aucune cible de rollout (PPO seul).
 ROLLOUT_POLICY_DEFAULT = "nets"
 DECISIONS_PER_DEAL = 52
 
@@ -623,6 +627,11 @@ def visitor_card(style, game, seat, nets, rng):
     return torch.distributions.Categorical(logits=logits).sample().item()
 
 
+def dds_supported(game):
+    from engine import dds
+    return dds.supported(game)
+
+
 def play_out(game, nets, rollout=None, teacher=None, visitors=None, rng=None):
     """`visitors` (optionnel) : {siege: style} -- ces sieges jouent en visiteur
     (visitor_card) et n'enregistrent rien.
@@ -660,6 +669,8 @@ def play_out(game, nets, rollout=None, teacher=None, visitors=None, rng=None):
                 rollout["coupes"] += 1
             elif rollout["prob"] > 0 and rollout["rng"].random() < rollout["prob"]:
                 samples = rollout["samples"]
+        if samples and rollout.get("policy") == "dds" and not dds_supported(game):
+            samples = 0
         if samples:
             t0 = time.time()
             q = rollouts.action_values(game, seat, nets, rollout["score_fn"], rollout["rng"], samples,
@@ -1348,7 +1359,7 @@ def main():
     parser.add_argument("--rollout-coupe-samples", type=int, default=ROLLOUT_COUPE_SAMPLES_DEFAULT,
                         help="mondes par renonce non coupee possible (coequipier entame dans notre renonce, "
                              "un atout prendrait) ; 0 pour desactiver")
-    parser.add_argument("--rollout-policy", choices=("nets", "expert"), default=ROLLOUT_POLICY_DEFAULT,
+    parser.add_argument("--rollout-policy", choices=("nets", "expert", "dds"), default=ROLLOUT_POLICY_DEFAULT,
                         help="qui joue la suite de la donne dans les rollouts (voir ROLLOUT_POLICY_DEFAULT)")
     parser.add_argument("--rollout-workers", type=int, default=0,
                         help="processus qui jouent les rollouts --rollout-policy expert en parallele "
@@ -1543,10 +1554,10 @@ def main():
               "hasard (%d mondes), marge=%.2f, poids %.2f a cote de PPO." % (
                   args.rollout_surcoupe_samples, args.rollout_per_deal, args.rollout_samples,
                   args.rollout_margin, args.distill_coef), flush=True)
-        if args.rollout_policy == "expert" and args.rollout_workers > 1:
+        if args.rollout_policy in ("expert", "dds") and args.rollout_workers > 1:
             import multiprocessing
             rollouts.set_pool(multiprocessing.Pool(args.rollout_workers), args.rollout_workers)
-            print("  rollouts ExpertBot repartis sur %d processus." % args.rollout_workers, flush=True)
+            print("  rollouts (%s) repartis sur %d processus." % (args.rollout_policy, args.rollout_workers), flush=True)
     teacher = None
     teacher_deals = load_teacher_deals()
     if teacher_coef_at(teacher_deals, args.teacher_coef, args.teacher_decay_deals) > 0:

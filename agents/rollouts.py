@@ -179,6 +179,9 @@ def action_values(game, seat, nets, score_fn, rng, samples, policy="nets"):
     legal = [c for c, ok in enumerate(game.legal_action_mask(seat)) if ok]
     if len(legal) < 2:
         return None
+    if policy == "dds":
+        q = dds_values(game, seat, legal, score_fn, rng, samples)
+        return None if q is None else (legal, q)
     sims = []
     for _ in range(samples):
         hands = determinize(game, seat, rng)
@@ -194,6 +197,60 @@ def action_values(game, seat, nets, score_fn, rng, samples, policy="nets"):
     for i, g in sims:
         q[i] += score_fn(g)[seat] / samples
     return legal, q
+
+
+DDS_WORLD_NODES = 40_000_000  # budget d'un monde (~4 s) : au-dela il est ecarte
+
+
+def _dds_world(args):
+    """Un monde : plis restants du camp declarant apres chaque carte legale
+    (None si la carte termine la donne), ou None si le monde depasse son
+    budget de noeuds. Picklable (pool de processus)."""
+    from engine import dds
+    game, seat, legal, hands = args
+    out = []
+    last_trump = object()
+    left = DDS_WORLD_NODES
+    for card in legal:
+        g = clone_with_hands(game, hands)
+        g.step(seat, card)
+        if g.done:
+            out.append(None)
+            continue
+        n0 = dds.nodes()
+        r = dds.solve(g, new_gen=g.trump_suit != last_trump, node_limit=left)
+        left -= dds.nodes() - n0
+        if r is None or left <= 0:
+            return None
+        out.append(r)
+        last_trump = g.trump_suit
+    return out
+
+
+def dds_values(game, seat, legal, score_fn, rng, samples):
+    """Q de chaque carte legale : moyenne sur `samples` mondes du vrai score
+    quand la suite est jouee PARFAITEMENT a cartes ouvertes (engine/dds.c)
+    -- un professeur plus fort que n'importe quel bot a regles (2026-10-23).
+    Contrats a atout seulement (dds.supported). Les mondes se repartissent
+    sur le pool de processus (set_pool) s'il existe."""
+    from engine import dds
+    worlds = [(game, seat, legal, determinize(game, seat, rng)) for _ in range(samples)]
+    if _POOL is not None and _POOL_SIZE > 1 and samples > 1:
+        results = _POOL.map(_dds_world, worlds)
+    else:
+        results = [_dds_world(w) for w in worlds]
+    kept = [(w[3], more) for w, more in zip(worlds, results) if more is not None]
+    if len(kept) * 2 < samples:
+        return None  # trop de mondes hors budget : pas de cible
+    q = [0.0] * len(legal)
+    for hands, more in kept:
+        for i, card in enumerate(legal):
+            g = clone_with_hands(game, hands)
+            g.step(seat, card)
+            if more[i] is not None:
+                g = dds.finished_copy(g, more[i])
+            q[i] += score_fn(g)[seat] / len(kept)
+    return q
 
 
 def best_set_target(legal, q, margin, scale=1.0):
