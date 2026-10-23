@@ -28,12 +28,13 @@ import random
 
 from engine.cards import NUM_PLAYERS, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "d4c4b009cd0a8ba0"
+JOKER_SPEC_HASH = "c8f6c08407fe0bf5"
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
 # texte ou de cablage seulement) : un reseau entraine sous l'une d'elles est
 # reexporte tel quel avec JOKER_SPEC_HASH. Une regle qui change -> vider la
 # liste (sauf le hash courant) et reentrainer.
-RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH}
+RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH, "d4c4b009cd0a8ba0"}
+# c8f6 (whist-4-it 0f73fa4) : Horloge masquee (pointless) avant le 8e pli, comme le port d4c4 -> regles = d4c4.
 # d4c4 (whist-4-it, rapport admin 2026-10-23 "trop cheat") : Horloge Arretee seulement a partir du 8e pli -> reentrainement.
 # b88c (whist-4-it 396c261) : consigne du joueur humain retiree (jamais posee a l'entrainement) -> regles = 6c54.
 # 6c54 (whist-4-it, Chantier Rarete 02) : raretes/couts du tableau 01, deck de depart (cameleon, embuscade,
