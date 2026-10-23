@@ -16,11 +16,15 @@
 
 typedef uint64_t u64;
 
-#define TT_BITS 20
+#define TT_BITS 21
 #define TT_SIZE (1u << TT_BITS)
 
+/* Cle en RANGS RELATIFS : par couleur, les proprietaires des cartes encore en
+ * jeu de la plus forte a la plus faible (2 bits chacun) + leur nombre. Deux
+ * positions qui ne different que par des cartes deja jouees ont la meme cle
+ * (meme valeur : seul l'ordre des cartes restantes compte). */
 typedef struct {
-    u64 h[4];
+    u64 k0, k1;
     uint32_t gen;
     int8_t leader, lb, ub;
 } Entry;
@@ -51,10 +55,30 @@ static int trick_winner_idx(int n) {
     return best;
 }
 
-static inline uint32_t tt_index(int leader) {
-    u64 x = H[0] * 0x9E3779B97F4A7C15ULL ^ H[1] * 0xC2B2AE3D27D4EB4FULL ^ H[2] * 0x165667B19E3779F9ULL
-            ^ H[3] * 0x27D4EB2F165667C5ULL ^ (u64)leader * 0x94D049BB133111EBULL;
+static void rel_key(u64 *k0, u64 *k1) {
+    u64 part[4];
+    for (int s = 0; s < 4; s++) {
+        u64 v = 0;
+        int len = 0;
+        u64 all = (H[0] | H[1] | H[2] | H[3]) & suit_mask(s);
+        while (all) {
+            int c = 63 - __builtin_clzll(all);  /* de la plus forte a la plus faible */
+            all &= ~(1ULL << c);
+            int owner = (H[1] >> c & 1) ? 1 : (H[2] >> c & 1) ? 2 : (H[3] >> c & 1) ? 3 : 0;
+            v = (v << 2) | (u64)owner;
+            len++;
+        }
+        part[s] = v | ((u64)len << 26);
+    }
+    *k0 = part[0] | (part[1] << 30);
+    *k1 = part[2] | (part[3] << 30);
+}
+
+static inline uint32_t tt_index(u64 k0, u64 k1, int leader) {
+    u64 x = k0 * 0x9E3779B97F4A7C15ULL ^ k1 * 0xC2B2AE3D27D4EB4FULL ^ (u64)leader * 0x94D049BB133111EBULL;
     x ^= x >> 29;
+    x *= 0xBF58476D1CE4E5B9ULL;
+    x ^= x >> 32;
     return (uint32_t)(x & (TT_SIZE - 1));
 }
 
@@ -111,6 +135,7 @@ static int search(int alpha, int beta) {
     nodes++;
     int turn = (leader_s + nt) & 3;
     Entry *e = NULL;
+    u64 k0 = 0, k1 = 0;
     if (nt == 0) {
         int R = popc(H[leader_s]);
         if (R == 0) return 0;
@@ -122,9 +147,9 @@ static int search(int alpha, int beta) {
             }
             return side[tseat[trick_winner_idx(4)]];
         }
-        e = &tt[tt_index(leader_s)];
-        if (e->gen == gen && e->leader == leader_s && e->h[0] == H[0] && e->h[1] == H[1] && e->h[2] == H[2]
-            && e->h[3] == H[3]) {
+        rel_key(&k0, &k1);
+        e = &tt[tt_index(k0, k1, leader_s)];
+        if (e->gen == gen && e->leader == leader_s && e->k0 == k0 && e->k1 == k1) {
             if (e->lb >= beta) return e->lb;
             if (e->ub <= alpha) return e->ub;
             if (e->lb > alpha) alpha = e->lb;
@@ -171,9 +196,9 @@ static int search(int alpha, int beta) {
         if (a >= b) break;
     }
     if (e != NULL) {
-        if (!(e->gen == gen && e->leader == leader_s && e->h[0] == H[0] && e->h[1] == H[1] && e->h[2] == H[2]
-              && e->h[3] == H[3])) {
-            memcpy(e->h, H, sizeof H);
+        if (!(e->gen == gen && e->leader == leader_s && e->k0 == k0 && e->k1 == k1)) {
+            e->k0 = k0;
+            e->k1 = k1;
             e->gen = gen;
             e->leader = (int8_t)leader_s;
             e->lb = 0;

@@ -96,23 +96,27 @@ def test_obvious():
     return got == 13
 
 
-def chrono_solve(rng, n, played_tricks):
-    times, nodes = [], []
+def chrono_solve(rng, n, played_tricks, budget):
+    """Chronos de `n` positions apres `played_tricks` plis ; s'arrete quand
+    le temps cumule depasse `budget` secondes (chaque solve est imprime)."""
+    times = []
     kinds = ("voisins", "face", "seul")
     for i in range(n):
         g = make_game(rng, kinds[i % 3])
         random_play(g, rng, played_tricks * 4)
         n0 = dds.nodes()
         t0 = time.time()
-        dds.solve(g)
+        v = dds.solve(g)
         times.append(time.time() - t0)
-        nodes.append(dds.nodes() - n0)
-    print("solve apres %d plis : moyenne %.3fs, mediane %.3fs, max %.3fs, noeuds moyens %d" % (
-        played_tricks, statistics.mean(times), statistics.median(times), max(times), statistics.mean(nodes)),
-        flush=True)
+        print("  apres %d plis #%d : %.3fs, %d noeuds, %d plis" % (played_tricks, i, times[-1], dds.nodes() - n0, v),
+              flush=True)
+        if sum(times) > budget:
+            break
+    print("solve apres %d plis : %d positions, moyenne %.3fs, mediane %.3fs, max %.3fs" % (
+        played_tricks, len(times), statistics.mean(times), statistics.median(times), max(times)), flush=True)
 
 
-def chrono_teacher(rng, n, samples):
+def chrono_teacher(rng, n, samples, played_tricks, budget):
     from agents import rollouts
     from engine.emballage import final_scores
     times = []
@@ -120,28 +124,32 @@ def chrono_teacher(rng, n, samples):
         g = make_game(rng, ("voisins", "face")[i % 2])
         if g.trump_suit is None:
             g.trump_suit = 0
-        random_play(g, rng, rng.randrange(0, 24))
+        random_play(g, rng, played_tricks * 4 + rng.randrange(4))
         seat = g.turn
         legal = [c for c, ok in enumerate(g.legal_action_mask(seat)) if ok]
         t0 = time.time()
         rollouts.dds_values(g, seat, legal, final_scores, rng, samples)
         times.append(time.time() - t0)
-    print("decision du professeur (%d mondes, plis 0-6) : moyenne %.2fs, max %.2fs" % (
-        samples, statistics.mean(times), max(times)), flush=True)
+        if sum(times) > budget:
+            break
+    print("decision du professeur (%d mondes, apres %d plis) : %d decisions, moyenne %.2fs, max %.2fs" % (
+        samples, played_tricks, len(times), statistics.mean(times), max(times)), flush=True)
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--positions", type=int, default=400)
     ap.add_argument("--full", type=int, default=30)
+    ap.add_argument("--budget", type=float, default=120.0, help="secondes max par serie de chronos")
     ap.add_argument("--seed", type=int, default=20261023)
     args = ap.parse_args()
     rng = random.Random(args.seed)
     ok = test_exact(rng, args.positions) & test_obvious()
-    for k in (6, 3, 0):
-        chrono_solve(rng, args.full if k else min(args.full, 10), k)
-    chrono_teacher(rng, 20, 16)
     print("DDS_OK" if ok else "DDS_ECHEC", flush=True)
+    for k in (9, 6, 3, 0):
+        chrono_solve(rng, args.full, k, args.budget)
+    for k in (6, 3, 0):
+        chrono_teacher(rng, 10, 16, k, args.budget)
     sys.exit(0 if ok else 1)
 
 
