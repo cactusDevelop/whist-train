@@ -752,6 +752,12 @@ def _follow(v):
                 if masters:
                     return _lowest(masters)
             return _lowest(following)
+        # renom dans la couleur du partenaire qui n'est PAS sur de tenir le pli :
+        # couper (signalement 2026-10-23 : « ne joue pas d'atout en renom »)
+        ruffs = [] if partner_safe else [c for c in v.legal if suit_of(c) == v.trump and _wins_now(v, c)]
+        if ruffs:
+            safe = [c for c in ruffs if _safe_win(v, c, later)]
+            return _lowest(safe) if safe else _lowest(ruffs)
         return _discard(v)
 
     winners = [c for c in v.legal if _wins_now(v, c)]
@@ -820,7 +826,9 @@ def _lead(v):
         outstanding = v.opponent_trumps_outstanding()
         opps_with_trumps = [s for s in opps if not v.void[s][trump]]
         if v.team_contract:
-            keep_drawing = outstanding > 0 and len(opps_with_trumps) == len(opps)
+            # tirer tant qu'UN adversaire peut encore couper (signalement 2026-10-23 :
+            # « laisse les adversaires utiliser leurs atouts en renom »)
+            keep_drawing = outstanding > 0 and len(opps_with_trumps) >= 1
             # Ecole : « garder un atout de controle pour couper la longue
             # adverse » -- ne pas purger avec son dernier atout
             if len(my_trumps) == 1 and len(my_trumps) < len(v.legal):

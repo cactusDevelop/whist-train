@@ -147,9 +147,31 @@ def test_hybrid_bidder_legal_and_guarded():
             b.apply(seat, a)
 
 
+def test_team_trump_rules_20261023():
+    """Signalement 2026-10-23 : couper en renom quand le partenaire n'est pas
+    sur de tenir ; tirer l'atout tant qu'UN adversaire peut couper."""
+    from engine.team_trump import TeamTrumpDeal
+    spades = 3
+    # 1. partenaire (2) entame un petit coeur, siege 3 fournit plus petit, siege 1
+    #    (plus tard) peut avoir mieux ; le siege 0 n'a plus de coeur -> il coupe
+    hands = [list(range(39, 46)) + list(range(26, 32)), list(range(4, 13)) + list(range(13, 17)),
+             [1, 2, 3] + list(range(17, 26)) + [32], [0] + list(range(33, 39)) + list(range(46, 52))]
+    g = TeamTrumpDeal(hands, 0, 2, spades, 8, 2, "d", "p", "x")
+    g.step(2, 3)
+    g.step(3, 0)
+    check("renom : coupe si le partenaire n'est pas sur", expert_bot.choose_card(g, 0) // 13 == spades)
+    # 2. le siege 1 a montre qu'il n'a plus d'atout, le siege 3 en a encore -> on tire
+    hands = [[49, 50, 51] + list(range(0, 10)), [10, 11, 12] + list(range(13, 23)),
+             list(range(42, 49)) + [23, 24, 25, 26, 27, 28], [39, 40, 41] + list(range(29, 39))]
+    g = TeamTrumpDeal(hands, 0, 2, spades, 8, 0, "d", "p", "x")
+    for seat, c in ((0, 51), (1, 13), (2, 42), (3, 39)):
+        g.step(seat, c)
+    check("atout : tirer tant qu'un adversaire peut couper", expert_bot.choose_card(g, 0) // 13 == spades)
+
+
 def main():
     for t in (test_hand_evaluation, test_bot_bidding_always_legal, test_hybrid_bidder_legal_and_guarded,
-              test_bot_play_legal_all_families_and_no_cheating):
+              test_bot_play_legal_all_families_and_no_cheating, test_team_trump_rules_20261023):
         t()
         print("ok  %s" % t.__name__, flush=True)
     print("%d verifications, toutes OK" % CHECKS[0])

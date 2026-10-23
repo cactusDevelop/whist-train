@@ -199,7 +199,7 @@ def action_values(game, seat, nets, score_fn, rng, samples, policy="nets"):
     return legal, q
 
 
-DDS_WORLD_NODES = 40_000_000  # budget d'un monde (~4 s) : au-dela il est ecarte
+DDS_WORLD_NODES = 15_000_000  # budget d'un monde (~1.5 s) : au-dela il est ecarte
 
 
 def _dds_world(args):
