@@ -28,12 +28,13 @@ import random
 
 from engine.cards import NUM_PLAYERS, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "c8f6c08407fe0bf5"
+JOKER_SPEC_HASH = "07ac337284322851"
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
 # texte ou de cablage seulement) : un reseau entraine sous l'une d'elles est
 # reexporte tel quel avec JOKER_SPEC_HASH. Une regle qui change -> vider la
 # liste (sauf le hash courant) et reentrainer.
-RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH, "d4c4b009cd0a8ba0"}
+RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH, "c8f6c08407fe0bf5", "d4c4b009cd0a8ba0"}
+# 07ac (whist-4-it 9661351) : Dette de Jeu journalise {"event": "debt"} (aucune regle ne change) -> regles = c8f6.
 # c8f6 (whist-4-it 0f73fa4) : Horloge masquee (pointless) avant le 8e pli, comme le port d4c4 -> regles = d4c4.
 # d4c4 (whist-4-it, rapport admin 2026-10-23 "trop cheat") : Horloge Arretee seulement a partir du 8e pli -> reentrainement.
 # b88c (whist-4-it 396c261) : consigne du joueur humain retiree (jamais posee a l'entrainement) -> regles = 6c54.
@@ -264,6 +265,17 @@ def elite_specialties(rng):
     """EliteDecks.for_elites : sieges 1 puis 3, deux familles differentes."""
     pool = list(FAMILIES)
     return {seat: pool.pop(rng.randint(0, len(pool) - 1)) for seat in ELITE_SEATS}
+
+
+def habitue_families(rng, seats=(1, 2, 3)):
+    """DuelRules.habitue_decks (07ac, rapport 2026-10-23) : chaque habitue du
+    Duel tire une famille d'elite de la graine du duel (doublons permis)."""
+    return {seat: FAMILIES[rng.randint(0, len(FAMILIES) - 1)] for seat in seats}
+
+
+def habitue_deck(family):
+    """Le deck d'elite de `family` sans ses maledictions (Cavalier Seul)."""
+    return [j for j in SPECIALTY_DECKS[family] if CATALOG[base_id(j)][1] != "maudit"]
 
 
 def attackers(contract):

@@ -23,7 +23,7 @@ from engine.bidding import Bidding, bid_action_to_dict, legal_action_ids_with_ha
 from engine.cards import NUM_PLAYERS, suit_of, rank_of
 from engine.jokers import BOSS_DECKS, BOSS_SEAT, ELITE_SEATS, PLAYER, JokerHand, JokerRules, MatchState
 from engine.trou import detect_trou
-from engine.whisted import DeckChain
+from engine.whisted import DeckChain, deal_uniform
 
 HANDS_PER_MATCH = 5
 TIEBREAK_OWN = 0.1
@@ -35,6 +35,28 @@ def hand_reward(points, seat):
     petit terme de points propres (departage quand il est le partenaire
     du joueur)."""
     return (points[seat] - points[PLAYER]) + TIEBREAK_OWN * points[seat]
+
+
+class DuelDeals:
+    """Donnes du Duel (DuplicateMatch : whisted_deck_enabled = false) : la
+    k-ieme donne et le premier donneur ne dependent que de la graine du duel,
+    les memes sur chaque table quels que soient les jokers. Meme interface
+    que DeckChain (Match.finish y range pack / donneur, ignores ici)."""
+
+    def __init__(self, duel_seed):
+        self.duel_seed = duel_seed
+        self.k = 0
+        self.pack = None
+        self.dealer = random.Random(duel_seed * 4 + 1).randrange(NUM_PLAYERS)  # DuelRules.first_dealer
+        self.next_is_brimborion = False
+
+    def deal(self, _rng):
+        hands = deal_uniform(random.Random(self.duel_seed * 1009 + self.k))
+        self.k += 1
+        return hands, self.dealer, False
+
+    def finish_unplayed(self, hands, dealer):  # passe generale : meme donneur
+        self.dealer = dealer
 
 
 class Match:
@@ -49,7 +71,10 @@ class Match:
         decks = [[] for _ in range(NUM_PLAYERS)]
         self.specialties = {}  # {siege: famille} (RogueRun.match_config, 3d47)
         self.adapts = []
-        if config["kind"] == "elite":
+        if config["kind"] == "duel":  # DuplicateMatch : habitues a deck d'elite (07ac)
+            for s, fam in config["habitues"].items():
+                decks[int(s)] = J.habitue_deck(fam)
+        elif config["kind"] == "elite":
             self.specialties = J.elite_specialties(self.rng)
             for s in ELITE_SEATS:
                 decks[s] = list(J.SPECIALTY_DECKS[self.specialties[s]])
@@ -75,7 +100,10 @@ class Match:
         if "baronne" in self.bosses:
             self.rules.curses.append(J.BaronneSees("baronne", BOSS_SEAT))
         self.player = Player(config, random.Random(self.rng.random()))
-        self.chain = DeckChain(1.0, self.rng)  # entrainement 100 % whiste
+        if config["kind"] == "duel":
+            self.chain = DuelDeals(config["duel_seed"])
+        else:
+            self.chain = DeckChain(1.0, self.rng)  # entrainement 100 % whiste
 
     def next_hand(self):
         """Nouvelle donne (RogueMatch._on_new_hand : end_hand, new_hand,
