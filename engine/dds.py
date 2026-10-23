@@ -70,7 +70,7 @@ def solve(game, new_gen=True):
     leader = trick[0][0] if trick else game.turn
     cards = (ctypes.c_int * 4)(*([c for _s, c in trick] + [0] * (4 - len(trick))))
     seats = (ctypes.c_int * 4)(*([s for s, _c in trick] + [0] * (4 - len(trick))))
-    mask = sum(1 << s for s in side_seats(game))
+    mask = sum(1 << s for s in set(side_seats(game)))
     trump = -1 if game.trump_suit is None else game.trump_suit
     r = lib.dds_solve(hands, trump, mask, leader, len(trick), cards, seats, 1 if new_gen else 0)
     if r < 0:

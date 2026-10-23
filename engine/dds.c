@@ -131,6 +131,51 @@ static int gen_moves(int turn, int *moves) {
     return n;
 }
 
+/* Plis surs du joueur `seat` qui a la main (borne basse de son camp) : il
+ * encaisse ses cartes maitresses. Si un adversaire peut encore couper, seule
+ * UNE couleur annexe compte (jouee d'abord, plafonnee par la plus courte
+ * longueur des adversaires qui ont de l'atout), puis ses atouts maitres. */
+static int quick_tricks(int seat) {
+    u64 live = H[0] | H[1] | H[2] | H[3];
+    int opp_trumps = 0, mate_all_trumps = 0;
+    if (trump >= 0) {
+        for (int p = 0; p < 4; p++) {
+            u64 t = H[p] & suit_mask(trump);
+            if (side[p] != side[seat] && t) opp_trumps = 1;
+            if (p != seat && side[p] == side[seat] && t && t == H[p]) mate_all_trumps = 1;
+        }
+    }
+    int total = 0, best_side = 0, trump_top = 0;
+    for (int s = 0; s < 4; s++) {
+        u64 all = live & suit_mask(s);
+        int top = 0;
+        while (all) {
+            int c = 63 - __builtin_clzll(all);
+            if (!(H[seat] >> c & 1)) break;
+            top++;
+            all &= ~(1ULL << c);
+        }
+        if (s == trump) {
+            trump_top = top;
+            continue;
+        }
+        if (mate_all_trumps) continue;  /* le partenaire devrait couper : il prendrait la main */
+        if (!opp_trumps) {
+            total += top;
+        } else {
+            int minlen = 13;
+            for (int p = 0; p < 4; p++) {
+                if (side[p] == side[seat] || !(H[p] & suit_mask(trump))) continue;
+                int l = popc(H[p] & suit_mask(s));
+                if (l < minlen) minlen = l;
+            }
+            int w = top < minlen ? top : minlen;
+            if (w > best_side) best_side = w;
+        }
+    }
+    return trump_top + (opp_trumps ? best_side : total);
+}
+
 static int search(int alpha, int beta) {
     nodes++;
     int turn = (leader_s + nt) & 3;
@@ -154,6 +199,12 @@ static int search(int alpha, int beta) {
             if (e->ub <= alpha) return e->ub;
             if (e->lb > alpha) alpha = e->lb;
             if (e->ub < beta) beta = e->ub;
+        }
+        int q = quick_tricks(leader_s);
+        if (side[leader_s]) {
+            if (q >= beta) return q;
+        } else if (R - q <= alpha) {
+            return R - q;
         }
     }
     int moves[13];
