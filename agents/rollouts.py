@@ -179,6 +179,8 @@ def action_values(game, seat, nets, score_fn, rng, samples, policy="nets"):
     legal = [c for c, ok in enumerate(game.legal_action_mask(seat)) if ok]
     if len(legal) < 2:
         return None
+    if policy == "dds":
+        return legal, dds_values(game, seat, legal, score_fn, rng, samples)
     sims = []
     for _ in range(samples):
         hands = determinize(game, seat, rng)
@@ -194,6 +196,26 @@ def action_values(game, seat, nets, score_fn, rng, samples, policy="nets"):
     for i, g in sims:
         q[i] += score_fn(g)[seat] / samples
     return legal, q
+
+
+def dds_values(game, seat, legal, score_fn, rng, samples):
+    """Q de chaque carte legale : moyenne sur `samples` mondes du vrai score
+    quand la suite est jouee PARFAITEMENT a cartes ouvertes (engine/dds.c)
+    -- un professeur plus fort que n'importe quel bot a regles (2026-10-23).
+    Contrats a atout seulement (dds.supported)."""
+    from engine import dds
+    q = [0.0] * len(legal)
+    for _ in range(samples):
+        hands = determinize(game, seat, rng)
+        last_trump = object()
+        for i, card in enumerate(legal):
+            g = clone_with_hands(game, hands)
+            g.step(seat, card)
+            if not g.done:
+                g = dds.finished_copy(g, dds.solve(g, new_gen=g.trump_suit != last_trump))
+                last_trump = g.trump_suit
+            q[i] += score_fn(g)[seat] / samples
+    return q
 
 
 def best_set_target(legal, q, margin, scale=1.0):

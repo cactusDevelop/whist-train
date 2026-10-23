@@ -111,15 +111,61 @@ def _bump_coupe(tally, key, err):
     entry["defausses"] += err
 
 
-def play_greedy_and_count(game, nets, tally, family):
-    """Joue la donne jusqu'au bout (argmax, comme Godot) en comptant les
-    surcoupes par (famille, camp)."""
+def atout_situation(game, seat):
+    """Atouts pas tires (signalement 2026-10-23) : contrat a deux (emballage,
+    trou), le camp DECLARANT a la main, tient de l'atout, et un adversaire en
+    a encore (vraies mains : mesure). Pas toujours une erreur -> comparer a
+    ExpertBot."""
+    if not hasattr(game, "partner") or game.trump_suit is None or game.current_trick:
+        return False
+    if getattr(game, "pending_discards", None) or seat not in (game.declarer, game.partner):
+        return False
+    trump = game.trump_suit
+    if not any(suit_of(c) == trump for c in game.hands[seat]):
+        return False
+    opp = [s for s in range(NUM_PLAYERS) if s not in (game.declarer, game.partner)]
+    return any(suit_of(c) == trump for s in opp for c in game.hands[s])
+
+
+def ruffed_by_defence(game, seat, card):
+    """Le pli que `card` complete est-il coupe par la defense (entame hors
+    atout, gagne par un atout d'un adversaire du camp declarant) ?"""
+    if not hasattr(game, "partner") or game.trump_suit is None or len(game.current_trick) != 3:
+        return False
+    trick = game.current_trick + [(seat, card)]
+    winner = trick_winner(trick, game.trump_suit)
+    if winner in (game.declarer, game.partner) or suit_of(trick[0][1]) == game.trump_suit:
+        return False
+    return any(s == winner and suit_of(c) == game.trump_suit for s, c in trick)
+
+
+def net_chooser(nets):
+    def choose(game, seat):
+        obs = torch.tensor(game.observation(seat), dtype=torch.float32)
+        mask = torch.tensor(ai_play_mask(game, seat), dtype=torch.bool)
+        return nets[game.role_of(seat)].act_greedy(obs, mask)
+    return choose
+
+
+def expert_chooser():
+    from agents import expert_bot
+    return expert_bot.choose_card
+
+
+def play_greedy_and_count(game, choose, tally, family):
+    """Joue la donne jusqu'au bout (`choose(game, seat)` : IA argmax comme
+    Godot, ou ExpertBot) en comptant les erreurs d'equipe par (famille, camp)."""
+    team = hasattr(game, "partner") and game.trump_suit is not None
+    if team:
+        _bump_coupe(tally.setdefault("_defense_coupe", {}), "total", 0)  # occasions = donnes a deux
     while not game.done:
         seat = game.turn
         role = game.role_of(seat)
-        obs = torch.tensor(game.observation(seat), dtype=torch.float32)
-        mask = torch.tensor(ai_play_mask(game, seat), dtype=torch.bool)
-        card = nets[role].act_greedy(obs, mask)
+        card = choose(game, seat)
+        if atout_situation(game, seat):
+            _bump_coupe(tally.setdefault("_atout", {}), "total", 0 if suit_of(card) == game.trump_suit else 1)
+        if team and ruffed_by_defence(game, seat, card):
+            tally["_defense_coupe"]["total"]["defausses"] += 1
         stealing = surcoupe_situation(game, seat)
         if stealing is not None:
             camp = "defense" if role == "defenseur" else "declarant"
@@ -139,7 +185,7 @@ def play_greedy_and_count(game, nets, tally, family):
         game.step(seat, card)
 
 
-def run_real(nets, population, rng, deals, tally):
+def run_real(choose, population, rng, deals, tally):
     from agents import evolution
     from engine.whisted import DeckChain
     from scripts.train import (MEASURE_WHISTED_RATIO, declarer_role_and_seats, dispatch_play_phase2,
@@ -157,17 +203,17 @@ def run_real(nets, population, rng, deals, tally):
         contract = bidding.locked_contract
         role, _seats = declarer_role_and_seats(contract)
         game = dispatch_play_phase2(contract, hands, dealer, bidding.bid_summary, whisted)
-        play_greedy_and_count(game, nets, tally, role)
+        play_greedy_and_count(game, choose, tally, role)
         chain.finish_played(game, dealer, contract["type"])
 
 
-def run_forced(nets, rng, deals, tally):
+def run_forced(choose, rng, deals, tally):
     from engine.cards import deal
     from scripts.train import DECLARER_FAMILIES, build_game
     for i in range(deals):
         family = DECLARER_FAMILIES[i % len(DECLARER_FAMILIES)]
         game, _seats = build_game(family, deal(rng), rng)
-        play_greedy_and_count(game, nets, tally, family)
+        play_greedy_and_count(game, choose, tally, family)
 
 
 def rate(entry):
@@ -175,19 +221,25 @@ def rate(entry):
 
 
 def measure(nets, population, deals, total_episodes=0, elapsed=0.0, out_file=TEAM_ERRORS_FILE_DEFAULT,
-            seed=TEAM_ERRORS_SEED):
+            seed=TEAM_ERRORS_SEED, player="ia"):
     """Mesure complete (graine fixe -> comparable d'une fois sur l'autre),
-    imprime et ajoute un record JSON Lines. Retourne le record."""
-    record = {"total_donnes": total_episodes, "elapsed_s": round(elapsed, 1),
+    imprime et ajoute un record JSON Lines. Retourne le record. `player` :
+    "ia" (reseaux greedy) ou "expert" (ExpertBot, memes donnes, reference)."""
+    choose = net_chooser(nets) if player == "ia" else expert_chooser()
+    record = {"total_donnes": total_episodes, "elapsed_s": round(elapsed, 1), "joueur": player,
               "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"), "deals": deals, "sets": {}}
     for name in ("reel", "force"):
         rng = random.Random(seed)
         tally = new_tally()
         if name == "reel":
-            run_real(nets, population, rng, deals, tally)
+            run_real(choose, population, rng, deals, tally)
         else:
-            run_forced(nets, rng, deals, tally)
+            run_forced(choose, rng, deals, tally)
         coupe = tally.pop("_coupe", {})
+        for key in ("_atout", "_defense_coupe"):
+            v = tally.pop(key, {}).get("total")
+            if v:
+                record.setdefault(key[1:], {})[name] = dict(v, taux=round(v["defausses"] / max(1, v["occasions"]), 4))
         record["sets"][name] = {k: dict(v, taux=None if rate(v) is None else round(rate(v), 4))
                                 for k, v in sorted(tally.items())}
         record.setdefault("renonce_non_coupee", {})[name] = {
@@ -206,6 +258,13 @@ def measure(nets, population, deals, total_episodes=0, elapsed=0.0, out_file=TEA
         for key, v in tally.items():
             print("    %-28s %5.1f%%  (%d/%d)" % (key, 100 * v["taux"], v["defausses"], v["occasions"]),
                   flush=True)
+    print("=== ATOUTS PAS TIRES : camp declarant (a deux) a la main, adversaires encore a l'atout, entame hors atout ===",
+          flush=True)
+    for name, v in record.get("atout", {}).items():
+        print("  [%s] %5.1f%%  (%d/%d)" % (name, 100 * v["taux"], v["defausses"], v["occasions"]), flush=True)
+    print("=== COUPES DE LA DEFENSE : plis hors atout coupes par la defense, par donne a deux ===", flush=True)
+    for name, v in record.get("defense_coupe", {}).items():
+        print("  [%s] %.3f / donne  (%d plis / %d donnes)" % (name, v["taux"], v["defausses"], v["occasions"]), flush=True)
     with open(out_file, "a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
     print("  (ajoute a %s)\n" % out_file, flush=True)
@@ -217,11 +276,14 @@ def main():
     parser.add_argument("--deals", type=int, default=TEAM_ERRORS_DEALS_DEFAULT)
     parser.add_argument("--seed", type=int, default=TEAM_ERRORS_SEED)
     parser.add_argument("--out-file", default=TEAM_ERRORS_FILE_DEFAULT)
+    parser.add_argument("--players", default="ia", help="ia, expert ou ia,expert (memes donnes)")
     args = parser.parse_args()
     from scripts.phase3 import load_exported_ai
     nets, population, _generation = load_exported_ai()
     start = time.time()
-    measure(nets, population, args.deals, out_file=args.out_file, seed=args.seed)
+    for player in args.players.split(","):
+        print("##### joueur : %s" % player, flush=True)
+        measure(nets, population, args.deals, out_file=args.out_file, seed=args.seed, player=player)
     print("Termine en %.0fs." % (time.time() - start), flush=True)
 
 
