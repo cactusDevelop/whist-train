@@ -36,6 +36,8 @@ static int side[4];
 static u64 H[4];
 static int tcard[4], tseat[4], nt, leader_s;
 static long long nodes;
+static long long node_stop = 0;  /* 0 = sans limite ; sinon arret quand nodes depasse */
+static int aborted = 0;
 
 static inline int suit_of(int c) { return c / 13; }
 static inline int popc(u64 x) { return __builtin_popcountll(x); }
@@ -178,6 +180,11 @@ static int quick_tricks(int seat) {
 
 static int search(int alpha, int beta) {
     nodes++;
+    if (node_stop && nodes > node_stop) {
+        aborted = 1;
+        return alpha;
+    }
+    if (aborted) return alpha;
     int turn = (leader_s + nt) & 3;
     Entry *e = NULL;
     u64 k0 = 0, k1 = 0;
@@ -269,6 +276,10 @@ static int search(int alpha, int beta) {
  * memes camps que l'appel precedent). */
 long long dds_nodes(void) { return nodes; }
 
+/* Budget de noeuds du prochain dds_solve (0 = sans limite) : au-dela, il
+ * renvoie -2 (position trop longue, a ecarter). */
+void dds_set_limit(long long limit) { node_stop = limit; }
+
 int dds_solve(const u64 *hands, int trump_, int side_a, int leader, int n_trick, const int *trick_cards,
               const int *trick_seats, int new_gen) {
     if (tt == NULL) {
@@ -276,6 +287,8 @@ int dds_solve(const u64 *hands, int trump_, int side_a, int leader, int n_trick,
         if (tt == NULL) return -1;
     }
     if (new_gen || gen == 0) gen++;
+    aborted = 0;
+    if (node_stop) node_stop += nodes;  /* budget relatif a ce solve */
     trump = trump_;
     for (int s = 0; s < 4; s++) {
         side[s] = (side_a >> s) & 1;
@@ -306,5 +319,10 @@ int dds_solve(const u64 *hands, int trump_, int side_a, int leader, int n_trick,
             hi = v > lo ? v : lo;
         }
     }
+    if (aborted) {
+        gen++;  /* bornes eventuellement fausses posees pendant l'arret */
+        lo = -2;
+    }
+    node_stop = 0;
     return lo;
 }

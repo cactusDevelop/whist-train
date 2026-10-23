@@ -43,6 +43,7 @@ def _lib():
                                   ctypes.c_int, ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int),
                                   ctypes.c_int]
         lib.dds_nodes.restype = ctypes.c_longlong
+        lib.dds_set_limit.argtypes = [ctypes.c_longlong]
         _LIB = lib
     return _LIB
 
@@ -58,10 +59,11 @@ def side_seats(game):
     return tuple(game.declarers)
 
 
-def solve(game, new_gen=True):
+def solve(game, new_gen=True, node_limit=0):
     """Plis restants (pli en cours compris) du camp declarant, jeu parfait a
     cartes ouvertes, depuis l'etat de `game` (ses mains). `new_gen=False`
-    garde la table de transposition (meme atout, memes camps)."""
+    garde la table de transposition (meme atout, memes camps). `node_limit`
+    > 0 : None si la recherche depasse ce nombre de noeuds."""
     if game.trump_suit is None and getattr(game, "trou_pending", lambda: False)():
         raise ValueError("Trou pas encore fixe : jouer l'entame d'abord")
     lib = _lib()
@@ -72,7 +74,10 @@ def solve(game, new_gen=True):
     seats = (ctypes.c_int * 4)(*([s for s, _c in trick] + [0] * (4 - len(trick))))
     mask = sum(1 << s for s in set(side_seats(game)))
     trump = -1 if game.trump_suit is None else game.trump_suit
+    lib.dds_set_limit(node_limit)
     r = lib.dds_solve(hands, trump, mask, leader, len(trick), cards, seats, 1 if new_gen else 0)
+    if r == -2:
+        return None
     if r < 0:
         raise MemoryError("dds : table de transposition")
     return r

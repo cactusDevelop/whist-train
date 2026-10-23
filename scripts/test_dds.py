@@ -106,10 +106,10 @@ def chrono_solve(rng, n, played_tricks, budget):
         random_play(g, rng, played_tricks * 4)
         n0 = dds.nodes()
         t0 = time.time()
-        v = dds.solve(g)
+        v = dds.solve(g, node_limit=200_000_000)
         times.append(time.time() - t0)
-        print("  apres %d plis #%d : %.3fs, %d noeuds, %d plis" % (played_tricks, i, times[-1], dds.nodes() - n0, v),
-              flush=True)
+        print("  apres %d plis #%d : %.3fs, %d noeuds, %s plis" % (
+            played_tricks, i, times[-1], dds.nodes() - n0, "hors budget" if v is None else v), flush=True)
         if sum(times) > budget:
             break
     print("solve apres %d plis : %d positions, moyenne %.3fs, mediane %.3fs, max %.3fs" % (
@@ -119,7 +119,7 @@ def chrono_solve(rng, n, played_tricks, budget):
 def chrono_teacher(rng, n, samples, played_tricks, budget):
     from agents import rollouts
     from engine.emballage import final_scores
-    times = []
+    times, skipped = [], 0
     for i in range(n):
         g = make_game(rng, ("voisins", "face")[i % 2])
         if g.trump_suit is None:
@@ -128,12 +128,12 @@ def chrono_teacher(rng, n, samples, played_tricks, budget):
         seat = g.turn
         legal = [c for c, ok in enumerate(g.legal_action_mask(seat)) if ok]
         t0 = time.time()
-        rollouts.dds_values(g, seat, legal, final_scores, rng, samples)
+        skipped += rollouts.dds_values(g, seat, legal, final_scores, rng, samples) is None
         times.append(time.time() - t0)
         if sum(times) > budget:
             break
-    print("decision du professeur (%d mondes, apres %d plis) : %d decisions, moyenne %.2fs, max %.2fs" % (
-        samples, played_tricks, len(times), statistics.mean(times), max(times)), flush=True)
+    print("decision du professeur (%d mondes, apres %d plis) : %d decisions (%d sans cible), moyenne %.2fs, max %.2fs" % (
+        samples, played_tricks, len(times), skipped, statistics.mean(times), max(times)), flush=True)
 
 
 def main():
@@ -148,8 +148,14 @@ def main():
     print("DDS_OK" if ok else "DDS_ECHEC", flush=True)
     for k in (9, 6, 3, 0):
         chrono_solve(rng, args.full, k, args.budget)
+    from agents import rollouts
+    import multiprocessing
     for k in (6, 3, 0):
         chrono_teacher(rng, 10, 16, k, args.budget)
+    rollouts.set_pool(multiprocessing.Pool(4), 4)
+    print("avec 4 processus :", flush=True)
+    for k in (3, 1, 0):
+        chrono_teacher(rng, 12, 16, k, args.budget)
     sys.exit(0 if ok else 1)
 
 

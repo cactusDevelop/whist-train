@@ -1554,10 +1554,10 @@ def main():
               "hasard (%d mondes), marge=%.2f, poids %.2f a cote de PPO." % (
                   args.rollout_surcoupe_samples, args.rollout_per_deal, args.rollout_samples,
                   args.rollout_margin, args.distill_coef), flush=True)
-        if args.rollout_policy == "expert" and args.rollout_workers > 1:
+        if args.rollout_policy in ("expert", "dds") and args.rollout_workers > 1:
             import multiprocessing
             rollouts.set_pool(multiprocessing.Pool(args.rollout_workers), args.rollout_workers)
-            print("  rollouts ExpertBot repartis sur %d processus." % args.rollout_workers, flush=True)
+            print("  rollouts (%s) repartis sur %d processus." % (args.rollout_policy, args.rollout_workers), flush=True)
     teacher = None
     teacher_deals = load_teacher_deals()
     if teacher_coef_at(teacher_deals, args.teacher_coef, args.teacher_decay_deals) > 0:
