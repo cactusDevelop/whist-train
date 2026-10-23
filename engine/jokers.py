@@ -28,12 +28,14 @@ import random
 
 from engine.cards import NUM_PLAYERS, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "6c5400e9ac96beb4"
+JOKER_SPEC_HASH = "d4c4b009cd0a8ba0"
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
 # texte ou de cablage seulement) : un reseau entraine sous l'une d'elles est
 # reexporte tel quel avec JOKER_SPEC_HASH. Une regle qui change -> vider la
 # liste (sauf le hash courant) et reentrainer.
 RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH}
+# d4c4 (whist-4-it, rapport admin 2026-10-23 "trop cheat") : Horloge Arretee seulement a partir du 8e pli -> reentrainement.
+# b88c (whist-4-it 396c261) : consigne du joueur humain retiree (jamais posee a l'entrainement) -> regles = 6c54.
 # 6c54 (whist-4-it, Chantier Rarete 02) : raretes/couts du tableau 01, deck de depart (cameleon, embuscade,
 # main_lourde), DEFENCE = mesure jokers_defence, Main Lourde pioche 2 + defausse 1 (to_discard), Cameleon Valet,
 # Courant d'Air la plus forte, Gueule de Bois la plus forte, Fausse Piste tout type sauf passif, Collet = ta
@@ -977,7 +979,7 @@ class ValetBorgne(Aura):
 
 
 class HorlogeArretee(Aura):
-    """6c54 : la donne s'arrete apres ce pli ; les plis restants vont au camp
+    """6c54 + d4c4 (a partir du 8e pli) : la donne s'arrete apres ce pli ; les plis restants vont au camp
     qui en a le plus (aucun en cas d'egalite), a son siege qui en a le plus."""
     def __init__(self, jid, owner):
         super().__init__(jid, owner)
@@ -985,7 +987,14 @@ class HorlogeArretee(Aura):
         self.rest = 0
         self.given = False
 
+    FROM_TRICK = 8  # d4c4 : a partir du 8e pli
+
+    def pointless(self, rules):
+        return rules.game.trick_count + 1 < self.FROM_TRICK
+
     def on_play(self, rules, target=-1):
+        if rules.game.trick_count + 1 < self.FROM_TRICK:
+            return {"error": "early"}
         self.stop_at = rules.game.trick_count + 1
         self.rest = max(0, rules.hand_tricks() - self.stop_at)
         return {}
@@ -1316,9 +1325,6 @@ class JokerRules:
         self.joker_cards = {}  # siege -> joker de pli pose dans le pli en cours
         self.score_bonus = [0] * NUM_PLAYERS
         self.vanished = []  # cartes defaussees par Courant d'Air
-        # Consigne du joueur a son camp {"suit", "high"} (joker_rules.gd
-        # directive) : jamais posee a l'entrainement -> sans effet.
-        self.directive = {}
         # scorer(game, contract) -> score de base de la donne (WhistTable._score_hand) ; une
         # fonction de module (jamais une fermeture : clone() = deepcopy garde la meme fonction)
         self.scorer = None
@@ -1329,7 +1335,6 @@ class JokerRules:
         self.joker_cards = {}
         self.score_bonus = [0] * NUM_PLAYERS
         self.vanished = []
-        self.directive = {}
         self.bind(game, contract)
 
     def bind(self, game, contract):
@@ -1342,9 +1347,6 @@ class JokerRules:
     def live(self):
         return self.curses + self.effects
 
-    def set_directive(self, suit, high=False):
-        self.directive = {} if suit is None else {"suit": suit, "high": high}
-
     def sides(self):
         """6c54 : les camps de la donne (chaque declarant seul en misere),
         chacun seul sans contrat."""
@@ -1355,9 +1357,6 @@ class JokerRules:
             return [[0], [1], [2], [3]]
         side = [s for s in (c["declarer"], c.get("partner", -1)) if s is not None and s >= 0]
         return [side, [s for s in range(NUM_PLAYERS) if s not in side]]
-
-    def teammates(self):
-        return [s for s in (1, 2, 3) if not self.is_opponent(PLAYER, s)]
 
     def is_opponent(self, seat, other):
         """joker_rules.gd (whist-4-it a3d70cf) : les camps viennent du
@@ -1473,14 +1472,9 @@ class JokerRules:
         return n
 
     def overrides_bot_card(self):
-        return bool(self.directive) or any(type(e).bot_card is not Effect.bot_card for e in self.live())
+        return any(type(e).bot_card is not Effect.bot_card for e in self.live())
 
     def bot_card(self, seat, card, legal):
-        # La consigne d'abord : un joker qui force une carte l'emporte.
-        if self.directive and seat in self.teammates():
-            asked = [c for c in legal if suit_of(c) == self.directive["suit"]]
-            if asked:
-                card = (max if self.directive["high"] else min)(asked, key=rank_of)
         for e in self.live():
             card = e.bot_card(seat, card, legal, self)
         return card

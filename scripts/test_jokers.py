@@ -232,20 +232,26 @@ def v2_tests():
     rules.play(0, "remonte_pli")
     oks.append(check("remonte-pli : dernier pli adverse", (game.tricks_won[0], game.tricks_won[3]), (1, 0)))
     state, rules, game = setup()
+    game.trick_count = 6
+    oks.append(check("horloge (d4c4) : pas avant le 8e pli", rules.play(0, "horloge_arretee"), {"error": "early"}))
+    oks.append(check("horloge (d4c4) : masquee avant le 8e pli", J.make_effect("horloge_arretee", 0).pointless(rules), True))
+    game.trick_count = 7
+    game.tricks_won[:] = [4, 1, 2, 0]
+    oks.append(check("horloge (d4c4) : jouable au 8e pli", J.make_effect("horloge_arretee", 0).pointless(rules), False))
     rules.play(0, "horloge_arretee")
-    oks.append(check("horloge : la donne s'arrete apres ce pli", rules.hand_tricks(), 1))
-    game.trick_count = 1
-    game.tricks_won[:] = [1, 0, 0, 0]
+    oks.append(check("horloge : la donne s'arrete apres ce pli", rules.hand_tricks(), 8))
+    game.trick_count = 8
+    game.tricks_won[:] = [5, 1, 2, 0]
     rules.on_trick_resolved(0, [])
-    oks.append(check("horloge (6c54) : les 12 plis restants au camp en tete", game.tricks_won, [13, 0, 0, 0]))
+    oks.append(check("horloge : les 5 plis restants au camp en tete", game.tricks_won, [10, 1, 2, 0]))
     state, rules, game = setup()
-    game.trick_count = 1
-    game.tricks_won[:] = [1, 0, 0, 0]
+    game.trick_count = 7
+    game.tricks_won[:] = [4, 3, 0, 0]
     rules.play(1, "horloge_arretee")
-    game.trick_count = 2
-    game.tricks_won[:] = [1, 1, 0, 0]
+    game.trick_count = 8
+    game.tricks_won[:] = [4, 4, 0, 0]
     rules.on_trick_resolved(1, [])
-    oks.append(check("horloge : egalite, personne", game.tricks_won, [1, 1, 0, 0]))
+    oks.append(check("horloge : egalite, personne", game.tricks_won, [4, 4, 0, 0]))
     # Enchere et ecarts.
     state, rules, game = setup()
     oks.append(check("main de fer (6c54) : cible une couleur", rules.play(0, "main_de_fer"), {"error": "target"}))
