@@ -11,8 +11,7 @@ run() {
 import json, sys
 for l in sys.stdin:
     r = json.loads(l)
-    print("  iter %d loss %.4f vs_champion %s vs_heuristic %s champion_vs_heuristic %s accepted %s
-    poses %s" % (
+    print("  iter %d loss %.4f vs_champion %s vs_heuristic %s champion_vs_heuristic %s accepted %s poses %s" % (
         r["iter"], r["loss"], r["vs_champion"], r["vs_heuristic"], r["champion_vs_heuristic"], r["gate"]["accepted"], r.get("casts_per_match")), flush=True)
 '
 }
