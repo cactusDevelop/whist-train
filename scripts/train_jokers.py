@@ -195,13 +195,18 @@ def policies_worker(args):
         for policy in [make_policy(w, m) for w, m in specs] + [J.heuristic_action, J.never_action]:
             match = jm.Match(cfg, mseed, deals=rec.recorded)
             r = p0 = 0.0
+            casts = {}
+
+            def count(_hand, _seat, action):
+                if action:
+                    casts[J.CASTABLE[action - 1]] = casts.get(J.CASTABLE[action - 1], 0) + 1
             for _ in range(jm.HANDS_PER_MATCH):
                 hand = match.next_hand()
-                pts = jm.play_out(hand, policy)
+                pts = jm.play_out(hand, policy, on_decision=count)
                 r += sum(jm.hand_reward(pts, s) for s in hand.holders())
                 p0 += pts[jm.PLAYER]
                 match.finish(hand)
-            res.append((r, p0))
+            res.append((r, p0, casts))
         out.append((seed, match.config, res))
     return out
 
@@ -260,7 +265,10 @@ def gate(pool, cand, champ, workers, matches, it):
           "vs_never": _stat([res[0][0] - res[3][0] for _s, _c, res in rows]),
           "player_points_vs_heuristic": _stat([res[0][1] - res[2][1] for _s, _c, res in rows]),
           "by_kind_vs_heuristic": {k: _stat(v) for k, v in sorted(by_kind.items()) if len(v) > 1},
-          "gate_seeds": [seeds[0], len(seeds)]}
+          "gate_seeds": [seeds[0], len(seeds)],
+          # jokers poses par match (diagnostic 2026-10-24 : le candidat en pose-t-il trop ?)
+          "casts_per_match": {who: {j: round(sum(res[k][2].get(j, 0) for _s, _c, res in rows) / len(rows), 3)
+                                    for j in J.CASTABLE} for k, who in ((0, "candidat"), (1, "champion"))}}
     m, se = ev["vs_champion"]
     ev["accepted"] = m > 0 and m > GATE_Z * se
     return ev

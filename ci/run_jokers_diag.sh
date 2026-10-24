@@ -11,11 +11,11 @@ run() {
 import json, sys
 for l in sys.stdin:
     r = json.loads(l)
-    print("  iter %d loss %.4f vs_champion %s vs_heuristic %s champion_vs_heuristic %s accepted %s" % (
-        r["iter"], r["loss"], r["vs_champion"], r["vs_heuristic"], r["champion_vs_heuristic"], r["gate"]["accepted"]), flush=True)
+    print("  iter %d loss %.4f vs_champion %s vs_heuristic %s champion_vs_heuristic %s accepted %s
+    poses %s" % (
+        r["iter"], r["loss"], r["vs_champion"], r["vs_heuristic"], r["champion_vs_heuristic"], r["gate"]["accepted"], r.get("casts_per_match")), flush=True)
 '
 }
-run sanite_lr0 --iters 1 --epochs 0
-run base --iters 2
-run doux_lr1e-4_1ep --iters 3 --lr 1e-4 --epochs 1
-run horizon_corrige --iters 3 --horizon corrected
+run base --iters 1
+run doux_lr1e-4_1ep --iters 1 --lr 1e-4 --epochs 1
+run horizon_match --iters 2 --horizon match
