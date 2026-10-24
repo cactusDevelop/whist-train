@@ -5,7 +5,7 @@ on:
     inputs:
       mode:
         type: choice
-        options: [ppo, jokers, jokers_eval, jokers_defence, jokers_test, jokers_duel, ppo_team_errors, dds_test, ppo_smoke]
+        options: [ppo, jokers, jokers_eval, jokers_defence, jokers_test, jokers_duel, ppo_team_errors, dds_test, ppo_smoke, jokers_diag]
         default: ppo
       init:
         description: "Jokers : repartir de l'archive (--init) au lieu de --resume"
@@ -30,8 +30,8 @@ jobs:
     env:
       MODE: ${{ inputs.mode || 'ppo' }}
       # jokers_eval / jokers_defence / jokers_test measure on the jokers state, ppo_team_errors on the ppo state; none saves it
-      MEASURE: ${{ inputs.mode == 'jokers_eval' || inputs.mode == 'jokers_defence' || inputs.mode == 'jokers_test' || inputs.mode == 'jokers_duel' || inputs.mode == 'ppo_team_errors' || inputs.mode == 'dds_test' || inputs.mode == 'ppo_smoke' }}
-      STATE: ${{ (inputs.mode == 'ppo_team_errors' || inputs.mode == 'dds_test' || inputs.mode == 'ppo_smoke') && 'ppo' || (inputs.mode == 'jokers_eval' || inputs.mode == 'jokers_defence' || inputs.mode == 'jokers_test' || inputs.mode == 'jokers_duel') && 'jokers' || inputs.mode || 'ppo' }}
+      MEASURE: ${{ inputs.mode == 'jokers_eval' || inputs.mode == 'jokers_defence' || inputs.mode == 'jokers_test' || inputs.mode == 'jokers_duel' || inputs.mode == 'jokers_diag' || inputs.mode == 'ppo_team_errors' || inputs.mode == 'dds_test' || inputs.mode == 'ppo_smoke' }}
+      STATE: ${{ (inputs.mode == 'ppo_team_errors' || inputs.mode == 'dds_test' || inputs.mode == 'ppo_smoke') && 'ppo' || (inputs.mode == 'jokers_eval' || inputs.mode == 'jokers_defence' || inputs.mode == 'jokers_test' || inputs.mode == 'jokers_duel' || inputs.mode == 'jokers_diag') && 'jokers' || inputs.mode || 'ppo' }}
       INIT: ${{ inputs.init || false }}
       GH_TOKEN: ${{ github.token }}
       STATE_KEY: ${{ secrets.STATE_KEY }}

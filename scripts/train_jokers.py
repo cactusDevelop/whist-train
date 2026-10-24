@@ -327,6 +327,7 @@ def main():
     parser.add_argument("--gate-matches", type=int, default=GATE_MATCHES,
                         help="matchs neufs de la porte du champion par iteration")
     parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--epochs", type=int, default=6, help="passes sur les donnees a chaque iteration (0 = reseau inchange)")
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--horizon", choices=("hand", "match", "corrected"), default="hand",
                         help="cible des rollouts : donne en cours, donne + donnes restantes du match "
@@ -423,7 +424,7 @@ def main():
             sizes = (sizes + [len(new)])[-REPLAY_ITERS:]
             main._sizes = sizes
             data = (data + new)[-sum(sizes):]  # les REPLAY_ITERS dernieres iterations
-            loss = fit(net, data, lr=args.lr)
+            loss = fit(net, data, epochs=args.epochs, lr=args.lr) if args.epochs > 0 else 0.0
             weights = net_to_numpy(net)
             ev = gate(pool, weights, champ["w"], args.workers, args.gate_matches, it)
             ev["gate"] = {"champion_iter": champ["iter"], "accepted": ev.pop("accepted"), "z": GATE_Z}
