@@ -69,7 +69,7 @@ const BASE64_WEIGHTS := "{weights}"
 
 def load_net():
     ckpt = torch.load(CHECKPOINT, map_location="cpu", weights_only=False)
-    if ckpt["spec_hash"] not in J.RULE_EQUIVALENT_HASHES or ckpt["castable"] != J.CASTABLE or ckpt["obs_dim"] != O.OBS_DIM:
+    if ckpt["spec_hash"] not in J.RULE_EQUIVALENT_HASHES | J.MEASURED_CHAMPION_HASHES or ckpt["castable"] != J.CASTABLE or ckpt["obs_dim"] != O.OBS_DIM:
         raise SystemExit("checkpoint entraine sur d'autres regles/obs : %s %s %s" % (
             ckpt["spec_hash"], ckpt["castable"], ckpt["obs_dim"]))
     net = PolicyValueNet(O.OBS_DIM, J.ACTION_DIM)

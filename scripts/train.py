@@ -1395,6 +1395,9 @@ def main():
     parser.add_argument("--duel-deals", type=int, default=None,
                         help="donnes (x2, duplicate) du duel IA vs ExpertBot en vrais points a chaque "
                              "evaluation (scripts/duel_expert.py ; 0 pour desactiver)")
+    parser.add_argument("--champion-deals", type=int, default=None,
+                        help="donnes (x2, duplicate) de la porte IA vs championne du jeu de la carte en vrais "
+                             "points a chaque evaluation (scripts/champion_play.py ; 0 pour desactiver)")
     parser.add_argument("--expert-match-contracts", type=int, default=None,
                         help="contrats du duplicate vs ExpertBot a chaque evaluation (0 pour desactiver)")
     parser.add_argument("--team-errors-deals", type=int, default=None,
@@ -1418,7 +1421,8 @@ def main():
     # depuis scripts.train -- un import au niveau module creerait un cycle
     # (scripts.train pas encore initialise au moment ou eval_vs_random essaierait
     # de le relire). A ce point de main(), le module est deja pleinement charge.
-    from scripts import duel_expert, eval_vs_random, expert_bot_match, phase3, team_errors
+    from scripts import champion_play, duel_expert, eval_vs_random, expert_bot_match, phase3, team_errors
+    champion_deals = champion_play.CHAMPION_DEALS_DEFAULT if args.champion_deals is None else args.champion_deals
     duel_deals = duel_expert.DUEL_DEALS_DEFAULT if args.duel_deals is None else args.duel_deals
     expert_match_contracts = (expert_bot_match.EXPERT_MATCH_CONTRACTS_DEFAULT
                               if args.expert_match_contracts is None else args.expert_match_contracts)
@@ -1603,6 +1607,10 @@ def main():
                   teacher_decay, teacher_deals, teacher_state_path(teacher_state_file)), flush=True)
     print("Phase 1 : poids de tirage %.1f par famille misere (1 pour solitaire/emballage)." % (
         args.phase1_misere_weight), flush=True)
+    if champion_deals:
+        champion_play.ensure_champion(nets)
+        print("  + a chaque evaluation : porte IA vs championne du jeu de la carte (%d donnes x2) -> %s." % (
+            champion_deals, champion_play.CHAMPION_FILE_DEFAULT), flush=True)
     if duel_deals:
         print("  + a chaque evaluation : duel IA vs ExpertBot en vrais points (%d donnes x2) -> %s." % (
             duel_deals, duel_expert.DUEL_FILE_DEFAULT), flush=True)
@@ -1759,6 +1767,9 @@ def main():
                 if expert_match_contracts:
                     expert_bot_match.measure_and_record(nets, total_episodes, time.time() - start_time,
                                                         expert_match_contracts)
+                if champion_deals:
+                    champion_play.measure_and_gate(nets, population, total_episodes, time.time() - start_time,
+                                                   champion_deals)
                 if duel_deals:
                     duel_expert.measure_and_record(nets, population, total_episodes, time.time() - start_time,
                                                    duel_deals)

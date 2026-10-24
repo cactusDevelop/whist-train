@@ -20,3 +20,5 @@ eval_vs_random.jsonl
 duel_expert.jsonl
 expert_match.jsonl
 team_errors.jsonl
+checkpoints_v2/champion_play
+champion_play.jsonl

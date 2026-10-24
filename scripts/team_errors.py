@@ -95,6 +95,9 @@ def coupe_situation(game, seat):
     return winning, trick_winner(game.current_trick, trump) in mates
 
 
+MISERE_FAMILIES = ("piccolo", "petite_misere", "grande_misere", "misere_etalee")
+
+
 def new_tally():
     return {}
 
@@ -170,9 +173,15 @@ def play_greedy_and_count(game, choose, tally, family):
         if stealing is not None:
             camp = "defense" if role == "defenseur" else "declarant"
             err = 1 if card in stealing else 0
-            _bump(tally, "%s/%s" % (family, camp), 1, err)
-            _bump(tally, "total/%s" % camp, 1, err)
-            _bump(tally, "total", 1, err)
+            if family in MISERE_FAMILIES:
+                # Defense de misere : le pli reste a la defense quoi qu'on joue,
+                # prendre avec une grosse carte = s'en debarrasser (deblocage),
+                # souvent le bon coup -> affiche a part, hors total (2026-10-24).
+                _bump(tally, "%s/%s (hors total)" % (family, camp), 1, err)
+            else:
+                _bump(tally, "%s/%s" % (family, camp), 1, err)
+                _bump(tally, "total/%s" % camp, 1, err)
+                _bump(tally, "total", 1, err)
         coupe = coupe_situation(game, seat)
         if coupe is not None:
             winning, mate_master = coupe
@@ -181,7 +190,10 @@ def play_greedy_and_count(game, choose, tally, family):
             ct = tally.setdefault("_coupe", {})
             _bump_coupe(ct, "%s/%s" % (family, camp), err)
             _bump_coupe(ct, "total/%s" % ("coequipier_maitre" if mate_master else "coequipier_battu"), err)
-            _bump_coupe(ct, "total", err)
+            # Ne pas couper un coequipier deja maitre est souvent juste : seul le
+            # cas coequipier battu est compte comme erreur (2026-10-24).
+            if not mate_master:
+                _bump_coupe(ct, "total", err)
         game.step(seat, card)
 
 
@@ -251,7 +263,7 @@ def measure(nets, population, deals, total_episodes=0, elapsed=0.0, out_file=TEA
             if v["occasions"]:
                 print("    %-28s %5.1f%%  (%d/%d)" % (key, 100 * v["taux"], v["surcoupes"], v["occasions"]),
                       flush=True)
-    print("=== RENONCE NON COUPEE : coequipier entame dans notre renonce, on defausse au lieu de couper ===",
+    print("=== RENONCE NON COUPEE : coequipier entame dans notre renonce, on defausse au lieu de couper (total = coequipier battu) ===",
           flush=True)
     for name, tally in record["renonce_non_coupee"].items():
         print("  [%s]" % name, flush=True)
