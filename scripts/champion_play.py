@@ -13,7 +13,7 @@ Porte : si l'ecart depasse 2 erreurs-types, la courante devient la
 championne (checkpoints_v2/champion_play/<role>.pt). Pas de retour arriere
 de l'entrainement : la porte sert a MESURER et a garder la meilleure IA.
 
-Usage : venv/Scripts/python.exe scripts/champion_play.py [--deals 400]
+Usage : venv/Scripts/python.exe scripts/champion_play.py [--deals 1000]
 Appele aussi par scripts/train.py a chaque evaluation (champion_play.jsonl).
 """
 
@@ -39,7 +39,7 @@ from engine.trou import detect_trou
 from engine.whisted import DeckChain
 
 CHAMPION_FILE_DEFAULT = "champion_play.jsonl"
-CHAMPION_DEALS_DEFAULT = 400  # donnes (x2 en duplicate) a chaque evaluation
+CHAMPION_DEALS_DEFAULT = 1000  # donnes (x2 en duplicate) a chaque evaluation
 CHAMPION_SEED = 20261024  # fixe : memes donnes a chaque mesure
 GATE_Z = 2.0
 NEW_SEATS = ({0, 2}, {1, 3})
