@@ -22,3 +22,13 @@ expert_match.jsonl
 team_errors.jsonl
 checkpoints_v2/champion_play
 champion_play.jsonl
+checkpoints_v2/oracle_bouche_trou.pt
+checkpoints_v2/oracle_defenseur.pt
+checkpoints_v2/oracle_emballage.pt
+checkpoints_v2/oracle_grande_misere.pt
+checkpoints_v2/oracle_misere_etalee.pt
+checkpoints_v2/oracle_petite_misere.pt
+checkpoints_v2/oracle_piccolo.pt
+checkpoints_v2/oracle_solitaire.pt
+checkpoints_v2/oracle_trou.pt
+checkpoints_v2/oracle_state.json

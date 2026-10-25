@@ -106,7 +106,7 @@ import torch
 sys.path.insert(0, ".")
 
 from agents.play_guards import train_play_mask
-from agents import credit, evolution, expert_bot, ppo, rollouts, specialists
+from agents import credit, evolution, expert_bot, oracle_critic, ppo, rollouts, specialists
 from agents.abondance_rule import EMBALLAGE_RAISE_MAX_LEVEL, abondance_rule, apply_bid_guards, emballage_raise_too_high
 from agents import bid_ppo as bid_ppo_mod
 from agents.checkpoint_io import safe_write_json
@@ -225,6 +225,21 @@ ROLLOUT_ATOUT_SAMPLES_DEFAULT = 0
 # Marge (unites de retour : plis ; points/10 pour defenseur) sous laquelle une
 # carte compte parmi les meilleures -- absorbe le bruit des 4 mondes.
 ROLLOUT_MARGIN_DEFAULT = 0.25
+# Marge exprimee EN PLIS (2026-10-25) : remplace --rollout-margin si > 0. La
+# marge ci-dessus etait multipliee par return_scale (10) et comparee a des
+# POINTS (un pli = 2 pts en emballage/solo) ou des PLIS (declarants Phase 1) :
+# 2.5 unites = 1.25 a 2.5 plis -> une coupe qui rapporte UN pli n'etait jamais
+# enseignee (renonce non coupee 29 -> 37 % malgre le DDS). Ici : pli de chaque
+# siege (rollout["trick_unit"]) x cette marge.
+ROLLOUT_MARGIN_TRICKS_DEFAULT = 0.0
+POINTS_PER_TRICK = 2.0  # pas d'un pli en vrais points (EMBALLAGE_STEP, SOLO_SUCCESS_STEP)
+# Evaluateur omniscient (agents/oracle_critic.py) : lots d'apprentissage d'un
+# role avant que ses valeurs remplacent la tete de valeur de l'acteur dans GAE.
+ORACLE_WARM_LOTS_DEFAULT = 30
+
+# Etat de l'evaluateur omniscient, rempli par main() si --oracle-critic :
+# {"critics": {role: (critic, optimizer)}, "lots": {role: n}, "warm": n, "dir": ...}
+ORACLE = None
 # Politique qui joue la SUITE de la donne dans les rollouts (2026-10-19).
 # "nets" (historique) : les reseaux eux-memes -- leurs propres faiblesses
 # faussent Q (surcoupe 26/09 : l'IA a cesse de prendre les plis). "expert" :
@@ -642,7 +657,7 @@ def play_out(game, nets, rollout=None, teacher=None, visitors=None, rng=None):
     (visitor_card) et n'enregistrent rien.
 
     -> par siege : [(role, obs, mask, action, logp, valeur_brute, pli,
-    cible)] -- `pli` = nombre de plis deja termines au moment de la
+    cible, entree_oracle)] -- `pli` = nombre de plis deja termines au moment de la
     decision (0 pour l'ecart de petite misere), base du merite au pli ;
     `cible` = cible de politique des rollouts (agents/rollouts.py) ou None.
 
@@ -684,7 +699,10 @@ def play_out(game, nets, rollout=None, teacher=None, visitors=None, rng=None):
             q = rollouts.action_values(game, seat, nets, rollout["score_fn"], rollout["rng"], samples,
                                        rollout.get("policy", "nets"))
             if q is not None:
-                target = rollouts.best_set_target(q[0], q[1], rollout["margin"], credit.return_scale(role))
+                if rollout.get("margin_tricks"):
+                    target = rollouts.best_set_target(q[0], q[1], rollout["margin_tricks"] * rollout["trick_unit"][seat])
+                else:
+                    target = rollouts.best_set_target(q[0], q[1], rollout["margin"], credit.return_scale(role))
                 rollout["count"] += 1
                 rollout["corrective"] += target is not None
             rollout["seconds"] += time.time() - t0
@@ -699,12 +717,18 @@ def play_out(game, nets, rollout=None, teacher=None, visitors=None, rng=None):
             target = torch.tensor(taught, dtype=torch.float32)
         with torch.no_grad():
             action, logp, value = net.act(obs, mask)
+        value = value.item() * credit.return_scale(role)
+        oracle_x = None
+        if ORACLE is not None:
+            oracle_x = torch.cat([obs, oracle_critic.oracle_features(game, seat)])
+            if ORACLE["lots"].get(role, 0) >= ORACLE["warm"]:
+                value = oracle_critic.value(ORACLE["critics"][role][0], oracle_x, credit.return_scale(role))
         if teacher_card is not None:
             teacher["count"] += 1
             teacher["agree"] += action == teacher_card
         trick_index = len(game.play_log) // 4
         per_seat_steps[seat].append(
-            (role, obs, mask, action, logp, value.item() * credit.return_scale(role), trick_index, target))
+            (role, obs, mask, action, logp, value, trick_index, target, oracle_x))
         game.step(seat, action)
     return per_seat_steps
 
@@ -796,8 +820,8 @@ def record(buffers, role_returns, per_seat_steps, game, score_fn):
         if not steps:
             continue
         returns, advantages = credit.seat_credit(
-            [(k, v) for _r, _o, _m, _a, _l, v, k, _t in steps], [p[seat] for p in potentials], final[seat])
-        for (role, obs, mask, action, logp, _v, _k, target), ret, adv in zip(steps, returns, advantages):
+            [(k, v) for _r, _o, _m, _a, _l, v, k, _t, _x in steps], [p[seat] for p in potentials], final[seat])
+        for (role, obs, mask, action, logp, _v, _k, target, oracle_x), ret, adv in zip(steps, returns, advantages):
             buf = buffers[role]
             buf["obs"].append(obs)
             buf["mask"].append(mask)
@@ -807,6 +831,8 @@ def record(buffers, role_returns, per_seat_steps, game, score_fn):
             buf["adv"].append(adv)
             if "target" in buf:
                 buf["target"].append(target)
+            if oracle_x is not None:
+                buf["oracle_x"].append(oracle_x)
         role_returns[steps[0][0]].append(final[seat])
     return final
 
@@ -827,6 +853,9 @@ def run_episode(nets, rng, buffers, role_returns, family_counts, stats, chain=No
     score_fn = lambda g: compute_scores(family, g, declarer_seats)
     if rollout is not None:
         rollout["score_fn"] = score_fn
+        # declarants solo/emballage Phase 1 notes en plis, tout le reste en points
+        rollout["trick_unit"] = [1.0 if family in ("solitaire", "emballage") and s in declarer_seats
+                                 else POINTS_PER_TRICK for s in range(4)]
     visitors = None
     if rng.random() < visitor_prob:
         style = pick_visitor_style(rng)
@@ -845,6 +874,10 @@ def run_episode(nets, rng, buffers, role_returns, family_counts, stats, chain=No
 def save_all(nets):
     for role in PLAY_ROLES:
         specialists.save(role, nets[role], nets[role + "_optimizer"])
+    if ORACLE is not None:
+        for role, (critic, optimizer) in ORACLE["critics"].items():
+            oracle_critic.save(ORACLE["dir"], role, critic, optimizer)
+        oracle_critic.save_state(ORACLE["dir"], ORACLE["lots"])
 
 
 # --- Phase 2 : vraie enchere ---------------------------------------------
@@ -1070,6 +1103,7 @@ def run_phase2_episode(nets, population, rng, buffers, role_returns, bid_action_
         score_fn = lambda g: compute_scores_real(role, g, declarer_seats, contract)
         if rollout is not None:
             rollout["score_fn"] = score_fn
+            rollout["trick_unit"] = [POINTS_PER_TRICK] * 4
         steps = play_out(game, nets, rollout, teacher, visitors, rng)
         if chain is not None:
             chain.finish_played(game, dealer, contract["type"])
@@ -1378,6 +1412,12 @@ def main():
     parser.add_argument("--rollout-margin", type=float, default=ROLLOUT_MARGIN_DEFAULT,
                          help="ecart de valeur (plis ; points/10 pour defenseur) sous lequel une carte compte "
                               "parmi les meilleures")
+    parser.add_argument("--rollout-margin-tricks", type=float, default=ROLLOUT_MARGIN_TRICKS_DEFAULT,
+                        help="marge EN PLIS (> 0 remplace --rollout-margin), voir ROLLOUT_MARGIN_TRICKS_DEFAULT")
+    parser.add_argument("--oracle-critic", action="store_true",
+                        help="evaluateur omniscient (4 mains visibles) pour les avantages PPO, voir agents/oracle_critic.py")
+    parser.add_argument("--oracle-warm-lots", type=int, default=ORACLE_WARM_LOTS_DEFAULT,
+                        help="lots d'apprentissage de l'evaluateur omniscient avant de l'utiliser dans GAE")
     parser.add_argument("--distill-coef", type=float, default=ppo.DISTILL_COEF,
                          help="poids de la perte vers la cible des rollouts, a cote de PPO")
     parser.add_argument("--teacher-coef", type=float, default=TEACHER_COEF_DEFAULT,
@@ -1449,6 +1489,13 @@ def main():
         net, optimizer = specialists.load_or_create(role)
         nets[role] = net
         nets[role + "_optimizer"] = optimizer
+    global ORACLE
+    if args.oracle_critic:
+        ORACLE = {"critics": {role: oracle_critic.load_or_create(specialists.CHECKPOINT_DIR, role) for role in PLAY_ROLES},
+                  "lots": oracle_critic.load_state(specialists.CHECKPOINT_DIR), "warm": args.oracle_warm_lots,
+                  "dir": specialists.CHECKPOINT_DIR}
+        print("Evaluateur omniscient (4 mains visibles, entrainement seul) : utilise dans GAE apres %d lots "
+              "par role ; deja appris : %s." % (args.oracle_warm_lots, ORACLE["lots"] or "rien"), flush=True)
 
     if os.path.exists(args.population_file):
         population, generation = evolution.load_population(args.population_file)
@@ -1565,7 +1612,7 @@ def main():
         rollout = {"coupe_samples": args.rollout_coupe_samples, "coupes": 0,
                    "atout_samples": args.rollout_atout_samples, "atouts": 0, "prob": args.rollout_per_deal / DECISIONS_PER_DEAL, "samples": args.rollout_samples,
                    "surcoupe_samples": args.rollout_surcoupe_samples,
-                   "margin": args.rollout_margin, "rng": random.Random(rng.random()),
+                   "margin": args.rollout_margin, "margin_tricks": args.rollout_margin_tricks, "rng": random.Random(rng.random()),
                    "score_fn": None, "policy": args.rollout_policy, "count": 0, "corrective": 0, "surcoupes": 0, "seconds": 0.0}
         print("Rollouts : chaque occasion de surcoupe hors misere (%d mondes) + ~%.1f decision(s)/donne au "
               "hasard (%d mondes), marge=%.2f, poids %.2f a cote de PPO." % (
@@ -1624,7 +1671,7 @@ def main():
     try:
         while not _stop_requested():
             batch_num += 1
-            buffers = {role: {"obs": [], "mask": [], "action": [], "logp": [], "ret": [], "adv": [], "target": []}
+            buffers = {role: {"obs": [], "mask": [], "action": [], "logp": [], "ret": [], "adv": [], "target": [], "oracle_x": []}
                        for role in PLAY_ROLES}
             if rollout is not None:
                 rollout["count"], rollout["corrective"], rollout["surcoupes"], rollout["seconds"] = 0, 0, 0, 0.0
@@ -1703,6 +1750,16 @@ def main():
                           batch_num, total_episodes, elapsed, role, len(buf["obs"]), avg_return,
                           ppo_stats["policy_loss"], ppo_stats["targets"], ppo_stats["distill_loss"]),
                       flush=True)
+                if ORACLE is not None and len(buf["oracle_x"]) == len(buf["ret"]):
+                    critic, critic_opt = ORACLE["critics"][role]
+                    oracle_loss = oracle_critic.update(critic, critic_opt, buf["oracle_x"], buf["ret"],
+                                                       credit.return_scale(role))
+                    ORACLE["lots"][role] = ORACLE["lots"].get(role, 0) + 1
+                    # perte de valeur acteur (aveugle) vs omniscient : l'ecart = la chance retiree des avantages
+                    print("    %-14s valeur aveugle=%.4f omnisciente=%.4f (%s)" % (
+                        role, ppo_stats["value_loss"], oracle_loss,
+                        "dans GAE" if ORACLE["lots"][role] >= ORACLE["warm"] else
+                        "chauffe %d/%d" % (ORACLE["lots"][role], ORACLE["warm"])), flush=True)
 
             if bid_ppo is not None and bid_ppo["buffer"]["obs"]:
                 buf = bid_ppo["buffer"]
