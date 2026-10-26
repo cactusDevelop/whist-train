@@ -15,6 +15,8 @@ for l in sys.stdin:
         r["iter"], r["loss"], r["vs_champion"], r["vs_heuristic"], r["champion_vs_heuristic"], r["gate"]["accepted"], r.get("casts_per_match")), flush=True)
 '
 }
-run base --iters 1
-run doux_lr1e-4_1ep --iters 1 --lr 1e-4 --epochs 1
-run horizon_match --iters 2 --horizon match
+# diag 3 (2026-10-26) : cible --target team (somme sur les bots a jokers, comme la porte).
+# Reference diag 2 (cible par siege, memes graines) : base -7.29, doux -3.29, horizon match -3.56/-4.94.
+run team --iters 2 --target team
+run team_doux_lr1e-4_1ep --iters 1 --target team --lr 1e-4 --epochs 1
+run team_horizon_match --iters 2 --target team --horizon match

@@ -15,8 +15,9 @@ entrees) ; ces poids ne sont jamais exportes.
 
 Un evaluateur par role (memes roles que agents/specialists.py), predit le
 retour au pli divise par credit.return_scale, comme la tete de valeur
-(agents/ppo.py). Tant qu'il n'est pas chaud (`warm_lots` lots
-d'apprentissage), train.py garde la tete de valeur de l'acteur.
+(agents/ppo.py). Tant qu'il n'est pas chaud (lots d'apprentissage ET perte
+moyenne sous celle de la tete de valeur aveugle), train.py garde la tete de
+valeur de l'acteur (scripts/train.py:oracle_in_gae).
 """
 
 import json
@@ -34,7 +35,7 @@ HIDDEN = 256
 LR = 3e-4
 EPOCHS = 4
 MINIBATCH_SIZE = 512
-STATE_FILE = "oracle_state.json"  # {role: lots appris}
+STATE_FILE = "oracle_state.json"  # {"lots": {role: n}, "ema": {role: [perte aveugle, perte omnisciente]}}
 
 
 class OracleCritic(nn.Module):
@@ -85,8 +86,11 @@ def load_state(checkpoint_dir):
     p = os.path.join(checkpoint_dir, STATE_FILE)
     if os.path.exists(p):
         with open(p) as fh:
-            return json.load(fh)
-    return {}
+            state = json.load(fh)
+        state.setdefault("lots", {})
+        state.setdefault("ema", {})
+        return state
+    return {"lots": {}, "ema": {}}
 
 
 def save_state(checkpoint_dir, state):

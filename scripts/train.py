@@ -234,8 +234,17 @@ ROLLOUT_MARGIN_DEFAULT = 0.25
 ROLLOUT_MARGIN_TRICKS_DEFAULT = 0.0
 POINTS_PER_TRICK = 2.0  # pas d'un pli en vrais points (EMBALLAGE_STEP, SOLO_SUCCESS_STEP)
 # Evaluateur omniscient (agents/oracle_critic.py) : lots d'apprentissage d'un
-# role avant que ses valeurs remplacent la tete de valeur de l'acteur dans GAE.
+# role avant que ses valeurs remplacent la tete de valeur de l'acteur dans GAE,
+# ET seulement si sa perte moyenne (EMA) est sous celle de la tete aveugle --
+# un evaluateur neuf moins precis que l'ancien bruiterait les avantages.
 ORACLE_WARM_LOTS_DEFAULT = 30
+ORACLE_EMA = 0.9
+
+
+def oracle_in_gae(role):
+    lots = ORACLE["state"]["lots"].get(role, 0)
+    ema = ORACLE["state"]["ema"].get(role)
+    return lots >= ORACLE["warm"] and ema is not None and ema[1] < ema[0]
 
 # Etat de l'evaluateur omniscient, rempli par main() si --oracle-critic :
 # {"critics": {role: (critic, optimizer)}, "lots": {role: n}, "warm": n, "dir": ...}
@@ -721,7 +730,7 @@ def play_out(game, nets, rollout=None, teacher=None, visitors=None, rng=None):
         oracle_x = None
         if ORACLE is not None:
             oracle_x = torch.cat([obs, oracle_critic.oracle_features(game, seat)])
-            if ORACLE["lots"].get(role, 0) >= ORACLE["warm"]:
+            if oracle_in_gae(role):
                 value = oracle_critic.value(ORACLE["critics"][role][0], oracle_x, credit.return_scale(role))
         if teacher_card is not None:
             teacher["count"] += 1
@@ -877,7 +886,7 @@ def save_all(nets):
     if ORACLE is not None:
         for role, (critic, optimizer) in ORACLE["critics"].items():
             oracle_critic.save(ORACLE["dir"], role, critic, optimizer)
-        oracle_critic.save_state(ORACLE["dir"], ORACLE["lots"])
+        oracle_critic.save_state(ORACLE["dir"], ORACLE["state"])
 
 
 # --- Phase 2 : vraie enchere ---------------------------------------------
@@ -1420,6 +1429,9 @@ def main():
                         help="lots d'apprentissage de l'evaluateur omniscient avant de l'utiliser dans GAE")
     parser.add_argument("--distill-coef", type=float, default=ppo.DISTILL_COEF,
                          help="poids de la perte vers la cible des rollouts, a cote de PPO")
+    parser.add_argument("--declarer-distill-coef", type=float, default=None,
+                        help="poids des cibles des rollouts pour les roles declarants hors imitation reservee "
+                             "(defaut : --distill-coef)")
     parser.add_argument("--teacher-coef", type=float, default=TEACHER_COEF_DEFAULT,
                         help="poids initial de l'imitation de l'ExpertBot (0 pour desactiver), voir TEACHER_*")
     parser.add_argument("--misere-teacher-coef", type=float, default=MISERE_TEACHER_COEF_DEFAULT,
@@ -1492,10 +1504,11 @@ def main():
     global ORACLE
     if args.oracle_critic:
         ORACLE = {"critics": {role: oracle_critic.load_or_create(specialists.CHECKPOINT_DIR, role) for role in PLAY_ROLES},
-                  "lots": oracle_critic.load_state(specialists.CHECKPOINT_DIR), "warm": args.oracle_warm_lots,
+                  "state": oracle_critic.load_state(specialists.CHECKPOINT_DIR), "warm": args.oracle_warm_lots,
                   "dir": specialists.CHECKPOINT_DIR}
         print("Evaluateur omniscient (4 mains visibles, entrainement seul) : utilise dans GAE apres %d lots "
-              "par role ; deja appris : %s." % (args.oracle_warm_lots, ORACLE["lots"] or "rien"), flush=True)
+              "par role et perte sous celle de la tete aveugle ; deja appris : %s." % (
+                  args.oracle_warm_lots, ORACLE["state"]["lots"] or "rien"), flush=True)
 
     if os.path.exists(args.population_file):
         population, generation = evolution.load_population(args.population_file)
@@ -1738,6 +1751,11 @@ def main():
                 role_coef = distill_coef
                 if teacher is not None and teacher.get("roles") is not None and role not in teacher["roles"]:
                     role_coef = args.distill_coef
+                # 26/10 : les cibles dds a 1 (au lieu de 0.2 avant le 24/10) ont fait reculer le jeu
+                # du declarant (-0.35 pt/donne en emballage, porte par camp) ; la defense, elle, a progresse
+                if (role != DEFENSEUR and args.declarer_distill_coef is not None
+                        and (teacher is None or teacher.get("roles") is None or role not in teacher["roles"])):
+                    role_coef = args.declarer_distill_coef
                 ppo_stats = ppo.update(
                     nets[role], nets[role + "_optimizer"],
                     buf["obs"], buf["mask"], buf["action"], buf["logp"], buf["ret"], buf["adv"],
@@ -1754,12 +1772,17 @@ def main():
                     critic, critic_opt = ORACLE["critics"][role]
                     oracle_loss = oracle_critic.update(critic, critic_opt, buf["oracle_x"], buf["ret"],
                                                        credit.return_scale(role))
-                    ORACLE["lots"][role] = ORACLE["lots"].get(role, 0) + 1
+                    st = ORACLE["state"]
+                    st["lots"][role] = st["lots"].get(role, 0) + 1
+                    prev = st["ema"].get(role) or [ppo_stats["value_loss"], oracle_loss]
+                    st["ema"][role] = [ORACLE_EMA * prev[0] + (1 - ORACLE_EMA) * ppo_stats["value_loss"],
+                                       ORACLE_EMA * prev[1] + (1 - ORACLE_EMA) * oracle_loss]
                     # perte de valeur acteur (aveugle) vs omniscient : l'ecart = la chance retiree des avantages
-                    print("    %-14s valeur aveugle=%.4f omnisciente=%.4f (%s)" % (
-                        role, ppo_stats["value_loss"], oracle_loss,
-                        "dans GAE" if ORACLE["lots"][role] >= ORACLE["warm"] else
-                        "chauffe %d/%d" % (ORACLE["lots"][role], ORACLE["warm"])), flush=True)
+                    print("    %-14s valeur aveugle=%.4f omnisciente=%.4f (moy. %.4f / %.4f, %s)" % (
+                        role, ppo_stats["value_loss"], oracle_loss, st["ema"][role][0], st["ema"][role][1],
+                        "dans GAE" if oracle_in_gae(role) else
+                        "chauffe %d/%d" % (st["lots"][role], ORACLE["warm"]) if st["lots"][role] < ORACLE["warm"]
+                        else "pas encore meilleure"), flush=True)
 
             if bid_ppo is not None and bid_ppo["buffer"]["obs"]:
                 buf = bid_ppo["buffer"]
