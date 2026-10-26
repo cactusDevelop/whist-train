@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Measurement only: ExpertBot card-play audit (PIMC + DDS loss per situation) -- scripts/expert_play_audit.py.
-python -u scripts/expert_play_audit.py --deals 80 --samples 4 --workers 4
+# Measurement only: ExpertBot play-rule A/B in duplicate (scripts/expert_bid_ab.py).
+python -u scripts/expert_bid_ab.py --deals 20000 --workers 4
