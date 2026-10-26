@@ -111,11 +111,13 @@ SOLO_MIN_LENGTH, SOLO_MIN_TOP_HONOURS = 5, 2  # pas de « longue sans honneurs �
 ABONDANCE_MIN_HONOURS = 3  # « sept a huit atouts avec trois honneurs »
 # Prudence des encheres (signalement 2026-10-26 « contrats impossibles, surencheres
 # abusives » ; audit scripts/expert_bid_audit.py : solo 67.6 %, emballage 12/13
-# releve 44 % / 18 %). Valeurs par defaut = comportement d'avant ; variantes
-# mesurees en duplicate par scripts/expert_bid_ab.py.
+# releve 44 % / 18 %). Mesure duplicate scripts/expert_bid_ab.py (cloud 40398240427,
+# 6000 donnes, paires variante vs defaut, vrais points) : SOLO_MARGIN 1 -0.10 +-0.07,
+# RAISE_MARGIN 1 -0.22 +-0.05 (plus prudent = PERD des points), RAISE_CAP 10 -0.01 +-0.02,
+# RAISE_CAP 11 +0.012 +-0.007 -> seul le plafond 11 est garde (plus d'emballage 12/13).
 SOLO_MARGIN = 0  # un solo de niveau L demande L + SOLO_MARGIN plis estimes
 RAISE_MARGIN = 0  # une relance (solo, emballage, saut du proposeur) demande ce nombre de plis en plus
-RAISE_CAP = EMBALLAGE_MAX_LEVEL  # niveau maximal atteint par relance, saut ou emballage d'entree
+RAISE_CAP = 11  # niveau maximal atteint par relance, saut ou emballage d'entree
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP")
 
 
