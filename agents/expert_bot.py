@@ -127,10 +127,15 @@ SECOND_HAND_LOW = False  # 2e a jouer, coequipier apres : petite carte meme avec
 # declarant, quand les atouts non vus moins ceux supposes chez le partenaire = 0, les
 # adversaires n'ont plus d'atout (ni coupe ni surcoupe a craindre).
 INFER_OPP_TRUMPS = True  # duplicate cloud 40404132860 : +0.015 +-0.007 pt/donne (z 2.3)
-TRUMP_LEAD_SEQUENCE = False  # tirer l'atout sans maitresse : haut d'une sequence d'honneurs (R-D -> D... ) plutot que la plus petite
-DRAW_WITH_LAST_TRUMP = False  # tirer l'atout meme avec son dernier atout
+# tirer l'atout sans maitresse : l'honneur le plus haut (>= valet) suivi de la carte juste en dessous
+# (R-D -> R), plutot que la plus petite. Duplicate cloud 40404703553 (40000 donnes) : +0.291 +-0.017 pt/donne.
+TRUMP_LEAD_SEQUENCE = True
+DRAW_WITH_LAST_TRUMP = False  # tirer l'atout meme avec son dernier atout (duplicate -0.13 : rejete)
+SIDE_LEAD_SEQUENCE = False  # entame par defaut hors atout : tete de sequence d'honneurs (R-D, D-V, V-10) de la couleur choisie
+LEAD_PARTNER_SUIT = False  # defense : entamer la couleur proposee/emballee par un coequipier
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
-              "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP")
+              "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
+              "LEAD_PARTNER_SUIT")
 
 
 def set_bid_params(params):
@@ -937,9 +942,24 @@ def _lead(v):
     #    sans coupe adverse. Defense (Ecole) : « jouer la couleur longue de la
     #    defense pour forcer l'annonceur a couper » -- chaque coupe lui mange
     #    un atout ; et jamais l'atout (« purger, c'est lui rendre service »).
+    if LEAD_PARTNER_SUIT and not declaring:
+        theirs = [c for c in side if any(v.proposed_long(m, suit_of(c)) for m in mates)]
+        if theirs:
+            return _seq_top(theirs, SIDE_LEAD_SEQUENCE) or _lowest(theirs)
     safe_side = side if not declaring else ([c for c in side if not ruff_risk(suit_of(c))] or side)
     if safe_side:
         not_theirs = [c for c in safe_side if not any(v.proposed_long(o, suit_of(c)) for o in opps)] or safe_side
         longest = max(count[suit_of(c)] for c in not_theirs)
-        return _lowest([c for c in not_theirs if count[suit_of(c)] == longest])
+        pick = [c for c in not_theirs if count[suit_of(c)] == longest]
+        return (SIDE_LEAD_SEQUENCE and _seq_top(pick, True)) or _lowest(pick)
     return _lowest(v.legal)
+
+
+def _seq_top(cards, on):
+    """Tete de sequence d'honneurs (>= 10 suivi de la carte juste en dessous),
+    ou None."""
+    if not on:
+        return None
+    by = {(suit_of(c), rank_of(c)): c for c in cards}
+    tops = [c for c in cards if rank_of(c) >= JACK - 1 and (suit_of(c), rank_of(c) - 1) in by]
+    return max(tops, key=rank_of) if tops else None

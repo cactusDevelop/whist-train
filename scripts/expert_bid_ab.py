@@ -33,10 +33,10 @@ from scripts.train import (MEASURE_WHISTED_RATIO, declarer_role_and_seats, descr
                            dispatch_play_phase2, real_points_by_seat)
 
 VARIANTS = {
-    "atout_sequence": {"TRUMP_LEAD_SEQUENCE": True},
-    "atout_dernier": {"DRAW_WITH_LAST_TRUMP": True},
+    "entame_sequence": {"SIDE_LEAD_SEQUENCE": True},
+    "entame_couleur_partenaire": {"LEAD_PARTNER_SUIT": True},
+    "les_deux": {"SIDE_LEAD_SEQUENCE": True, "LEAD_PARTNER_SUIT": True},
     "second_petit": {"SECOND_HAND_LOW": True},
-    "atout_seq+second_petit": {"TRUMP_LEAD_SEQUENCE": True, "SECOND_HAND_LOW": True},
 }
 
 def play_deal(hands, dealer, whisted, params_by_seat):
