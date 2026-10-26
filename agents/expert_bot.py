@@ -109,9 +109,27 @@ PROPOSER_TRUMPS_ASSUMED = 5  # longueur d'atout supposee chez le proposeur
 PROPOSE_MIN_LENGTH, PROPOSE_MIN_HONOURS = 4, 0
 SOLO_MIN_LENGTH, SOLO_MIN_TOP_HONOURS = 5, 2  # pas de « longue sans honneurs »
 ABONDANCE_MIN_HONOURS = 3  # « sept a huit atouts avec trois honneurs »
+# Prudence des encheres (signalement 2026-10-26 « contrats impossibles, surencheres
+# abusives » ; audit scripts/expert_bid_audit.py : solo 67.6 %, emballage 12/13
+# releve 44 % / 18 %). Valeurs par defaut = comportement d'avant ; variantes
+# mesurees en duplicate par scripts/expert_bid_ab.py.
+SOLO_MARGIN = 0  # un solo de niveau L demande L + SOLO_MARGIN plis estimes
+RAISE_MARGIN = 0  # une relance (solo, emballage, saut du proposeur) demande ce nombre de plis en plus
+RAISE_CAP = EMBALLAGE_MAX_LEVEL  # niveau maximal atteint par relance, saut ou emballage d'entree
+BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP")
+
+
+def set_bid_params(params):
+    """Fixe les reglages de prudence (dict partiel ; {} = defauts)."""
+    g = globals()
+    for k in BID_PARAMS:
+        g[k] = params.get(k, _BID_DEFAULTS[k])
 
 
 # --- evaluation de main ------------------------------------------------------
+
+_BID_DEFAULTS = {k: globals()[k] for k in BID_PARAMS}
+
 
 def _ranks(hand, suit):
     return sorted((rank_of(c) for c in hand if suit_of(c) == suit), reverse=True)
@@ -321,7 +339,8 @@ def choose_bid(bidding, seat, hand):
     #    l'emballage part au plus petit niveau qui depasse l'enchere en tete)
     options = [(estimate_tricks(hand, info["suit"]), a, emballer_min(bidding, info["suit"]))
                for a, info in by_kind.get("emballer", [])]
-    options = [o[:2] for o in options if o[0] >= o[2]]
+    options = [o[:2] for o in options if o[0] >= o[2]
+               and bidding.emballage_entry_level(infos[o[1]]["suit"]) <= RAISE_CAP]
     if options:
         return max(options)[1]
     # 2. proposer si >= 5 plis
@@ -382,7 +401,7 @@ def _cheapest_solo(by_kind, est, suit, hand, families=("solo", "abondance", "sol
     for fam in families:
         for a, info in by_kind.get(fam, []):
             level = info.get("level", 13)
-            if info["suit"] == suit and level <= est and solo_suit_ok(hand, suit, level):
+            if info["suit"] == suit and level + SOLO_MARGIN <= est and solo_suit_ok(hand, suit, level):
                 choices.append((level, a))
     return min(choices)[1] if choices else None
 
@@ -407,7 +426,7 @@ def _respond_to_outbid(bidding, seat, hand, c, legal, by_kind):
             solo = _best_solo(by_kind, hand, exclude_suit=c["suit"])
             if solo is not None and own < EMBALLER_MIN + (target - 8):
                 return solo
-            if ACTION_RAISE in legal and team >= target:
+            if ACTION_RAISE in legal and team >= target + RAISE_MARGIN and target <= RAISE_CAP:
                 return ACTION_RAISE
             if solo is not None:
                 return solo
@@ -416,13 +435,13 @@ def _respond_to_outbid(bidding, seat, hand, c, legal, by_kind):
             return ACTION_PASS
         # proposeur, parole passee : l'emballeur a montre (niveau - 5) plis ;
         # une seule decision -> sauter directement au niveau que l'equipe porte
-        team = min(EMBALLAGE_MAX_LEVEL, own + (c["level"] - PROPOSER_ASSUMED))
+        team = min(EMBALLAGE_MAX_LEVEL, RAISE_CAP, own + (c["level"] - PROPOSER_ASSUMED) - RAISE_MARGIN)
         if team >= target and bidding.can_raise_to(seat, team):
             return (RAISE_TO, team)
         return ACTION_PASS
     if c["type"] == "solo":
         own = estimate_tricks(hand, c["suit"])
-        return ACTION_RAISE if ACTION_RAISE in legal and own >= target else ACTION_PASS
+        return ACTION_RAISE if ACTION_RAISE in legal and own >= target + RAISE_MARGIN and target <= RAISE_CAP else ACTION_PASS
     return ACTION_PASS  # trou (jamais relancable)
 
 

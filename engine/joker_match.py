@@ -381,17 +381,21 @@ def spare_deals(match, seed):
     return out
 
 
-def match_rollout(match, hand, seat, action, policy, hands_left, deals):
-    """-> (recompense de la donne, recompense donne + donnes restantes du match)
-    pour `seat`, `action` forcee a la premiere decision, puis `policy`."""
+def match_rollout(match, hand, seat, action, policy, hands_left, deals, seats=None):
+    """-> (recompense de la donne pour `seat`, recompense donne + donnes
+    restantes du match pour `seat` ou sommee sur `seats`), `action` forcee a
+    la premiere decision, puis `policy`."""
+    seats = [seat] if seats is None else seats
     m2, h2 = copy.deepcopy((match, hand))
     m2.deals = list(deals)
-    qh = hand_reward(play_out(h2, policy, first_action=action), seat)
-    qm = qh
+    pts = play_out(h2, policy, first_action=action)
+    qh = hand_reward(pts, seat)
+    qm = sum(hand_reward(pts, s) for s in seats)
     for _ in range(hands_left):
         m2.finish(h2)
         h2 = m2.next_hand()
-        qm += hand_reward(play_out(h2, policy), seat)
+        pts = play_out(h2, policy)
+        qm += sum(hand_reward(pts, s) for s in seats)
     return qh, qm
 
 

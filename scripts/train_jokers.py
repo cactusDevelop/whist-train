@@ -119,6 +119,7 @@ CROSS_HAND = {"coup_de_vent": -0.872, "kermesse": 0.689, "inversion": 1.233}
 def gen_worker(args):
     seed, n_hands, weights = args[:3]
     horizon = args[3] if len(args) > 3 else "hand"
+    team = len(args) > 4 and args[4] == "team"
     rng = random.Random(seed)
     future = make_policy(weights)
     samples = []
@@ -130,19 +131,25 @@ def gen_worker(args):
         mask = hand.legal_casts(seat)
         if not any(mask[1:]):
             return 0
+        # q : recompense du siege qui decide (test de rentabilite) ; qt : cible
+        # d'apprentissage, la meme ou (--target team) la somme sur tous les bots a
+        # jokers, comme la porte (gate : sum hand_reward sur hand.holders())
+        seats = hand.holders() if team else [seat]
         q = [None] * J.ACTION_DIM
+        qt = [None] * J.ACTION_DIM
         qm = [None] * J.ACTION_DIM
         for a in range(J.ACTION_DIM):
             if mask[a]:
                 if horizon == "match":
-                    q[a], qm[a] = jm.match_rollout(match, hand, seat, a, future, ctx["left"], ctx["deals"])
+                    q[a], qm[a] = jm.match_rollout(match, hand, seat, a, future, ctx["left"], ctx["deals"], seats)
                 else:
                     pts = jm.play_out(jm.clone(hand), future, first_action=a)
                     q[a] = jm.hand_reward(pts, seat)
+                    qt[a] = sum(jm.hand_reward(pts, s) for s in seats)
         if horizon == "corrected":
             qm = [x if x is None or a == 0 or not ctx["left"] else x + CROSS_HAND.get(J.CASTABLE[a - 1], 0.0)
-                  for a, x in enumerate(q)]
-        target = q if horizon == "hand" else qm
+                  for a, x in enumerate(qt)]
+        target = qt if horizon == "hand" else qm
         samples.append((O.build(hand, seat), mask, [0.0 if x is None else (x - target[0]) for x in target]))
         chosen = future(hand, seat)
         P.add_bot_records(profit, P.bot_records(hand, seat, mask, q, chosen, match.config))
@@ -340,6 +347,8 @@ def main():
     parser.add_argument("--horizon", choices=("hand", "match", "corrected"), default="hand",
                         help="cible des rollouts : donne en cours, donne + donnes restantes du match "
                              "(donnes fixes communes, scripts/audit_joker_horizon.py), ou donne + CROSS_HAND")
+    parser.add_argument("--target", choices=("seat", "team"), default="seat",
+                        help="recompense apprise : siege qui pose, ou somme sur les bots a jokers (celle de la porte)")
     parser.add_argument("--checkpoint-dir", default=None, help="autre dossier de checkpoints (essais)")
     parser.add_argument("--init", default=None,
                         help="demarrage a chaud : poids d'un checkpoint d'autres regles (meme obs et memes CASTABLE), "
@@ -422,7 +431,7 @@ def main():
                 print("heure d'arret atteinte (%s)" % args.until, flush=True)
                 break
             per = args.hands // args.workers
-            jobs = [(args.seed * 1000003 + it * 101 + w, per, champ["w"], args.horizon) for w in range(args.workers)]
+            jobs = [(args.seed * 1000003 + it * 101 + w, per, champ["w"], args.horizon, args.target) for w in range(args.workers)]
             parts = pool.map(gen_worker, jobs)
             new = [s for part, _p in parts for s in part]
             profit = P.Agg()
