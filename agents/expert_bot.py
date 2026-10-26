@@ -131,18 +131,25 @@ INFER_OPP_TRUMPS = True  # duplicate cloud 40404132860 : +0.015 +-0.007 pt/donne
 # (R-D -> R), plutot que la plus petite. Duplicate cloud 40404703553 (40000 donnes) : +0.291 +-0.017 pt/donne.
 TRUMP_LEAD_SEQUENCE = True
 DRAW_WITH_LAST_TRUMP = False  # tirer l'atout meme avec son dernier atout (duplicate -0.13 : rejete)
-SIDE_LEAD_SEQUENCE = False  # entame par defaut hors atout : tete de sequence d'honneurs (R-D, D-V, V-10) de la couleur choisie
-LEAD_PARTNER_SUIT = False  # defense : entamer la couleur proposee/emballee par un coequipier
+SIDE_LEAD_SEQUENCE = True  # duplicate 40406005024 avec LEAD_PARTNER_SUIT : +0.089 +-0.021 ; entame par defaut hors atout : tete de sequence d'honneurs (R-D, D-V, V-10) de la couleur choisie
+LEAD_PARTNER_SUIT = True  # defense : entamer la couleur proposee/emballee par un coequipier
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
               "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
               "LEAD_PARTNER_SUIT")
 
 
 def set_bid_params(params):
-    """Fixe les reglages de prudence (dict partiel ; {} = defauts)."""
+    """Fixe des reglages du module (dict partiel de constantes en MAJUSCULES,
+    BID_PARAMS ou seuils d'enchere ; {} = defauts). Mesure seule
+    (scripts/expert_bid_ab.py, scripts/expert_tune.py)."""
     g = globals()
-    for k in BID_PARAMS:
-        g[k] = params.get(k, _BID_DEFAULTS[k])
+    for k, v in _BID_DEFAULTS.items():
+        if k not in params:
+            g[k] = v
+    for k, v in params.items():
+        if k not in _BID_DEFAULTS:
+            _BID_DEFAULTS[k] = g[k]
+        g[k] = v
 
 
 # --- evaluation de main ------------------------------------------------------
