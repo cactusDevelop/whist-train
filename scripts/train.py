@@ -1429,6 +1429,9 @@ def main():
                         help="lots d'apprentissage de l'evaluateur omniscient avant de l'utiliser dans GAE")
     parser.add_argument("--distill-coef", type=float, default=ppo.DISTILL_COEF,
                          help="poids de la perte vers la cible des rollouts, a cote de PPO")
+    parser.add_argument("--declarer-distill-coef", type=float, default=None,
+                        help="poids des cibles des rollouts pour les roles declarants hors imitation reservee "
+                             "(defaut : --distill-coef)")
     parser.add_argument("--teacher-coef", type=float, default=TEACHER_COEF_DEFAULT,
                         help="poids initial de l'imitation de l'ExpertBot (0 pour desactiver), voir TEACHER_*")
     parser.add_argument("--misere-teacher-coef", type=float, default=MISERE_TEACHER_COEF_DEFAULT,
@@ -1748,6 +1751,11 @@ def main():
                 role_coef = distill_coef
                 if teacher is not None and teacher.get("roles") is not None and role not in teacher["roles"]:
                     role_coef = args.distill_coef
+                # 26/10 : les cibles dds a 1 (au lieu de 0.2 avant le 24/10) ont fait reculer le jeu
+                # du declarant (-0.35 pt/donne en emballage, porte par camp) ; la defense, elle, a progresse
+                if (role != DEFENSEUR and args.declarer_distill_coef is not None
+                        and (teacher is None or teacher.get("roles") is None or role not in teacher["roles"])):
+                    role_coef = args.declarer_distill_coef
                 ppo_stats = ppo.update(
                     nets[role], nets[role + "_optimizer"],
                     buf["obs"], buf["mask"], buf["action"], buf["logp"], buf["ret"], buf["adv"],
