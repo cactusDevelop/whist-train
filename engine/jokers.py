@@ -28,12 +28,15 @@ import random
 
 from engine.cards import NUM_PLAYERS, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "d06014bf4ad14903"
+JOKER_SPEC_HASH = "f01c2461157ec680"
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
 # texte ou de cablage seulement) : un reseau entraine sous l'une d'elles est
 # reexporte tel quel avec JOKER_SPEC_HASH. Une regle qui change -> vider la
 # liste (sauf le hash courant) et reentrainer.
-RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH, "07ac337284322851", "c8f6c08407fe0bf5", "d4c4b009cd0a8ba0"}
+RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH, "d06014bf4ad14903", "07ac337284322851", "c8f6c08407fe0bf5", "d4c4b009cd0a8ba0"}
+# f01c2461 (whist-4-it ff4faaa) : apres une Trahison du Duel, play_error -> "betrayal" pour tous jusqu'a la fin
+# de la donne, et Trahison ratee partagee entre les 3 autres (whist_table._apply_betrayal). La Trahison est une
+# action humaine du Duel jamais simulee ici (l'ExpertBot ne trahit pas) -> regles vues a l'entrainement = d06014bf.
 # d06014bf (whist-4-it, rapport 2026-10-24) : "slip" -- aux actes I/II les bots face aux joueurs jouent parfois
 # une autre carte legale ; aucun joker, cout ni observation ne change -> regles = 07ac.
 # Exportable sans equivalence de regles : champion du gate cloud MESURE sous les regles courantes
