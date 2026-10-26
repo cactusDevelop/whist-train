@@ -33,11 +33,8 @@ from scripts.train import (MEASURE_WHISTED_RATIO, declarer_role_and_seats, descr
                            dispatch_play_phase2, real_points_by_seat)
 
 VARIANTS = {
-    "sans_depasser": {"NO_OVERTAKE": True},
-    "coupe_si_adv_apres": {"RUFF_IF_OPP_LATER": True},
-    "second_petit": {"SECOND_HAND_LOW": True},
-    "sans_depasser+coupe": {"NO_OVERTAKE": True, "RUFF_IF_OPP_LATER": True},
-    "les_trois": {"NO_OVERTAKE": True, "RUFF_IF_OPP_LATER": True, "SECOND_HAND_LOW": True},
+    "deduction_atouts": {"INFER_OPP_TRUMPS": True},
+    "deduction+second_petit": {"INFER_OPP_TRUMPS": True, "SECOND_HAND_LOW": True},
 }
 
 def play_deal(hands, dealer, whisted, params_by_seat):

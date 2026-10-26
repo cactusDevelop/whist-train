@@ -122,7 +122,13 @@ RAISE_CAP = 11  # niveau maximal atteint par relance, saut ou emballage d'entree
 NO_OVERTAKE = False  # coequipier gagnant, on fournit : toujours la plus petite (jamais le depasser)
 RUFF_IF_OPP_LATER = False  # renonce, coequipier gagnant hors atout, un adversaire apres peut couper : couper
 SECOND_HAND_LOW = False  # 2e a jouer, coequipier apres : petite carte meme avec une maitresse
-BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW")
+# Deduction par l'enchere (utilisateur 2026-10-26 : « en comptant les cartes, en supposant la
+# main du coequipier [...] le proposant et l'emballant ont d'office plus d'atout ») : camp
+# declarant, quand les atouts non vus moins ceux supposes chez le partenaire = 0, les
+# adversaires n'ont plus d'atout (ni coupe ni surcoupe a craindre).
+INFER_OPP_TRUMPS = False
+BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
+              "INFER_OPP_TRUMPS")
 
 
 def set_bid_params(params):
@@ -522,7 +528,12 @@ class PublicView:
         return all(rank_of(c) < rank_of(card) for c in self.unseen_in(suit_of(card)))
 
     def may_hold(self, seat, suit):
-        return seat != self.seat and not self.void[seat][suit] and bool(self.unseen_in(suit))
+        if seat == self.seat or self.void[seat][suit] or not self.unseen_in(suit):
+            return False
+        if (INFER_OPP_TRUMPS and suit == self.trump and self.seat in self.declarer_side
+                and seat not in self.declarer_side and self.opponent_trumps_outstanding() == 0):
+            return False
+        return True
 
     def may_ruff(self, seat, suit):
         return (self.trump is not None and suit != self.trump and self.void[seat][suit]
