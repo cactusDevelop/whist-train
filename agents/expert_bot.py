@@ -126,9 +126,11 @@ SECOND_HAND_LOW = False  # 2e a jouer, coequipier apres : petite carte meme avec
 # main du coequipier [...] le proposant et l'emballant ont d'office plus d'atout ») : camp
 # declarant, quand les atouts non vus moins ceux supposes chez le partenaire = 0, les
 # adversaires n'ont plus d'atout (ni coupe ni surcoupe a craindre).
-INFER_OPP_TRUMPS = False
+INFER_OPP_TRUMPS = True  # duplicate cloud 40404132860 : +0.015 +-0.007 pt/donne (z 2.3)
+TRUMP_LEAD_SEQUENCE = False  # tirer l'atout sans maitresse : haut d'une sequence d'honneurs (R-D -> D... ) plutot que la plus petite
+DRAW_WITH_LAST_TRUMP = False  # tirer l'atout meme avec son dernier atout
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
-              "INFER_OPP_TRUMPS")
+              "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP")
 
 
 def set_bid_params(params):
@@ -872,13 +874,20 @@ def _lead(v):
             keep_drawing = outstanding > 0 and len(opps_with_trumps) >= 1
             # Ecole : « garder un atout de controle pour couper la longue
             # adverse » -- ne pas purger avec son dernier atout
-            if len(my_trumps) == 1 and len(my_trumps) < len(v.legal):
+            if len(my_trumps) == 1 and len(my_trumps) < len(v.legal) and not DRAW_WITH_LAST_TRUMP:
                 keep_drawing = False
         else:  # solo : 3 adversaires, tirer tant que 2+ peuvent encore en avoir
             keep_drawing = outstanding > 0 and len(opps_with_trumps) >= 2
         if keep_drawing:
             masters = [c for c in my_trumps if v.is_master(c)]
-            return _highest(masters) if masters else _lowest(my_trumps)
+            if masters:
+                return _highest(masters)
+            if TRUMP_LEAD_SEQUENCE:
+                ranks = {rank_of(c): c for c in my_trumps}
+                seq = [r for r in ranks if r >= JACK and r - 1 in ranks]
+                if seq:
+                    return ranks[max(seq)]
+            return _lowest(my_trumps)
 
     # 2. jouer le renom du coequipier (il coupe), si l'adversaire apres lui ne surcoupe pas
     for m in mates:
