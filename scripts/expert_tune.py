@@ -83,12 +83,13 @@ def main():
     parser.add_argument("--deals", type=int, default=20000)
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--seed", type=int, default=20261100)
+    parser.add_argument("--validate-deals", type=int, default=VALIDATE_DEALS)
     args = parser.parse_args()
     from agents import expert_bot
     defaults = {k: getattr(expert_bot, k) for k in SPACE}
     best = {}
     t0 = time.time()
-    deadline = t0 + args.minutes * 60 - 20 * 60  # garde 20 min pour la validation
+    deadline = t0 + args.minutes * 60 - min(20 * 60, args.minutes * 12)  # garde ~20 min pour la validation
     seed = args.seed * 1000
     total_gain = 0.0
     with mp.Pool(args.workers) as pool:
@@ -120,11 +121,10 @@ def main():
             if not improved:
                 print("tour %d sans gain : arret" % rnd, flush=True)
                 break
-        print("\n=== Validation best vs defauts (%d donnes neuves) ===" % VALIDATE_DEALS, flush=True)
-        if best:
-            m, se = duel(pool, args.workers, args.seed * 1000 + 999_000_000 % (1 << 30), VALIDATE_DEALS, {}, best)
-            print("VALIDATION %+.3f +- %.3f pts/donne (z %.1f) ; somme des gains adoptes %+.3f" % (
-                m, se, m / se if se else 0, total_gain), flush=True)
+        print("\n=== Validation best vs defauts (%d donnes neuves) ===" % args.validate_deals, flush=True)
+        m, se = duel(pool, args.workers, args.seed * 1000 + 7_777_777, args.validate_deals, {}, best)
+        print("VALIDATION %+.3f +- %.3f pts/donne (z %.1f) ; somme des gains adoptes %+.3f" % (
+            m, se, m / se if se else 0, total_gain), flush=True)
         print("FINAL %s" % json.dumps(best, sort_keys=True))
     print("TUNE_DONE %.0f min" % ((time.time() - t0) / 60))
 
