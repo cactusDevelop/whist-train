@@ -33,14 +33,12 @@ from scripts.train import (MEASURE_WHISTED_RATIO, declarer_role_and_seats, descr
                            dispatch_play_phase2, real_points_by_seat)
 
 VARIANTS = {
-    "solo_marge1": {"SOLO_MARGIN": 1},
-    "relance_marge1": {"RAISE_MARGIN": 1},
-    "plafond10": {"RAISE_CAP": 10},
-    "plafond11": {"RAISE_CAP": 11},
-    "relance1_plafond10": {"RAISE_MARGIN": 1, "RAISE_CAP": 10},
-    "tout": {"SOLO_MARGIN": 1, "RAISE_MARGIN": 1, "RAISE_CAP": 10},
+    "sans_depasser": {"NO_OVERTAKE": True},
+    "coupe_si_adv_apres": {"RUFF_IF_OPP_LATER": True},
+    "second_petit": {"SECOND_HAND_LOW": True},
+    "sans_depasser+coupe": {"NO_OVERTAKE": True, "RUFF_IF_OPP_LATER": True},
+    "les_trois": {"NO_OVERTAKE": True, "RUFF_IF_OPP_LATER": True, "SECOND_HAND_LOW": True},
 }
-
 
 def play_deal(hands, dealer, whisted, params_by_seat):
     """-> (points des 4 sieges, contrat ou None, jeu ou None)."""
@@ -58,7 +56,11 @@ def play_deal(hands, dealer, whisted, params_by_seat):
     contract = bidding.locked_contract
     role, _decl = declarer_role_and_seats(contract)
     game = dispatch_play_phase2(contract, [list(h) for h in hands], dealer, bidding.bid_summary, whisted)
-    play_out(game, [bot_player] * 4)
+    while not game.done:
+        seat = game.turn
+        expert_bot.set_bid_params(params_by_seat[seat])
+        game.step(seat, expert_bot.choose_card(game, seat))
+    expert_bot.set_bid_params({})
     return real_points_by_seat(role, game, contract), contract, game
 
 

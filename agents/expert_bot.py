@@ -118,7 +118,11 @@ ABONDANCE_MIN_HONOURS = 3  # « sept a huit atouts avec trois honneurs »
 SOLO_MARGIN = 0  # un solo de niveau L demande L + SOLO_MARGIN plis estimes
 RAISE_MARGIN = 0  # une relance (solo, emballage, saut du proposeur) demande ce nombre de plis en plus
 RAISE_CAP = 11  # niveau maximal atteint par relance, saut ou emballage d'entree
-BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP")
+# Jeu de la carte (plaintes 2026-10-26 « overkill, defausse au lieu de couper ») :
+NO_OVERTAKE = False  # coequipier gagnant, on fournit : toujours la plus petite (jamais le depasser)
+RUFF_IF_OPP_LATER = False  # renonce, coequipier gagnant hors atout, un adversaire apres peut couper : couper
+SECOND_HAND_LOW = False  # 2e a jouer, coequipier apres : petite carte meme avec une maitresse
+BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW")
 
 
 def set_bid_params(params):
@@ -767,8 +771,11 @@ def _follow(v):
     if partner_winning:
         # ne jamais surcouper ni depasser le partenaire ; le laisser tenir la main
         partner_safe = not any(s not in mates for s in later) or _partner_safe(v, win_card, led, later)
+        if RUFF_IF_OPP_LATER and v.trump is not None and not following and suit_of(win_card) != v.trump and any(
+                s not in mates and not v.void[s][v.trump] and v.unseen_in(v.trump) for s in later):
+            partner_safe = False
         if following:
-            if not partner_safe:
+            if not partner_safe and not NO_OVERTAKE:
                 masters = [c for c in following if _wins_now(v, c) and _safe_win(v, c, later)]
                 if masters:
                     return _lowest(masters)
@@ -788,6 +795,8 @@ def _follow(v):
             return _lowest(following)
         if not later or all(s in mates for s in later):
             return _lowest(win_follow)
+        if SECOND_HAND_LOW and len(v.current_trick) == 1 and any(s in mates for s in later):
+            return _lowest(following)
         safe = [c for c in win_follow if _safe_win(v, c, later)]
         if safe:
             return _lowest(safe)
