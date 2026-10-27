@@ -94,12 +94,16 @@ from engine.scoring import MISERE_ORDER
 
 ACE, KING, QUEEN, JACK = 12, 11, 10, 9
 
-PROPOSE_MIN = 5  # plis surs pour proposer (regle utilisateur)
-EMBALLER_MIN = 3  # plis surs pour emballer (5 + 3 = emballage 8)
+# Seuils regles par scripts/expert_tune.py (cloud 40411623914, recherche coordonnee duplicate ;
+# validation 60000 donnes neuves : +1.837 +-0.053 pt/donne vs anciens reglages, z 35).
+# Anciennes valeurs : PROPOSE_MIN 5 (regle utilisateur), EMBALLER_MIN 3, ABONDANCE_MIN 9,
+# PROPOSER_ASSUMED 5, EMBALLER_ASSUMED 3, SOLO_MIN_TOP_HONOURS 2, RAISE_CAP 11.
+PROPOSE_MIN = 3  # plis surs pour proposer
+EMBALLER_MIN = 1  # plis surs pour emballer (au niveau 8 ; garde-fou atouts : abondance_rule.EMBALLER_MIN_TRUMPS)
 SOLO_MIN = 6  # plis surs pour un solo seul
-ABONDANCE_MIN = 9  # ajout Claude valide par l'utilisateur (solo 9+ d'entree)
-PROPOSER_ASSUMED = PROPOSE_MIN  # ce que l'emballeur suppose chez le proposeur
-EMBALLER_ASSUMED = EMBALLER_MIN  # longueur d'atout supposee chez l'emballeur
+ABONDANCE_MIN = 10  # solo 10+ d'entree
+PROPOSER_ASSUMED = 7  # ce que l'emballeur suppose chez le proposeur
+EMBALLER_ASSUMED = 2  # longueur d'atout supposee chez l'emballeur
 PROPOSER_TRUMPS_ASSUMED = 5  # longueur d'atout supposee chez le proposeur
 # Ecole du whist (voir docstring) :
 # « au moins quatre cartes avec deux honneurs » : les deux honneurs ont ete
@@ -107,7 +111,7 @@ PROPOSER_TRUMPS_ASSUMED = 5  # longueur d'atout supposee chez le proposeur
 # bot : +1.11 sans eux, +0.73 avec -- trop de passes generales) ; seule la
 # longueur est gardee.
 PROPOSE_MIN_LENGTH, PROPOSE_MIN_HONOURS = 4, 0
-SOLO_MIN_LENGTH, SOLO_MIN_TOP_HONOURS = 5, 2  # pas de « longue sans honneurs »
+SOLO_MIN_LENGTH, SOLO_MIN_TOP_HONOURS = 5, 1  # pas de « longue sans honneurs »
 ABONDANCE_MIN_HONOURS = 3  # « sept a huit atouts avec trois honneurs »
 # Prudence des encheres (signalement 2026-10-26 « contrats impossibles, surencheres
 # abusives » ; audit scripts/expert_bid_audit.py : solo 67.6 %, emballage 12/13
@@ -117,7 +121,7 @@ ABONDANCE_MIN_HONOURS = 3  # « sept a huit atouts avec trois honneurs »
 # RAISE_CAP 11 +0.012 +-0.007 -> seul le plafond 11 est garde (plus d'emballage 12/13).
 SOLO_MARGIN = 0  # un solo de niveau L demande L + SOLO_MARGIN plis estimes
 RAISE_MARGIN = 0  # une relance (solo, emballage, saut du proposeur) demande ce nombre de plis en plus
-RAISE_CAP = 11  # niveau maximal atteint par relance, saut ou emballage d'entree
+RAISE_CAP = 9  # (tune 40411623914 ; 11 avant) niveau maximal atteint par relance, saut ou emballage d'entree
 # Jeu de la carte (plaintes 2026-10-26 « overkill, defausse au lieu de couper ») :
 NO_OVERTAKE = False  # coequipier gagnant, on fournit : toujours la plus petite (jamais le depasser)
 RUFF_IF_OPP_LATER = False  # renonce, coequipier gagnant hors atout, un adversaire apres peut couper : couper

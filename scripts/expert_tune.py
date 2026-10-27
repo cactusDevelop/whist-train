@@ -27,12 +27,14 @@ from engine.whisted import DeckChain
 from scripts.expert_bid_ab import play_deal
 from scripts.train import MEASURE_WHISTED_RATIO
 
-# reglage -> valeurs essayees (entiers : voisins +-1 dans ces bornes ; booleens)
+# reglage -> valeurs essayees (entiers : voisins +-1 dans ces bornes ; booleens).
+# 27/10 : bornes elargies la ou le tune 40411623914 a fini en butee (PROPOSE_MIN,
+# EMBALLER_MIN, PROPOSER_ASSUMED, RAISE_CAP).
 SPACE = {
-    "PROPOSE_MIN": (3, 7), "EMBALLER_MIN": (1, 5), "SOLO_MIN": (5, 8), "ABONDANCE_MIN": (8, 11),
-    "PROPOSER_ASSUMED": (3, 7), "EMBALLER_ASSUMED": (1, 5), "PROPOSER_TRUMPS_ASSUMED": (3, 7),
+    "PROPOSE_MIN": (1, 7), "EMBALLER_MIN": (0, 5), "SOLO_MIN": (5, 8), "ABONDANCE_MIN": (8, 11),
+    "PROPOSER_ASSUMED": (3, 9), "EMBALLER_ASSUMED": (1, 5), "PROPOSER_TRUMPS_ASSUMED": (3, 7),
     "PROPOSE_MIN_LENGTH": (3, 6), "SOLO_MIN_LENGTH": (4, 7), "SOLO_MIN_TOP_HONOURS": (0, 3),
-    "ABONDANCE_MIN_HONOURS": (1, 4), "SOLO_MARGIN": (-1, 1), "RAISE_MARGIN": (-1, 1), "RAISE_CAP": (9, 13),
+    "ABONDANCE_MIN_HONOURS": (1, 4), "SOLO_MARGIN": (-1, 1), "RAISE_MARGIN": (-1, 1), "RAISE_CAP": (8, 13),
     "SECOND_HAND_LOW": bool, "INFER_OPP_TRUMPS": bool, "TRUMP_LEAD_SEQUENCE": bool,
     "SIDE_LEAD_SEQUENCE": bool, "LEAD_PARTNER_SUIT": bool,
 }

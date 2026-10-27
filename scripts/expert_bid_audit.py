@@ -14,6 +14,7 @@ Usage (cloud, ci/run_expert_bid_audit.sh) : python -u scripts/expert_bid_audit.p
 """
 
 import argparse
+import json
 import random
 import sys
 import time
@@ -62,7 +63,11 @@ def main():
     parser.add_argument("--deals", type=int, default=20000)
     parser.add_argument("--seed", type=int, default=20261026)
     parser.add_argument("--dds-node-limit", type=int, default=20_000_000)
+    parser.add_argument("--params", default="{}",
+                        help="reglages JSON (expert_bot.set_bid_params) des 4 sieges, {} = defauts")
     args = parser.parse_args()
+    expert_bot.set_bid_params(json.loads(args.params))
+    print("reglages %s" % args.params, flush=True)
 
     rng = random.Random(args.seed)
     chain = DeckChain(MEASURE_WHISTED_RATIO, rng)
