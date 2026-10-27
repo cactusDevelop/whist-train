@@ -28,13 +28,16 @@ from scripts.expert_bid_ab import play_deal
 from scripts.train import MEASURE_WHISTED_RATIO
 
 # reglage -> valeurs essayees (entiers : voisins +-1 dans ces bornes ; booleens).
-# 27/10 : bornes elargies la ou le tune 40411623914 a fini en butee (PROPOSE_MIN,
-# EMBALLER_MIN, PROPOSER_ASSUMED, RAISE_CAP).
+# 27/10 : les bornes RESPECTENT les regles utilisateur (agents/expert_bot.py) : planchers
+# PROPOSE_MIN 5 / EMBALLER_MIN 3 fixes (le tune 40411623914 les avait franchis : 3 / 1),
+# pratique proposer >= 6 et emballer >= 4 au plus bas, marges >= 0 (« etre large », pas de
+# bluff), l'attente de la main moyenne n'est pas reglable.
 SPACE = {
-    "PROPOSE_MIN": (1, 7), "EMBALLER_MIN": (0, 5), "SOLO_MIN": (5, 8), "ABONDANCE_MIN": (8, 11),
-    "PROPOSER_ASSUMED": (3, 9), "EMBALLER_ASSUMED": (1, 5), "PROPOSER_TRUMPS_ASSUMED": (3, 7),
-    "PROPOSE_MIN_LENGTH": (3, 6), "SOLO_MIN_LENGTH": (4, 7), "SOLO_MIN_TOP_HONOURS": (0, 3),
-    "ABONDANCE_MIN_HONOURS": (1, 4), "SOLO_MARGIN": (-1, 1), "RAISE_MARGIN": (-1, 1), "RAISE_CAP": (8, 13),
+    "PROPOSE_PRACTICE": (6, 7), "EMBALLER_PRACTICE": (4, 5), "SOLO_MIN": (6, 8), "ABONDANCE_MIN": (9, 11),
+    "PROPOSER_ASSUMED": (5, 6), "EMBALLER_ASSUMED": (3, 5), "PROPOSER_TRUMPS_ASSUMED": (4, 6),
+    "PROPOSE_MIN_LENGTH": (4, 6), "PROPOSE_MIN_HONOURS": (2, 3), "SOLO_MIN_LENGTH": (5, 7),
+    "SOLO_MIN_TOP_HONOURS": (1, 3), "ABONDANCE_MIN_HONOURS": (2, 4), "SOLO_MARGIN": (0, 1),
+    "RAISE_MARGIN": (0, 1), "RAISE_CAP": (9, 13),
     "SECOND_HAND_LOW": bool, "INFER_OPP_TRUMPS": bool, "TRUMP_LEAD_SEQUENCE": bool,
     "SIDE_LEAD_SEQUENCE": bool, "LEAD_PARTNER_SUIT": bool,
 }

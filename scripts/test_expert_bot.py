@@ -64,6 +64,41 @@ def test_bot_bidding_always_legal():
         CHECKS[0] += 1
 
 
+def test_user_bid_rules_20261027():
+    """Regles utilisateur du 27/10 : proposer = 6 plis surs + 2 grosses figures
+    d'atout (A, R, D) ; emballer = 4 plis surs (+1 par niveau d'entree) avec
+    5+ atouts ou 4 dont une figure ; main moyenne repartie du premier a
+    parler : attendre."""
+    from engine.bidding import bid_action_to_dict
+    rng = random.Random(27)
+    seen = {"propose": 0, "emballer": 0, "wait": 0}
+    for _ in range(3000):
+        hands = deal(rng)
+        bidding = Bidding(rng.randrange(4))
+        trou = detect_trou(hands)
+        if trou is not None:
+            bidding.seed_trou(trou)
+        while not bidding.finished:
+            seat = bidding.turn
+            choice = expert_bot.apply_bid(bidding, seat, hands[seat])
+            if not isinstance(choice, tuple):
+                info = bid_action_to_dict(choice)
+                kind, hand = info["action"], hands[seat]
+                if kind == "propose":
+                    ranks = expert_bot._ranks(hand, info["suit"])
+                    check("proposer : 6 plis surs", estimate_tricks(hand, info["suit"]) >= 6)
+                    check("proposer : 2 grosses figures", sum(r in ranks for r in (expert_bot.ACE, expert_bot.KING, expert_bot.QUEEN)) >= 2)
+                elif kind == "emballer":
+                    check("emballer : 4 plis surs", estimate_tricks(hand, info["suit"]) >= 4)
+                    check("emballer : atouts", expert_bot.emballer_suit_ok(hand, info["suit"]))
+                elif kind == "wait" and expert_bot.misere_kinds_for(hand) == ():
+                    check("attente : main moyenne repartie", expert_bot.balanced_average(hand))
+                if kind in seen:
+                    seen[kind] += 1
+    check("regles 27/10 exercees %r" % seen, all(seen.values()))
+    print("    annonces vues : %r" % seen)
+
+
 def test_bot_play_legal_all_families_and_no_cheating():
     from scripts.expert_bot_match import run_bot_bidding
     from scripts.train import build_game, dispatch_play_phase2
@@ -170,7 +205,7 @@ def test_team_trump_rules_20261023():
 
 
 def main():
-    for t in (test_hand_evaluation, test_bot_bidding_always_legal, test_hybrid_bidder_legal_and_guarded,
+    for t in (test_hand_evaluation, test_bot_bidding_always_legal, test_hybrid_bidder_legal_and_guarded, test_user_bid_rules_20261027,
               test_bot_play_legal_all_families_and_no_cheating, test_team_trump_rules_20261023):
         t()
         print("ok  %s" % t.__name__, flush=True)
