@@ -12,10 +12,8 @@ ENCHERE -- trois contrats de predilection : proposition, emballage, solo.
     d'atout + longueur d'atout, as, series quasi garanties (A-R-D = 3 plis
     meme si un adversaire sec peut couper).
   - Proposer si >= 5 plis surs ; emballer si >= 3 (5 + 3 = emballage 8).
-    Precise le 27/10 : en pratique proposer avec 6 et plusieurs grosses
-    figures d'atout, emballer avec 4 et 5-6 atouts ou 4 atouts dont une
-    figure ; etre large, jamais de bluff ; premier a parler avec une main
-    moyenne repartie : attendre pour emballer ensuite.
+    (Seuils actuels : tune 40411623914 ; ces regles et celles du 27/10
+    vivent en profils concurrents, PROFILES.)
   - L'emballeur surencherit d'un pli par pli supplementaire qu'il se voit
     faire (on suppose 5 plis chez le proposeur). Passe parole seulement
     s'il lui manque exactement 1 pli : le proposeur decide alors, une seule
@@ -98,36 +96,28 @@ from engine.scoring import MISERE_ORDER
 
 ACE, KING, QUEEN, JACK = 12, 11, 10, 9
 
-# REGLES UTILISATEUR (rappel 2026-10-27, apres que le tune auto 40411623914 les ait
-# franchies -- PROPOSE_MIN 3 / EMBALLER_MIN 1 : gagnant contre des defenseurs ExpertBot,
-# pas le jeu d'un bon joueur). PLANCHERS : aucun reglage ne descend en dessous.
-#   proposer : minimum 5 plis, en pratique 6 avec plusieurs grosses figures d'atout ;
-#   emballer : minimum 3, en pratique 4 avec beaucoup d'atout (5-6 petits) ou 4 atouts
-#              dont 1 ou 2 figures ;
-#   « on aime etre large » (un solo paie une base fixe + chaque pli en plus) ; jamais de bluff ;
-#   main moyenne assez repartie, premier a parler : attendre pour emballer ensuite.
-PROPOSE_MIN = 5  # plancher utilisateur (plis surs)
-PROPOSE_PRACTICE = 6  # plis surs pour proposer en pratique (>= PROPOSE_MIN)
-EMBALLER_MIN = 3  # plancher utilisateur (au niveau 8 ; garde-fou atouts : abondance_rule.EMBALLER_MIN_TRUMPS)
-EMBALLER_PRACTICE = 4  # plis surs pour emballer en pratique (>= EMBALLER_MIN), +1 par niveau d'entree
-EMBALLER_LONG_TRUMPS = 5  # « beaucoup d'atout (5 ou 6 petites) »
-EMBALLER_SHORT_TRUMPS = 4  # « ou 4 dont 1 ou deux figures »
-WAIT_BALANCED = True  # premier a parler, main moyenne repartie : attendre (pour emballer ensuite)
+# Seuils regles par scripts/expert_tune.py (cloud 40411623914, recherche coordonnee duplicate ;
+# validation 60000 donnes neuves : +1.837 +-0.053 pt/donne vs anciens reglages, z 35).
+# Anciennes valeurs (regles utilisateur du 27/09) : profil "joueur_0927" de PROFILES.
+PROPOSE_MIN = 3  # plis surs pour proposer
+EMBALLER_MIN = 1  # plis surs pour emballer (au niveau 8 ; garde-fou atouts : abondance_rule.EMBALLER_MIN_TRUMPS)
 SOLO_MIN = 6  # plis surs pour un solo seul
-ABONDANCE_MIN = 9  # solo 9+ d'entree
-PROPOSER_ASSUMED = 5  # ce que l'emballeur suppose chez le proposeur (le minimum : « etre large »)
-EMBALLER_ASSUMED = 3  # longueur d'atout supposee chez l'emballeur
+ABONDANCE_MIN = 10  # solo 10+ d'entree
+PROPOSER_ASSUMED = 7  # ce que l'emballeur suppose chez le proposeur
+EMBALLER_ASSUMED = 2  # longueur d'atout supposee chez l'emballeur
+# Reglages des profils concurrents (PROFILES) ; neutres pour l'ExpertBot.
+PROPOSE_TRUMP_HONOUR_TRICKS = 0  # plis d'honneurs d'atout exiges pour proposer (trump_honour_tricks)
+EMBALLER_LONG_TRUMPS = 0  # emballer avec au moins ce nombre d'atouts...
+EMBALLER_SHORT_TRUMPS = 0  # ... ou celui-ci avec au moins une figure (0, 0 = sans condition)
+WAIT_BALANCED = False  # premier a parler, main moyenne repartie : attendre (pour emballer ensuite)
 PROPOSER_TRUMPS_ASSUMED = 5  # longueur d'atout supposee chez le proposeur
 # Ecole du whist (voir docstring) :
 # « au moins quatre cartes avec deux honneurs » : les deux honneurs ont ete
 # MESURES contre-productifs ici (duel duplicate 3000 donnes contre l'ancien
 # bot : +1.11 sans eux, +0.73 avec -- trop de passes generales) ; seule la
 # longueur est gardee.
-# 27/10 : l'utilisateur redemande « plusieurs des grosses figures d'atouts » (A, R, D) pour
-# proposer -> PROPOSE_MIN_HONOURS 2 compte desormais A-R-D seulement (l'attente de la main
-# moyenne compense les passes generales).
-PROPOSE_MIN_LENGTH, PROPOSE_MIN_HONOURS = 4, 2
-SOLO_MIN_LENGTH, SOLO_MIN_TOP_HONOURS = 5, 2  # pas de « longue sans honneurs »
+PROPOSE_MIN_LENGTH, PROPOSE_MIN_HONOURS = 4, 0
+SOLO_MIN_LENGTH, SOLO_MIN_TOP_HONOURS = 5, 1  # pas de « longue sans honneurs »
 ABONDANCE_MIN_HONOURS = 3  # « sept a huit atouts avec trois honneurs »
 # Prudence des encheres (signalement 2026-10-26 « contrats impossibles, surencheres
 # abusives » ; audit scripts/expert_bid_audit.py : solo 67.6 %, emballage 12/13
@@ -137,7 +127,7 @@ ABONDANCE_MIN_HONOURS = 3  # « sept a huit atouts avec trois honneurs »
 # RAISE_CAP 11 +0.012 +-0.007 -> seul le plafond 11 est garde (plus d'emballage 12/13).
 SOLO_MARGIN = 0  # un solo de niveau L demande L + SOLO_MARGIN plis estimes
 RAISE_MARGIN = 0  # une relance (solo, emballage, saut du proposeur) demande ce nombre de plis en plus
-RAISE_CAP = 11  # niveau maximal atteint par relance, saut ou emballage d'entree
+RAISE_CAP = 9  # (tune 40411623914 ; 11 avant) niveau maximal atteint par relance, saut ou emballage d'entree
 # Jeu de la carte (plaintes 2026-10-26 « overkill, defausse au lieu de couper ») :
 NO_OVERTAKE = False  # coequipier gagnant, on fournit : toujours la plus petite (jamais le depasser)
 RUFF_IF_OPP_LATER = False  # renonce, coequipier gagnant hors atout, un adversaire apres peut couper : couper
@@ -156,6 +146,27 @@ LEAD_PARTNER_SUIT = True  # defense : entamer la couleur proposee/emballee par u
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
               "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
               "LEAD_PARTNER_SUIT")
+
+# Profils CONCURRENTS de l'ExpertBot (utilisateur 2026-10-27 : « mets les regles que je viens
+# de te donner en concurrent a l'ExpertBot, pas en remplacement, idem pour toutes les autres
+# fois. Le but n'est pas de creer artificiellement le meilleur bot mais de trouver la meilleure
+# IA. ») Chaque profil = reglages set_bid_params ; {} = l'ExpertBot. Departage :
+# scripts/bot_league.py (duplicate, vrais points). Toute nouvelle regle utilisateur = un
+# nouveau profil ici, jamais un changement des defauts.
+PROFILES = {
+    "expert": {},
+    # regles du 27/09 (valeurs d'avant le tune 40411623914)
+    "joueur_0927": {"PROPOSE_MIN": 5, "EMBALLER_MIN": 3, "ABONDANCE_MIN": 9, "PROPOSER_ASSUMED": 5,
+                    "EMBALLER_ASSUMED": 3, "SOLO_MIN_TOP_HONOURS": 2, "RAISE_CAP": 11},
+    # 27/10 : proposer 6 plis (plancher 5) avec plusieurs grosses figures d'atout comptees en plis
+    # reels (R-D-V = 2 : l'As en prend un) ; emballer 4 (plancher 3) avec 5-6 atouts ou 4 dont
+    # une figure ; « etre large » (solo au plus bas niveau, deja le cas) ; jamais de bluff ;
+    # main moyenne repartie du premier a parler : attendre pour emballer ensuite.
+    "joueur_1027": {"PROPOSE_MIN": 6, "PROPOSE_TRUMP_HONOUR_TRICKS": 2, "EMBALLER_MIN": 4,
+                    "EMBALLER_LONG_TRUMPS": 5, "EMBALLER_SHORT_TRUMPS": 4, "WAIT_BALANCED": True,
+                    "ABONDANCE_MIN": 9, "PROPOSER_ASSUMED": 5, "EMBALLER_ASSUMED": 3,
+                    "SOLO_MIN_TOP_HONOURS": 2, "RAISE_CAP": 11},
+}
 
 
 def set_bid_params(params):
@@ -222,11 +233,26 @@ def solo_suit_ok(hand, suit, level):
 
 def propose_suit_ok(hand, suit):
     ranks = _ranks(hand, suit)
-    return len(ranks) >= PROPOSE_MIN_LENGTH and _honours(ranks, (ACE, KING, QUEEN)) >= PROPOSE_MIN_HONOURS
+    return (len(ranks) >= PROPOSE_MIN_LENGTH and _honours(ranks) >= PROPOSE_MIN_HONOURS
+            and trump_honour_tricks(ranks) >= PROPOSE_TRUMP_HONOUR_TRICKS)
+
+
+def trump_honour_tricks(ranks):
+    """Plis reels des figures d'atout, compte de l'utilisateur (27/10) : ce
+    qu'on gagne et perd vraiment -- R-D-V = 2 (l'As adverse en prend un),
+    A-D-V = 2, A-R = 2, A seul = 1. Figures tenues moins les figures
+    manquantes au-dessus de la plus basse tenue, au moins la sequence
+    depuis l'As."""
+    held = [r for r in (ACE, KING, QUEEN, JACK) if r in ranks]
+    if not held:
+        return 0
+    missing = sum(1 for r in (ACE, KING, QUEEN, JACK) if r > held[-1] and r not in ranks)
+    return max(_top_sequence(ranks, ACE), len(held) - missing)
 
 
 def emballer_suit_ok(hand, suit):
-    """Regle utilisateur : 5-6 atouts (meme petits), ou 4 avec au moins une figure."""
+    """Profil joueur_1027 : 5-6 atouts (meme petits), ou 4 avec au moins une
+    figure ; sans condition pour l'ExpertBot (0, 0)."""
     ranks = _ranks(hand, suit)
     return len(ranks) >= EMBALLER_LONG_TRUMPS or (len(ranks) >= EMBALLER_SHORT_TRUMPS and _honours(ranks) >= 1)
 
@@ -340,7 +366,7 @@ def emballer_min(bidding, suit):
     """Plis surs exiges pour emballer `suit` : EMBALLER_MIN au niveau 8, +1
     par niveau d'entree au-dessus (regle 2026-09-29, voir
     Bidding.emballage_entry_level)."""
-    return max(EMBALLER_MIN, EMBALLER_PRACTICE) + (bidding.emballage_entry_level(suit) - EMBALLAGE_MIN_LEVEL)
+    return EMBALLER_MIN + (bidding.emballage_entry_level(suit) - EMBALLAGE_MIN_LEVEL)
 
 
 def estimate_tricks(hand, trump):
@@ -407,7 +433,7 @@ def choose_bid(bidding, seat, hand):
     # 2. proposer si >= 5 plis
     options = [(estimate_tricks(hand, info["suit"]), a) for a, info in by_kind.get("propose", [])
                if propose_suit_ok(hand, info["suit"])]
-    options = [o for o in options if o[0] >= max(PROPOSE_MIN, PROPOSE_PRACTICE)]
+    options = [o for o in options if o[0] >= PROPOSE_MIN]
     if options:
         return max(options)[1]
     # 3. solo si >= 6 plis (seconde priorite)

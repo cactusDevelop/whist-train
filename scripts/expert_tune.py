@@ -10,7 +10,7 @@ gain > Z_ACCEPT erreurs standard. Tours repetes jusqu'a un tour sans gain ou
 la fin du budget ; puis validation de best contre les defauts sur des donnes
 neuves. Chaque adoption est imprimee (ligne BEST {...}).
 
-Usage : python -u scripts/expert_tune.py --minutes 320 --deals 20000 --workers 4
+Usage : python -u scripts/expert_tune.py --profile joueur_1027 --minutes 320 --deals 20000 --workers 4
 """
 
 import argparse
@@ -27,19 +27,32 @@ from engine.whisted import DeckChain
 from scripts.expert_bid_ab import play_deal
 from scripts.train import MEASURE_WHISTED_RATIO
 
-# reglage -> valeurs essayees (entiers : voisins +-1 dans ces bornes ; booleens).
-# 27/10 : les bornes RESPECTENT les regles utilisateur (agents/expert_bot.py) : planchers
-# PROPOSE_MIN 5 / EMBALLER_MIN 3 fixes (le tune 40411623914 les avait franchis : 3 / 1),
-# pratique proposer >= 6 et emballer >= 4 au plus bas, marges >= 0 (« etre large », pas de
-# bluff), l'attente de la main moyenne n'est pas reglable.
-SPACE = {
-    "PROPOSE_PRACTICE": (6, 7), "EMBALLER_PRACTICE": (4, 5), "SOLO_MIN": (6, 8), "ABONDANCE_MIN": (9, 11),
-    "PROPOSER_ASSUMED": (5, 6), "EMBALLER_ASSUMED": (3, 5), "PROPOSER_TRUMPS_ASSUMED": (4, 6),
-    "PROPOSE_MIN_LENGTH": (4, 6), "PROPOSE_MIN_HONOURS": (2, 3), "SOLO_MIN_LENGTH": (5, 7),
-    "SOLO_MIN_TOP_HONOURS": (1, 3), "ABONDANCE_MIN_HONOURS": (2, 4), "SOLO_MARGIN": (0, 1),
-    "RAISE_MARGIN": (0, 1), "RAISE_CAP": (9, 13),
-    "SECOND_HAND_LOW": bool, "INFER_OPP_TRUMPS": bool, "TRUMP_LEAD_SEQUENCE": bool,
-    "SIDE_LEAD_SEQUENCE": bool, "LEAD_PARTNER_SUIT": bool,
+# profil (agents/expert_bot.PROFILES) -> reglage -> valeurs essayees (entiers : voisins +-1
+# dans ces bornes ; booleens). Chaque profil garde SES regles : un profil joueur_* reste borne
+# par les regles de l'utilisateur (27/10 : le tune 40411623914 avait franchi PROPOSE_MIN 5 /
+# EMBALLER_MIN 3 ; elles vivent maintenant en profils concurrents de l'ExpertBot).
+_PLAY = {"SECOND_HAND_LOW": bool, "INFER_OPP_TRUMPS": bool, "TRUMP_LEAD_SEQUENCE": bool,
+         "SIDE_LEAD_SEQUENCE": bool, "LEAD_PARTNER_SUIT": bool}
+SPACES = {
+    "expert": dict({
+        "PROPOSE_MIN": (1, 7), "EMBALLER_MIN": (0, 5), "SOLO_MIN": (5, 8), "ABONDANCE_MIN": (8, 11),
+        "PROPOSER_ASSUMED": (3, 9), "EMBALLER_ASSUMED": (1, 5), "PROPOSER_TRUMPS_ASSUMED": (3, 7),
+        "PROPOSE_MIN_LENGTH": (3, 6), "SOLO_MIN_LENGTH": (4, 7), "SOLO_MIN_TOP_HONOURS": (0, 3),
+        "ABONDANCE_MIN_HONOURS": (1, 4), "SOLO_MARGIN": (-1, 1), "RAISE_MARGIN": (-1, 1), "RAISE_CAP": (8, 13),
+    }, **_PLAY),
+    # regles 27/09 : proposer >= 5, emballer >= 3 ; « etre large », pas de bluff : marges >= 0
+    "joueur_0927": dict({
+        "PROPOSE_MIN": (5, 7), "EMBALLER_MIN": (3, 5), "SOLO_MIN": (6, 8), "ABONDANCE_MIN": (9, 11),
+        "PROPOSER_ASSUMED": (5, 6), "EMBALLER_ASSUMED": (3, 5), "SOLO_MIN_TOP_HONOURS": (1, 3),
+        "SOLO_MARGIN": (0, 1), "RAISE_MARGIN": (0, 1), "RAISE_CAP": (9, 13),
+    }, **_PLAY),
+    # regles 27/10 : proposer >= 6 avec >= 2 plis d'honneurs d'atout, emballer >= 4 (5+ atouts ou
+    # 4 dont une figure), attente de la main moyenne (non reglable)
+    "joueur_1027": dict({
+        "PROPOSE_MIN": (6, 7), "PROPOSE_TRUMP_HONOUR_TRICKS": (2, 3), "EMBALLER_MIN": (4, 5),
+        "SOLO_MIN": (6, 8), "ABONDANCE_MIN": (9, 11), "PROPOSER_ASSUMED": (5, 6), "EMBALLER_ASSUMED": (3, 5),
+        "SOLO_MIN_TOP_HONOURS": (1, 3), "SOLO_MARGIN": (0, 1), "RAISE_MARGIN": (0, 1), "RAISE_CAP": (9, 13),
+    }, **_PLAY),
 }
 Z_ACCEPT = 2.5
 VALIDATE_DEALS = 60000
@@ -74,8 +87,8 @@ def duel(pool, workers, seed, deals, best, cand):
     return m, sd / math.sqrt(len(gains))
 
 
-def neighbours(key, current):
-    spec = SPACE[key]
+def neighbours(space, key, current):
+    spec = space[key]
     if spec is bool:
         return [not current]
     lo, hi = spec
@@ -89,10 +102,14 @@ def main():
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--seed", type=int, default=20261100)
     parser.add_argument("--validate-deals", type=int, default=VALIDATE_DEALS)
+    parser.add_argument("--profile", default="expert", choices=sorted(SPACES))
     args = parser.parse_args()
     from agents import expert_bot
-    defaults = {k: getattr(expert_bot, k) for k in SPACE}
-    best = {}
+    space = SPACES[args.profile]
+    defaults = {k: getattr(expert_bot, k) for k in space}
+    start = dict(expert_bot.PROFILES[args.profile])
+    best = dict(start)
+    print("profil %s, depart %s" % (args.profile, json.dumps(start, sort_keys=True)), flush=True)
     t0 = time.time()
     deadline = t0 + args.minutes * 60 - min(20 * 60, args.minutes * 12)  # garde ~20 min pour la validation
     seed = args.seed * 1000
@@ -102,9 +119,9 @@ def main():
         while time.time() < deadline:
             rnd += 1
             improved = False
-            for key in SPACE:
+            for key in space:
                 cur = best.get(key, defaults[key])
-                for val in neighbours(key, cur):
+                for val in neighbours(space, key, cur):
                     if time.time() >= deadline:
                         break
                     cand = dict(best)
