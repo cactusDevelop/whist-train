@@ -104,7 +104,9 @@ def view(hand, me):
     # 65a7 : declarants de misere adverses (La Tournee, Cadeau Empoisonne) ; Tournee = pas encore joue ce pli
     v["misere_opponents"] = [s for s in range(NUM_PLAYERS) if J.misere_opponent(me, s, rules)]
     played = {s for s, _c in trick}
-    v["tournee_target"] = next((s for s in v["misere_opponents"] if s not in played), -1)
+    # 8f41 : La Tournee dure la donne -> d'abord un declarant qui n'a pas encore joue ce pli
+    v["tournee_target"] = next((s for s in v["misere_opponents"] if s not in played),
+                               v["misere_opponents"][0] if v["misere_opponents"] else -1)
     if trick:
         best = rules.trick_winner(trick, led, eff)
         bc = [cd for s, cd in trick if s == best][0]
@@ -386,10 +388,10 @@ def _defausse_discrete(v):
 
 
 def _la_tournee(v):
-    """65a7 : defense d'une misere, le declarant vise doit fournir sa plus forte."""
-    if not v["misere"] or v["misere_declarer"]:
-        return NO, "hors_defense_de_misere"
-    return (YES, "force_sa_plus_forte") if v["tournee_target"] >= 0 else (NO, "declarant_a_deja_joue")
+    """65a7 : defense d'une misere, le declarant vise doit fournir sa plus forte (8f41 : toute la donne)."""
+    if not v["misere"] or v["misere_declarer"] or owned(v, "la_tournee"):
+        return NO, "hors_defense_de_misere_ou_arme"
+    return (YES, "force_sa_plus_forte") if v["tournee_target"] >= 0 else (NO, "pas_de_cible")
 
 
 def _faux_depart(v):
@@ -512,7 +514,7 @@ def _brouillard(v):
 
 
 def _meche_courte(v):
-    """65a7 : +1 energie par pli perdu dans ma misere (2 max)."""
+    """65a7 : +1 energie par pli perdu dans ma misere (8f41 : 3 max, le 3e pioche un joker)."""
     if not v["misere_declarer"] or owned(v, "meche_courte"):
         return NO, "hors_ma_misere_ou_arme"
     return (YES, "plis_perdus_payes") if v["remaining"] >= 3 else (NO, "tard")
@@ -520,6 +522,9 @@ def _meche_courte(v):
 
 def _treizieme_carte(v):
     if v["misere"]:
+        # 8f41 : dans ma misere, ma carte des derniers plis ne gagne jamais
+        if v["misere_declarer"] and not owned(v, "treizieme_carte") and v["remaining"] >= 2:
+            return YES, "ma_misere_derniers_plis"
         return NO, "misere"
     return (YES, "dernier_pli") if v["remaining"] >= 2 else (NO, "trop_tard")
 

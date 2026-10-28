@@ -28,12 +28,17 @@ import random
 
 from engine.cards import NUM_PLAYERS, legal_plays, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "1f49fc6fb6a25cae"
+JOKER_SPEC_HASH = "8f41a24164ec06e5"
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
 # texte ou de cablage seulement) : un reseau entraine sous l'une d'elles est
 # reexporte tel quel avec JOKER_SPEC_HASH. Une regle qui change -> vider la
 # liste (sauf le hash courant) et reentrainer.
-RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH, "65a78656ef5d863e"}
+RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH}
+# 8f41 (whist-4-it 8e28fa9, Rarete 04) : raretes/couts (Silence cave 3, Dette/Double Valet arriere_salle 3,
+# Cameleon arriere_salle, Traitre salle 1, Atout Errant/Bluff/Fantome/Fausse Piste 2, Defausse Discrete 3,
+# Lune/Zinneke/Main de Fer/Horloge 1, Brouillard 2, La Tournee aura salle 2) ; Valet Borgne abs(), Horloge
+# des le 6e pli, Treizieme Carte perd dans la misere de son porteur, Manche Truquee pli pour 2, La Tournee
+# toute la donne, Cadeau Empoisonne a chaque defausse, Meche Courte 3 max + 1 joker au 3e -> reentrainement.
 # 1f49 (whist-4-it c702e8a) : _bot_fuel aussi dans la branche JokerAI, deja simule ainsi depuis le port 65a7 -> regles = 65a7.
 # 65a7 (whist-4-it d74be81 + 48b2dc3 + ff4b72a + f31712b, Chantier Jokers joues) : 2 cases d'effet de donne
 # par siege (3 pour elites/boss/habitues, bot_case), passif arme seulement s'il reste une case ; defausse
@@ -100,9 +105,9 @@ OBS_VERSION = 2  # 2 = enemy_traps rempli (joueur a jokers) ; le jeu ne remplit 
 
 # id -> (type, rarete, cout, bot_casts) -- joker_catalog.gd / joker_effects.gd
 CATALOG = {
-    "cameleon": ("pli", "comptoir", 1, False),
+    "cameleon": ("pli", "arriere_salle", 1, False),
     "zero": ("pli", "comptoir", 0, False),
-    "traitre": ("pli", "arriere_salle", 2, False),
+    "traitre": ("pli", "salle", 1, False),
     "coup_de_vent": ("sort", "salle", 1, True),
     "main_lourde": ("sort", "comptoir", 1, True),
     "embuscade": ("piege", "comptoir", 1, True),
@@ -112,29 +117,29 @@ CATALOG = {
     "voeu_de_pauvrete": ("passif", "salle", 0, False),
     "miroir": ("pli", "comptoir", 1, False),
     "borgne": ("pli", "salle", 1, False),
-    "carte_fantome": ("pli", "salle", 1, False),
-    "double_valet": ("pli", "salle", 2, False),
-    "atout_errant": ("pli", "comptoir", 1, False),
+    "carte_fantome": ("pli", "salle", 2, False),
+    "double_valet": ("pli", "arriere_salle", 3, False),
+    "atout_errant": ("pli", "comptoir", 2, False),
     "courant_d_air": ("sort", "comptoir", 0, False),
     "tournee_generale": ("sort", "comptoir", 1, False),
     "gueule_de_bois": ("sort", "salle", 1, False),
     "remonte_pli": ("sort", "salle", 1, False),
     "faux_depart": ("sort", "salle", 1, False),
     "inversion": ("aura", "salle", 2, True),
-    "fausse_piste": ("piege", "comptoir", 1, False),
+    "fausse_piste": ("piege", "comptoir", 2, False),
     "collet": ("piege", "salle", 1, False),
     "contre_espionnage": ("piege", "comptoir", 1, False),
     "croupier_endormi": ("piege", "comptoir", 1, False),
-    "dette_de_jeu": ("piege", "salle", 2, False),
+    "dette_de_jeu": ("piege", "arriere_salle", 3, False),
     "fumee_de_pipe": ("aura", "comptoir", 1, False),
-    "silence_du_cercle": ("aura", "arriere_salle", 2, False),
-    "lune_noire": ("aura", "comptoir", 2, False),
-    "coeur_de_zinneke": ("aura", "comptoir", 2, False),
-    "brouillard_de_la_senne": ("aura", "cave", 3, False),
+    "silence_du_cercle": ("aura", "cave", 3, False),
+    "lune_noire": ("aura", "comptoir", 1, False),
+    "coeur_de_zinneke": ("aura", "comptoir", 1, False),
+    "brouillard_de_la_senne": ("aura", "cave", 2, False),
     "cartes_sur_table": ("enchere", "comptoir", 0, False),
-    "bluff": ("enchere", "salle", 1, False),
+    "bluff": ("enchere", "salle", 2, False),
     "rachat": ("enchere", "salle", 2, False),
-    "main_de_fer": ("enchere", "arriere_salle", 2, False),
+    "main_de_fer": ("enchere", "arriere_salle", 1, False),
     "pot_de_vin": ("enchere", "arriere_salle", 1, False),
     "fossoyeur_de_plis": ("passif", "salle", 0, False),
     "brimborion_dore": ("passif", "arriere_salle", 0, False),
@@ -145,13 +150,13 @@ CATALOG = {
     "faux_pas": ("piege", "comptoir", 1, True),
     "pli_refile": ("sort", "salle", 1, False),
     "valet_borgne": ("sort", "cave", 2, False),
-    "horloge_arretee": ("sort", "cave", 2, False),
+    "horloge_arretee": ("sort", "cave", 1, False),
     "treizieme_carte": ("aura", "cave", 1, False),
     "livre_de_comptes": ("sort", "cave", 1, False),
     # 65a7 (whist-4-it f31712b) : jokers de misere, jamais lances par les bots
-    "defausse_discrete": ("sort", "salle", 2, False),
+    "defausse_discrete": ("sort", "salle", 3, False),
     "meche_courte": ("aura", "comptoir", 1, False),
-    "la_tournee": ("sort", "comptoir", 1, False),
+    "la_tournee": ("aura", "salle", 2, False),
     "cadeau_empoisonne": ("piege", "salle", 2, False),
     "cartes_marquees": ("passif", "maudit", 0, False),
     "joueur_fantome": ("passif", "maudit", 0, False),
@@ -1023,7 +1028,7 @@ class ValetBorgne(Aura):
         return {"exhaust": True}
 
     def adjust_deltas(self, deltas, contract, rules):
-        deltas[self.owner] = max(0, deltas[self.owner])  # 6c54 : ses points perdus seulement
+        deltas[self.owner] = abs(deltas[self.owner])  # 8f41 : ses points perdus deviennent gagnes
         return deltas
 
 
@@ -1036,7 +1041,7 @@ class HorlogeArretee(Aura):
         self.rest = 0
         self.given = False
 
-    FROM_TRICK = 8  # d4c4 : a partir du 8e pli
+    FROM_TRICK = 6  # d4c4 : 8e pli ; 8f41 : 6e
 
     def pointless(self, rules):
         return rules.game.trick_count + 1 < self.FROM_TRICK
@@ -1074,17 +1079,15 @@ class HorlogeArretee(Aura):
 
 
 class TreiziemeCarte(Aura):
-    """043f : les LAST derniers plis (1 avant), sans effet dans une misere de
-    son proprietaire."""
+    """043f : les LAST derniers plis (1 avant) ; 8f41 : dans la misere de son
+    proprietaire, sa carte ne les gagne jamais."""
     LAST = 4  # 6c54 (2 avant)
-
-    def pointless(self, rules):
-        c = rules.contract or {}
-        return c.get("type") == "misere" and self.owner in (c.get("declarers") or [])
 
     def competes(self, play, rules):
         if rules.game.trick_count < rules.hand_tricks() - self.LAST:
             return True
+        if in_misere(self.owner, rules):
+            return play[0] != self.owner
         return play[0] == self.owner or not any(s == self.owner for s, _c in rules.current_plays)
 
 
@@ -1119,6 +1122,9 @@ class MancheTruquee(Effect):
 
     def plays_as_trump(self, play, rules):
         return play[0] == self.owner
+
+    def trick_value(self, value, winner_play, rules):
+        return value + 1 if winner_play[0] == self.owner else value  # 8f41 : le pli compte pour 2
 
 
 class CoupDuChapeau(Aura):
@@ -1195,8 +1201,9 @@ class DefausseDiscrete(Effect):
 
 
 class MecheCourte(Aura):
-    """Chaque pli que le proprietaire perd dans sa misere : +1 energie, MAX dans la donne."""
-    MAX = 2
+    """Chaque pli que le proprietaire perd dans sa misere : +1 energie, MAX dans la donne ;
+    8f41 : le MAXe pioche aussi un joker."""
+    MAX = 3
 
     def __init__(self, jid, owner):
         super().__init__(jid, owner)
@@ -1211,11 +1218,13 @@ class MecheCourte(Aura):
             return
         self.gained += 1
         rules.state.gain_energy(self.owner, 1)
+        if self.gained == self.MAX:
+            rules.state.draw_jokers(self.owner, 1)
 
 
-class LaTournee(Effect):
-    """Ce pli, le declarant de misere vise joue sa plus forte carte de la couleur demandee."""
-    scope = TRICK
+class LaTournee(Aura):
+    """8f41 : toute la donne (ce pli avant), le declarant de misere vise joue sa plus forte carte
+    de la couleur demandee."""
 
     def __init__(self, jid, owner):
         super().__init__(jid, owner)
@@ -1233,8 +1242,6 @@ class LaTournee(Effect):
     def on_play(self, rules, target=-1):
         if target < 0 or not self.accepts_target(target, rules):
             return {"error": "target"}
-        if any(s == target for s, _c in rules.game.current_trick):
-            return {"error": "played"}
         self.target = target
         return {}
 
@@ -1248,7 +1255,8 @@ class LaTournee(Effect):
 
 
 class CadeauEmpoisonne(Trap):
-    """La prochaine fois que le declarant de misere vise ne fournit pas, sa carte prend le pli."""
+    """8f41 : chaque fois (une fois avant) que le declarant de misere vise ne fournit pas, sa carte
+    prend le pli, toute la donne."""
 
     def __init__(self, jid, owner):
         super().__init__(jid, owner)
@@ -1273,11 +1281,7 @@ class CadeauEmpoisonne(Trap):
         return play[0] == self.target and play[0] not in rules.joker_cards and suit_of(play[1]) != rules.current_led
 
     def takes_trick(self, play, rules):
-        return not self.spent and self._discards(play, rules)
-
-    def on_trick_resolved(self, winner, plays, rules):
-        if not self.spent and any(self._discards(p, rules) for p in plays):
-            self.spent = True
+        return self._discards(play, rules)
 
 
 EFFECTS = {

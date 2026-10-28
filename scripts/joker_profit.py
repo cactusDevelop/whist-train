@@ -418,7 +418,7 @@ def contract_rule(side, jid, e):
 FORCE_REF = 4.0
 NOTE_WEIGHTS = {"force": 0.5, "polyvalence": 0.2, "regularite": 0.2, "soupcon": 0.1}
 NOTE_FORMULA = ("note = 100 x (0.5 force + 0.2 polyvalence + 0.2 regularite + 0.1 soupcon) ; force = meilleure borne basse "
-                "(gain bien joue - 2 sigma) par contrat / %.0f pts (borne 0-1) ; polyvalence = contrats a gain > 0 (2 sigma) / "
+                "(gain bien joue - 2 sigma) par contrat / %.0f pts (borne 0-1 ; toutes occasions confondues si la regle ne le joue pas) ; polyvalence = contrats a gain > 0 (2 sigma) / "
                 "contrats mesures ; regularite = 0.5 (1 - part perdante) + 0.5 borne(1 + pire contrat / %.0f) ; "
                 "soupcon = 1 - Soupcon/4. Cout conseille : note < 20 -> 0, < 45 -> 1, < 70 -> 2, sinon 3 ; "
                 "plancher 1 sauf note < 10 ; maudits 0 ; Cave 1-2 ; non mesurable / hors points / passifs : cout actuel ; deck de depart <= 1."
@@ -437,7 +437,12 @@ def note_of(jid, e):
     if not cells:
         return None
     means = [_stat(c) for _k, c in cells]
-    comp = {"force": _clip(max(m - 2 * se for m, se in means) / FORCE_REF),
+    # v2.2 (8f41, Courant d'Air note 78 pour +0.01) : tant que la regle expert ne le joue pas
+    # (picked < MIN_N), les cellules sont TOUTES les occasions forcees -> pas de meilleur contrat
+    # choisi apres coup, la force vient de l'ensemble.
+    forced = judged is not e.get("picked")
+    best = [_stat(judged)] if forced else means
+    comp = {"force": _clip(max(m - 2 * se for m, se in best) / FORCE_REF),
             "polyvalence": sum(1 for m, se in means if m - 2 * se > 0) / len(means),
             "regularite": 0.5 * (1 - judged["neg"] / max(1, judged["n"])) + 0.5 * _clip(1 + min(m for m, _s in means) / FORCE_REF),
             "soupcon": _clip(1 - J.jsuspicion(jid) / 4.0)}
@@ -541,7 +546,7 @@ def write_summary(rows, meta):
     if meta.get("measured_spec_hash"):
         lines[2:2] = ["**Mesure faite sous l'empreinte %s (anciens couts), reaffichee sous %s en attendant "
                       "une nouvelle mesure ; verdicts, fort en et a supprimer jugés aux couts de la mesure, "
-                      "note et cout conseille v2.1.**" % (meta["measured_spec_hash"], meta["spec_hash"]), ""]
+                      "note et cout conseille v2.2.**" % (meta["measured_spec_hash"], meta["spec_hash"]), ""]
     sup = [r for r in rows if r.get("a_supprimer")]
     lines += ["## A supprimer (%d) -- decision d'un admin" % len(sup), ""]
     lines += ["- %s : %s (note %s)" % (r["id"], r["why"], r.get("note")) for r in sup] or ["- aucun"]

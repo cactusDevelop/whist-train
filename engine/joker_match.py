@@ -124,6 +124,8 @@ class Match:
             if self.config.get("force_misere"):  # mesure ciblee (scripts/misere_jokers.py), jamais a l'entrainement
                 contract = forced_misere(self.config["force_misere"], hands, self.rng)
                 bid_summary = None
+                if self.player is not None:  # 8f41 : ses jokers d'enchere (Pot-de-Vin) avant la misere imposee
+                    self.player.bidding_turn(self.state, self.rules, self.config.get("eye", ""), self.bosses)
             elif self.config["kind"] == "boss":
                 contract = boss_contract(self.config["boss"], hands, self.rng)
                 bid_summary = None
@@ -378,11 +380,28 @@ def play_out(hand, policy, first_action=None, on_decision=None, before_player=No
             before_player(hand)
         if seat == PLAYER and player is not None and not discarding and player.trick_turn(hand):
             continue  # carte de joker posee dans le pli a la place d'une carte
-        card = expert_bot.choose_card(g, seat)
+        card = _player_card(hand, seat) if seat == PLAYER else expert_bot.choose_card(g, seat)
         if not discarding:
             card = _rules_card(hand, seat, card)
         hand.step(seat, card)
     return points_of(hand)
+
+
+def _player_card(hand, seat):
+    """8f41 : le joueur (humain) voit l'atout effectif du pli qu'il entame
+    (Brouillard de la Senne : sa couleur choisie) ; l'ExpertBot ne lit que
+    game.trump_suit -> on le lui montre le temps du choix. Les bots, comme
+    WhistExpertBot dans le jeu, gardent l'atout du contrat."""
+    g = hand.game
+    trump = g.trump_suit
+    eff = hand.rules.trick_trump() if not g.current_trick else trump
+    if eff is None or eff == trump:
+        return expert_bot.choose_card(g, seat)
+    g.trump_suit = eff
+    try:
+        return expert_bot.choose_card(g, seat)
+    finally:
+        g.trump_suit = trump
 
 
 def _rules_card(hand, seat, card):
@@ -573,7 +592,9 @@ class Player:
             tgt = None
             if jid and self.style == "expert":
                 from agents import joker_expert as X
-                tgt = X.bid_target(jid)
+                cards = rules.deal_hands[PLAYER] if rules.deal_hands else []
+                # 8f41 : Main de Fer force vise la couleur que la regle choisirait (best_suit), plus la plus longue
+                tgt = X.bid_target(jid, bv=X.bid_view(cards, state) if cards else None)
             self._forced(state, rules, eye, jid, tgt)
             return
         tried = set()

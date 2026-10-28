@@ -233,18 +233,18 @@ def v2_tests():
     rules.play(0, "remonte_pli")
     oks.append(check("remonte-pli : dernier pli adverse", (game.tricks_won[0], game.tricks_won[3]), (1, 0)))
     state, rules, game = setup()
-    game.trick_count = 6
-    oks.append(check("horloge (d4c4) : pas avant le 8e pli", rules.play(0, "horloge_arretee"), {"error": "early"}))
-    oks.append(check("horloge (d4c4) : masquee avant le 8e pli", J.make_effect("horloge_arretee", 0).pointless(rules), True))
-    game.trick_count = 7
-    game.tricks_won[:] = [4, 1, 2, 0]
-    oks.append(check("horloge (d4c4) : jouable au 8e pli", J.make_effect("horloge_arretee", 0).pointless(rules), False))
+    game.trick_count = 4
+    oks.append(check("horloge (8f41) : pas avant le 6e pli", rules.play(0, "horloge_arretee"), {"error": "early"}))
+    oks.append(check("horloge (8f41) : masquee avant le 6e pli", J.make_effect("horloge_arretee", 0).pointless(rules), True))
+    game.trick_count = 5
+    game.tricks_won[:] = [3, 1, 1, 0]
+    oks.append(check("horloge (8f41) : jouable au 6e pli", J.make_effect("horloge_arretee", 0).pointless(rules), False))
     rules.play(0, "horloge_arretee")
-    oks.append(check("horloge : la donne s'arrete apres ce pli", rules.hand_tricks(), 8))
-    game.trick_count = 8
-    game.tricks_won[:] = [5, 1, 2, 0]
+    oks.append(check("horloge : la donne s'arrete apres ce pli", rules.hand_tricks(), 6))
+    game.trick_count = 6
+    game.tricks_won[:] = [4, 1, 1, 0]
     rules.on_trick_resolved(0, [])
-    oks.append(check("horloge : les 5 plis restants au camp en tete", game.tricks_won, [10, 1, 2, 0]))
+    oks.append(check("horloge : les 7 plis restants au camp en tete", game.tricks_won, [11, 1, 1, 0]))
     state, rules, game = setup()
     game.trick_count = 7
     game.tricks_won[:] = [4, 3, 0, 0]
@@ -276,7 +276,7 @@ def v2_tests():
     game.trick_count = 1
     oks.append(check("courant d'air (6c54) : la plus forte", rules.play(0, "courant_d_air"), {"discarded": card(H, 14)}))
     rules.effects = [J.make_effect("valet_borgne", 0)]
-    oks.append(check("valet borgne (6c54) : ses points perdus a 0", rules.adjust_deltas([-7, 3, -3, 1], {}), [0, 3, -3, 1]))
+    oks.append(check("valet borgne (8f41) : ses points perdus deviennent gagnes", rules.adjust_deltas([-7, 3, -3, 1], {}), [7, 3, -3, 1]))
     oks.append(check("6c54 : zinneke +3, treizieme 4 plis, couts inversion / chapeau",
                      (J.CoeurDeZinneke.BONUS, J.TreiziemeCarte.LAST, J.jcost("inversion"), J.jcost("coup_du_chapeau")),
                      (3, 4, 2, 1)))
@@ -383,6 +383,8 @@ def review_20261014_tests():
     oks.append(check("manche truquee : le 2 compte comme atout", rules.trick_winner(plays, S, H), 0))
     plays2 = [(1, card(S, 14)), (2, card(H, 14)), (3, card(S, 5)), (0, card(S, 2))]
     oks.append(check("manche truquee (6c54) : l'atout le plus fort, d'office", rules.trick_winner(plays2, S, H), 0))
+    oks.append(check("manche truquee (8f41) : son pli compte pour 2, pas celui d'un autre",
+                     (rules.trick_value(0, plays), rules.trick_value(1, plays2)), (2, 1)))
     rules.on_trick_resolved(0, plays)
     oks.append(check("manche truquee : portee du pli", rules.trick_winner(plays, S, H), 1))
     rules.bind(game, {"type": "misere", "kind": "grande", "declarers": [1]})
@@ -622,14 +624,15 @@ def jokers_joues_tests():
     state, rules, game = setup()
     oks.append(check("defausse discrete : hors de ma misere = pointless",
                      J.make_effect("defausse_discrete", 0).pointless(rules), True))
-    # Meche Courte : +1 par pli perdu dans sa misere, 2 max
+    # Meche Courte : +1 par pli perdu dans sa misere, 3 max, le 3e pioche un joker (8f41)
     state, rules, game = misere_setup((0,))
     rules.play(0, "meche_courte")
     state.energy[0] = 0
-    for _ in range(3):
+    state.joker_hand[0], state.draw_pile[0] = [], ["zero"]
+    for _ in range(4):
         rules.on_trick_resolved(1, [(0, card(H, 2)), (1, card(H, 9)), (2, card(H, 3)), (3, card(H, 4))])
     rules.on_trick_resolved(0, [(0, card(H, 14)), (1, card(H, 9)), (2, card(H, 3)), (3, card(H, 4))])
-    oks.append(check("meche courte : +1 par pli perdu, 2 max", state.energy[0], 2))
+    oks.append(check("meche courte : +1 par pli perdu, 3 max, joker au 3e", (state.energy[0], state.joker_hand[0]), (3, ["zero"])))
     # La Tournee : le declarant vise fournit sa plus forte
     state, rules, game = misere_setup((1,))
     oks.append(check("la tournee : cible = declarant adverse seulement",
@@ -640,6 +643,11 @@ def jokers_joues_tests():
     h1 = sorted(game.hands[1])
     follow = [c for c in h1 if c // 13 == H]
     oks.append(check("la tournee : plus forte de la demandee", rules.legal_cards(h1, H, 1), [max(follow)]))
+    rules.on_trick_resolved(0, [(0, card(H, 14))])
+    oks.append(check("la tournee (8f41) : toute la donne", rules.legal_cards(h1, H, 1), [max(follow)]))
+    state, rules, game = misere_setup((1,))
+    game.current_trick = [(1, sorted(game.hands[1])[0])]
+    oks.append(check("la tournee (8f41) : plus d'erreur played", rules.play(0, "la_tournee", 1).get("error"), None))
     oks.append(check("la tournee : declarant d'un autre contrat = pointless",
                      J.make_effect("la_tournee", 0).pointless(setup()[1]), True))
     # Cadeau Empoisonne : sa prochaine defausse prend le pli, une fois
@@ -648,7 +656,15 @@ def jokers_joues_tests():
     plays = [(0, card(H, 9)), (1, card(C, 2)), (2, card(H, 14)), (3, card(H, 3))]
     oks.append(check("cadeau empoisonne : la defausse prend le pli", rules.trick_winner(plays, H, None), 1))
     rules.on_trick_resolved(1, plays)
-    oks.append(check("cadeau empoisonne : une fois", rules.trick_winner(plays, H, None), 2))
+    oks.append(check("cadeau empoisonne (8f41) : a chaque fois", rules.trick_winner(plays, H, None), 1))
+    # Treizieme Carte (8f41) : dans la misere de son porteur, sa carte des 4 derniers plis perd toujours
+    state, rules, game = misere_setup((0,))
+    rules.play(0, "treizieme_carte")
+    game.trick_count = 9
+    plays = [(1, card(H, 2)), (2, card(H, 3)), (3, card(H, 4)), (0, card(H, 14))]
+    oks.append(check("treizieme : plus refusee dans sa misere, sa carte y perd", rules.trick_winner(plays, H, None), 3))
+    game.trick_count = 8
+    oks.append(check("treizieme : avant les 4 derniers plis, inchange", rules.trick_winner(plays, H, None), 0))
     return oks
 
 
