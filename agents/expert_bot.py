@@ -166,6 +166,10 @@ PROFILES = {
                     "EMBALLER_LONG_TRUMPS": 5, "EMBALLER_SHORT_TRUMPS": 4, "WAIT_BALANCED": True,
                     "ABONDANCE_MIN": 9, "PROPOSER_ASSUMED": 5, "EMBALLER_ASSUMED": 3,
                     "SOLO_MIN_TOP_HONOURS": 2, "RAISE_CAP": 11},
+    # 28/10 : ExpertBot + les seules regles de joueur_1027 qui lui rapportent (ablation
+    # 40596843093 : bloc emballer +0.160 z 3.1, attente main repartie +0.025 z 4.6)
+    "expert_emb1027": {"EMBALLER_MIN": 4, "EMBALLER_LONG_TRUMPS": 5, "EMBALLER_SHORT_TRUMPS": 4,
+                       "WAIT_BALANCED": True},
 }
 
 
