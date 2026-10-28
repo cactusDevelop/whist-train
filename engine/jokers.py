@@ -28,12 +28,13 @@ import random
 
 from engine.cards import NUM_PLAYERS, legal_plays, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "65a78656ef5d863e"
+JOKER_SPEC_HASH = "1f49fc6fb6a25cae"
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
 # texte ou de cablage seulement) : un reseau entraine sous l'une d'elles est
 # reexporte tel quel avec JOKER_SPEC_HASH. Une regle qui change -> vider la
 # liste (sauf le hash courant) et reentrainer.
-RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH}
+RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH, "65a78656ef5d863e"}
+# 1f49 (whist-4-it c702e8a) : _bot_fuel aussi dans la branche JokerAI, deja simule ainsi depuis le port 65a7 -> regles = 65a7.
 # 65a7 (whist-4-it d74be81 + 48b2dc3 + ff4b72a + f31712b, Chantier Jokers joues) : 2 cases d'effet de donne
 # par siege (3 pour elites/boss/habitues, bot_case), passif arme seulement s'il reste une case ; defausse
 # d'un joker de la main = +1 energie (pas si due, « sans allumettes » ou passif arme), bots : _bot_fuel ;
