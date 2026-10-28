@@ -20,7 +20,7 @@ import random
 from agents import expert_bot
 from engine import jokers as J
 from engine.bidding import Bidding, bid_action_to_dict, legal_action_ids_with_hand
-from engine.cards import NUM_PLAYERS, suit_of, rank_of
+from engine.cards import NUM_PLAYERS, legal_plays, suit_of, rank_of
 from engine.jokers import BOSS_DECKS, BOSS_SEAT, ELITE_SEATS, PLAYER, JokerHand, JokerRules, MatchState
 from engine.trou import detect_trou
 from engine.whisted import DeckChain, deal_uniform
@@ -93,6 +93,7 @@ class Match:
         self.state.energy_malus = J.mise_energy_malus(mise, config["act"])
         self.state.eye_threshold = J.eye_threshold(mise)
         self.rules = JokerRules(self.state, random.Random(self.rng.random()))
+        self.rules.set_spammers(spammers)  # 65a7 : 3 cases d'effet de donne
         boss = config.get("boss", "")
         # regle du boss + celle d'un autre en Mise Doree (RogueMises.second_rule)
         self.bosses = tuple(b for b in (boss, J.second_rule(mise, boss)) if b)
@@ -351,15 +352,38 @@ def play_out(hand, policy, first_action=None, on_decision=None, before_player=No
             if on_decision is not None:
                 on_decision(hand, seat, action)
             hand.cast(seat, action)
+            if action == 0 and hand.fuel(seat):  # RogueMatch._bot_fuel (65a7) puis _bot_turn a nouveau
+                action = policy(hand, seat)
+                if on_decision is not None:
+                    on_decision(hand, seat, action)
+                hand.cast(seat, action)
         if seat == PLAYER and player is not None and not discarding and before_player is not None:
             before_player(hand)
         if seat == PLAYER and player is not None and not discarding and player.trick_turn(hand):
             continue  # carte de joker posee dans le pli a la place d'une carte
         card = expert_bot.choose_card(g, seat)
-        if seat != PLAYER and not discarding and hand.rules.overrides_bot_card():
-            card = hand.rules.bot_card(seat, card, expert_bot.PublicView(g, seat).legal)
+        if not discarding:
+            card = _rules_card(hand, seat, card)
         hand.step(seat, card)
     return points_of(hand)
+
+
+def _rules_card(hand, seat, card):
+    """WhistTable._pump_bots : bot_card des jokers, puis une carte que les
+    jokers rendent illegale (La Tournee) -> la premiere legale. Joueur dans
+    sa misere sous Defausse Discrete : sa plus haute carte qui ne prend pas
+    le pli (un humain s'en sert ; l'autopilote du jeu non)."""
+    g, rules = hand.game, hand.rules
+    led = suit_of(g.current_trick[0][1]) if g.current_trick else None
+    legal = rules.legal_cards(sorted(g.hands[seat]), led, seat)
+    if seat != PLAYER and rules.overrides_bot_card():
+        card = rules.bot_card(seat, card, expert_bot.PublicView(g, seat).legal)
+    if seat == PLAYER and led is not None and J.in_misere(PLAYER, rules) and len(legal) > len(legal_plays(g.hands[seat], led)):
+        trump = rules.trick_trump()
+        safe = [c for c in legal if rules.trick_winner(list(g.current_trick) + [(seat, c)], led, trump) != seat]
+        if safe:
+            return max(safe, key=lambda c: (rank_of(c), c))
+    return card if card in legal else legal[0]
 
 
 def clone(hand):
@@ -381,17 +405,21 @@ def spare_deals(match, seed):
     return out
 
 
-def match_rollout(match, hand, seat, action, policy, hands_left, deals):
-    """-> (recompense de la donne, recompense donne + donnes restantes du match)
-    pour `seat`, `action` forcee a la premiere decision, puis `policy`."""
+def match_rollout(match, hand, seat, action, policy, hands_left, deals, seats=None):
+    """-> (recompense de la donne pour `seat`, recompense donne + donnes
+    restantes du match pour `seat` ou sommee sur `seats`), `action` forcee a
+    la premiere decision, puis `policy`."""
+    seats = [seat] if seats is None else seats
     m2, h2 = copy.deepcopy((match, hand))
     m2.deals = list(deals)
-    qh = hand_reward(play_out(h2, policy, first_action=action), seat)
-    qm = qh
+    pts = play_out(h2, policy, first_action=action)
+    qh = hand_reward(pts, seat)
+    qm = sum(hand_reward(pts, s) for s in seats)
     for _ in range(hands_left):
         m2.finish(h2)
         h2 = m2.next_hand()
-        qm += hand_reward(play_out(h2, policy), seat)
+        pts = play_out(h2, policy)
+        qm += sum(hand_reward(pts, s) for s in seats)
     return qh, qm
 
 
@@ -462,6 +490,11 @@ class Player:
         if jid is not None and J.make_effect(jid, PLAYER).target_kind() == "suit":  # 6c54 : sa plus longue couleur
             cards = rules.game.hands[PLAYER] if rules.game is not None else (rules.deal_hands or [[]])[PLAYER]
             return J.longest_suit(cards)
+        if jid is not None and rules.game is not None:  # 65a7 : le HUD n'offre que les sieges acceptes
+            eff = J.make_effect(jid, PLAYER)
+            ok = [s for s in (1, 2, 3) if eff.accepts_target(s, rules)]
+            if ok and len(ok) < 3:
+                return self.rng.choice(ok)
         opp = [s for s in (1, 2, 3) if rules.is_opponent(PLAYER, s)]
         return self.rng.choice(opp or [1, 2, 3])
 

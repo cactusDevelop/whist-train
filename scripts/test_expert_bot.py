@@ -64,6 +64,50 @@ def test_bot_bidding_always_legal():
         CHECKS[0] += 1
 
 
+def test_user_bid_rules_20261027():
+    """Profil concurrent joueur_1027 (regles utilisateur du 27/10) : proposer =
+    6 plis surs + 2 plis d'honneurs d'atout (R-D-V = 2) ; emballer = 4 plis
+    surs (+1 par niveau d'entree) avec 5+ atouts ou 4 dont une figure ; main
+    moyenne repartie du premier a parler : attendre. L'ExpertBot ({}) reste
+    inchange."""
+    from engine.bidding import bid_action_to_dict
+    from agents.expert_bot import trump_honour_tricks
+    A, K, Q, J = expert_bot.ACE, expert_bot.KING, expert_bot.QUEEN, expert_bot.JACK
+    for ranks, want in (([K, Q, J], 2), ([A, K, Q], 3), ([A], 1), ([A, Q, J], 2), ([A, K], 2), ([K, 3], 0),
+                        ([Q, J, 5], 0), ([A, J, 4], 1)):
+        check("plis d'honneurs %r" % ranks, trump_honour_tricks(ranks) == want)
+    expert_bot.set_bid_params(expert_bot.PROFILES["joueur_1027"])
+    rng = random.Random(27)
+    seen = {"propose": 0, "emballer": 0, "wait": 0}
+    for _ in range(3000):
+        hands = deal(rng)
+        bidding = Bidding(rng.randrange(4))
+        trou = detect_trou(hands)
+        if trou is not None:
+            bidding.seed_trou(trou)
+        while not bidding.finished:
+            seat = bidding.turn
+            choice = expert_bot.apply_bid(bidding, seat, hands[seat])
+            if not isinstance(choice, tuple):
+                info = bid_action_to_dict(choice)
+                kind, hand = info["action"], hands[seat]
+                if kind == "propose":
+                    check("proposer : 6 plis surs", estimate_tricks(hand, info["suit"]) >= 6)
+                    check("proposer : 2 plis d'honneurs",
+                          trump_honour_tricks(expert_bot._ranks(hand, info["suit"])) >= 2)
+                elif kind == "emballer":
+                    check("emballer : 4 plis surs", estimate_tricks(hand, info["suit"]) >= 4)
+                    check("emballer : atouts", expert_bot.emballer_suit_ok(hand, info["suit"]))
+                elif kind == "wait" and expert_bot.misere_kinds_for(hand) == ():
+                    check("attente : main moyenne repartie", expert_bot.balanced_average(hand))
+                if kind in seen:
+                    seen[kind] += 1
+    expert_bot.set_bid_params({})
+    check("ExpertBot inchange", expert_bot.PROPOSE_MIN == 3 and not expert_bot.WAIT_BALANCED)
+    check("regles 27/10 exercees %r" % seen, all(seen.values()))
+    print("    annonces vues : %r" % seen)
+
+
 def test_bot_play_legal_all_families_and_no_cheating():
     from scripts.expert_bot_match import run_bot_bidding
     from scripts.train import build_game, dispatch_play_phase2
@@ -170,7 +214,7 @@ def test_team_trump_rules_20261023():
 
 
 def main():
-    for t in (test_hand_evaluation, test_bot_bidding_always_legal, test_hybrid_bidder_legal_and_guarded,
+    for t in (test_hand_evaluation, test_bot_bidding_always_legal, test_hybrid_bidder_legal_and_guarded, test_user_bid_rules_20261027,
               test_bot_play_legal_all_families_and_no_cheating, test_team_trump_rules_20261023):
         t()
         print("ok  %s" % t.__name__, flush=True)

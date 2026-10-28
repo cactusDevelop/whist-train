@@ -46,6 +46,7 @@ PLAYER_PRIORITY = [
     "manche_truquee", "gueule_de_bois", "dette_de_jeu", "lune_noire", "coup_du_chapeau", "kermesse",
     "treizieme_carte", "coeur_de_zinneke", "silence_du_cercle", "embuscade", "collet", "fausse_piste", "faux_pas",
     "croupier_endormi", "contre_espionnage", "fumee_de_pipe", "tournee_generale", "echange_de_manche",
+    "defausse_discrete", "la_tournee", "cadeau_empoisonne", "meche_courte",
     "faux_depart",
     "borgne", "double_valet", "cameleon", "atout_errant", "traitre", "carte_fantome", "zero", "miroir",
     "courant_d_air", "main_lourde", "pourboire", "regard_furtif", "livre_de_comptes",
@@ -100,6 +101,10 @@ def view(hand, me):
         "best_seat": None, "best_card": None, "best_friendly": False, "enemy_ruff_best": False,
         "can_win_now": False, "forced_win": False, "wins_with": {},
     }
+    # 65a7 : declarants de misere adverses (La Tournee, Cadeau Empoisonne) ; Tournee = pas encore joue ce pli
+    v["misere_opponents"] = [s for s in range(NUM_PLAYERS) if J.misere_opponent(me, s, rules)]
+    played = {s for s, _c in trick}
+    v["tournee_target"] = next((s for s in v["misere_opponents"] if s not in played), -1)
     if trick:
         best = rules.trick_winner(trick, led, eff)
         bc = [cd for s, cd in trick if s == best][0]
@@ -372,6 +377,21 @@ def _pli_refile(v):
     return (YES, "rend_un_pli") if v["misere_declarer"] else (YES, "charge_le_declarant")
 
 
+def _defausse_discrete(v):
+    """65a7 : ma misere, la demandee me forcerait a prendre -> je me defausse ailleurs."""
+    if not v["misere_declarer"] or v["position"] == 0:
+        return NO, "hors_ma_misere_ou_entame"
+    off = [x for x in v["hand"] if suit_of(x) != v["led"]]
+    return (YES, "sort_du_pli_force") if v["forced_win"] and off else (NO, "je_peux_passer_dessous")
+
+
+def _la_tournee(v):
+    """65a7 : defense d'une misere, le declarant vise doit fournir sa plus forte."""
+    if not v["misere"] or v["misere_declarer"]:
+        return NO, "hors_defense_de_misere"
+    return (YES, "force_sa_plus_forte") if v["tournee_target"] >= 0 else (NO, "declarant_a_deja_joue")
+
+
 def _faux_depart(v):
     if v["position"] != 3 or v["best_friendly"] or v["can_win_now"] or v["remaining"] < 2:
         return NO, "pas_besoin"
@@ -445,6 +465,13 @@ def _croupier_endormi(v):
     return NO, "main_forte"
 
 
+def _cadeau_empoisonne(v):
+    """65a7 : sa prochaine defausse prend le pli -> tot dans la misere adverse."""
+    if not v["misere"] or v["misere_declarer"] or owned(v, "cadeau_empoisonne"):
+        return NO, "hors_defense_de_misere_ou_arme"
+    return (YES, "punit_sa_defausse") if v["remaining"] >= 4 else (NO, "tard")
+
+
 def _dette_de_jeu(v):
     if v["position"] != 3 or v["best_friendly"] or v["can_win_now"]:
         return NO, "pas_sur"
@@ -484,6 +511,13 @@ def _brouillard(v):
     return (YES, "atout_a_mon_entame") if v["remaining"] >= 6 else (NO, "tard")
 
 
+def _meche_courte(v):
+    """65a7 : +1 energie par pli perdu dans ma misere (2 max)."""
+    if not v["misere_declarer"] or owned(v, "meche_courte"):
+        return NO, "hors_ma_misere_ou_arme"
+    return (YES, "plis_perdus_payes") if v["remaining"] >= 3 else (NO, "tard")
+
+
 def _treizieme_carte(v):
     if v["misere"]:
         return NO, "misere"
@@ -505,6 +539,8 @@ RULES = {
     "fumee_de_pipe": _fumee_de_pipe, "silence_du_cercle": _silence_du_cercle, "lune_noire": _lune_noire,
     "coeur_de_zinneke": _coeur_de_zinneke, "brouillard_de_la_senne": _brouillard,
     "treizieme_carte": _treizieme_carte,
+    "defausse_discrete": _defausse_discrete, "la_tournee": _la_tournee,
+    "cadeau_empoisonne": _cadeau_empoisonne, "meche_courte": _meche_courte,
 }
 
 
@@ -521,6 +557,10 @@ def target(v, jid):
         return ((defs or decl) if v["misere_declarer"] else (decl or v["opponents"]))[0]
     if b == "faux_depart":
         return v["me"] if aces(v) >= 1 or not v["friends"] else v["friends"][0]
+    if b == "la_tournee":
+        return v["tournee_target"]
+    if b == "cadeau_empoisonne":
+        return v["misere_opponents"][0] if v["misere_opponents"] else -1
     if b in ("echange_de_manche", "coup_d_oeil", "regard_furtif"):
         decl = [s for s in v["opponents"] if s in v["side"]]
         return (decl or v["opponents"] or [s for s in range(NUM_PLAYERS) if s != v["me"]])[0]

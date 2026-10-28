@@ -119,7 +119,7 @@ def raw_state(hand, seat):
 
 # attribut Python -> cle de save_data() (joker_effects.gd)
 EFFECT_DATA = {"target": "target", "start": "from", "left": "left", "used": "used", "lost": "lost", "stop_at": "stop_at",
-               "streak": "streak"}
+               "streak": "streak", "gained": "gained"}
 
 
 def effect_data(e):

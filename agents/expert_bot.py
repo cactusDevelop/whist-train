@@ -12,6 +12,8 @@ ENCHERE -- trois contrats de predilection : proposition, emballage, solo.
     d'atout + longueur d'atout, as, series quasi garanties (A-R-D = 3 plis
     meme si un adversaire sec peut couper).
   - Proposer si >= 5 plis surs ; emballer si >= 3 (5 + 3 = emballage 8).
+    (Seuils actuels : tune 40411623914 ; ces regles et celles du 27/10
+    vivent en profils concurrents, PROFILES.)
   - L'emballeur surencherit d'un pli par pli supplementaire qu'il se voit
     faire (on suppose 5 plis chez le proposeur). Passe parole seulement
     s'il lui manque exactement 1 pli : le proposeur decide alors, une seule
@@ -94,12 +96,20 @@ from engine.scoring import MISERE_ORDER
 
 ACE, KING, QUEEN, JACK = 12, 11, 10, 9
 
-PROPOSE_MIN = 5  # plis surs pour proposer (regle utilisateur)
-EMBALLER_MIN = 3  # plis surs pour emballer (5 + 3 = emballage 8)
+# Seuils regles par scripts/expert_tune.py (cloud 40411623914, recherche coordonnee duplicate ;
+# validation 60000 donnes neuves : +1.837 +-0.053 pt/donne vs anciens reglages, z 35).
+# Anciennes valeurs (regles utilisateur du 27/09) : profil "joueur_0927" de PROFILES.
+PROPOSE_MIN = 3  # plis surs pour proposer
+EMBALLER_MIN = 1  # plis surs pour emballer (au niveau 8 ; garde-fou atouts : abondance_rule.EMBALLER_MIN_TRUMPS)
 SOLO_MIN = 6  # plis surs pour un solo seul
-ABONDANCE_MIN = 9  # ajout Claude valide par l'utilisateur (solo 9+ d'entree)
-PROPOSER_ASSUMED = PROPOSE_MIN  # ce que l'emballeur suppose chez le proposeur
-EMBALLER_ASSUMED = EMBALLER_MIN  # longueur d'atout supposee chez l'emballeur
+ABONDANCE_MIN = 10  # solo 10+ d'entree
+PROPOSER_ASSUMED = 7  # ce que l'emballeur suppose chez le proposeur
+EMBALLER_ASSUMED = 2  # longueur d'atout supposee chez l'emballeur
+# Reglages des profils concurrents (PROFILES) ; neutres pour l'ExpertBot.
+PROPOSE_TRUMP_HONOUR_TRICKS = 0  # plis d'honneurs d'atout exiges pour proposer (trump_honour_tricks)
+EMBALLER_LONG_TRUMPS = 0  # emballer avec au moins ce nombre d'atouts...
+EMBALLER_SHORT_TRUMPS = 0  # ... ou celui-ci avec au moins une figure (0, 0 = sans condition)
+WAIT_BALANCED = False  # premier a parler, main moyenne repartie : attendre (pour emballer ensuite)
 PROPOSER_TRUMPS_ASSUMED = 5  # longueur d'atout supposee chez le proposeur
 # Ecole du whist (voir docstring) :
 # « au moins quatre cartes avec deux honneurs » : les deux honneurs ont ete
@@ -107,11 +117,80 @@ PROPOSER_TRUMPS_ASSUMED = 5  # longueur d'atout supposee chez le proposeur
 # bot : +1.11 sans eux, +0.73 avec -- trop de passes generales) ; seule la
 # longueur est gardee.
 PROPOSE_MIN_LENGTH, PROPOSE_MIN_HONOURS = 4, 0
-SOLO_MIN_LENGTH, SOLO_MIN_TOP_HONOURS = 5, 2  # pas de « longue sans honneurs »
+SOLO_MIN_LENGTH, SOLO_MIN_TOP_HONOURS = 5, 1  # pas de « longue sans honneurs »
 ABONDANCE_MIN_HONOURS = 3  # « sept a huit atouts avec trois honneurs »
+# Prudence des encheres (signalement 2026-10-26 « contrats impossibles, surencheres
+# abusives » ; audit scripts/expert_bid_audit.py : solo 67.6 %, emballage 12/13
+# releve 44 % / 18 %). Mesure duplicate scripts/expert_bid_ab.py (cloud 40398240427,
+# 6000 donnes, paires variante vs defaut, vrais points) : SOLO_MARGIN 1 -0.10 +-0.07,
+# RAISE_MARGIN 1 -0.22 +-0.05 (plus prudent = PERD des points), RAISE_CAP 10 -0.01 +-0.02,
+# RAISE_CAP 11 +0.012 +-0.007 -> seul le plafond 11 est garde (plus d'emballage 12/13).
+SOLO_MARGIN = 0  # un solo de niveau L demande L + SOLO_MARGIN plis estimes
+RAISE_MARGIN = 0  # une relance (solo, emballage, saut du proposeur) demande ce nombre de plis en plus
+RAISE_CAP = 9  # (tune 40411623914 ; 11 avant) niveau maximal atteint par relance, saut ou emballage d'entree
+# Jeu de la carte (plaintes 2026-10-26 « overkill, defausse au lieu de couper ») :
+NO_OVERTAKE = False  # coequipier gagnant, on fournit : toujours la plus petite (jamais le depasser)
+RUFF_IF_OPP_LATER = False  # renonce, coequipier gagnant hors atout, un adversaire apres peut couper : couper
+SECOND_HAND_LOW = False  # 2e a jouer, coequipier apres : petite carte meme avec une maitresse
+# Deduction par l'enchere (utilisateur 2026-10-26 : « en comptant les cartes, en supposant la
+# main du coequipier [...] le proposant et l'emballant ont d'office plus d'atout ») : camp
+# declarant, quand les atouts non vus moins ceux supposes chez le partenaire = 0, les
+# adversaires n'ont plus d'atout (ni coupe ni surcoupe a craindre).
+INFER_OPP_TRUMPS = True  # duplicate cloud 40404132860 : +0.015 +-0.007 pt/donne (z 2.3)
+# tirer l'atout sans maitresse : l'honneur le plus haut (>= valet) suivi de la carte juste en dessous
+# (R-D -> R), plutot que la plus petite. Duplicate cloud 40404703553 (40000 donnes) : +0.291 +-0.017 pt/donne.
+TRUMP_LEAD_SEQUENCE = True
+DRAW_WITH_LAST_TRUMP = False  # tirer l'atout meme avec son dernier atout (duplicate -0.13 : rejete)
+SIDE_LEAD_SEQUENCE = True  # duplicate 40406005024 avec LEAD_PARTNER_SUIT : +0.089 +-0.021 ; entame par defaut hors atout : tete de sequence d'honneurs (R-D, D-V, V-10) de la couleur choisie
+LEAD_PARTNER_SUIT = True  # defense : entamer la couleur proposee/emballee par un coequipier
+BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
+              "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
+              "LEAD_PARTNER_SUIT")
+
+# Profils CONCURRENTS de l'ExpertBot (utilisateur 2026-10-27 : « mets les regles que je viens
+# de te donner en concurrent a l'ExpertBot, pas en remplacement, idem pour toutes les autres
+# fois. Le but n'est pas de creer artificiellement le meilleur bot mais de trouver la meilleure
+# IA. ») Chaque profil = reglages set_bid_params ; {} = l'ExpertBot. Departage :
+# scripts/bot_league.py (duplicate, vrais points). Toute nouvelle regle utilisateur = un
+# nouveau profil ici, jamais un changement des defauts.
+PROFILES = {
+    "expert": {},
+    # regles du 27/09 (valeurs d'avant le tune 40411623914)
+    "joueur_0927": {"PROPOSE_MIN": 5, "EMBALLER_MIN": 3, "ABONDANCE_MIN": 9, "PROPOSER_ASSUMED": 5,
+                    "EMBALLER_ASSUMED": 3, "SOLO_MIN_TOP_HONOURS": 2, "RAISE_CAP": 11},
+    # 27/10 : proposer 6 plis (plancher 5) avec plusieurs grosses figures d'atout comptees en plis
+    # reels (R-D-V = 2 : l'As en prend un) ; emballer 4 (plancher 3) avec 5-6 atouts ou 4 dont
+    # une figure ; « etre large » (solo au plus bas niveau, deja le cas) ; jamais de bluff ;
+    # main moyenne repartie du premier a parler : attendre pour emballer ensuite.
+    "joueur_1027": {"PROPOSE_MIN": 6, "PROPOSE_TRUMP_HONOUR_TRICKS": 2, "EMBALLER_MIN": 4,
+                    "EMBALLER_LONG_TRUMPS": 5, "EMBALLER_SHORT_TRUMPS": 4, "WAIT_BALANCED": True,
+                    "ABONDANCE_MIN": 9, "PROPOSER_ASSUMED": 5, "EMBALLER_ASSUMED": 3,
+                    "SOLO_MIN_TOP_HONOURS": 2, "RAISE_CAP": 11},
+    # 28/10 : ExpertBot + les seules regles de joueur_1027 qui lui rapportent (ablation
+    # 40596843093 : bloc emballer +0.160 z 3.1, attente main repartie +0.025 z 4.6)
+    "expert_emb1027": {"EMBALLER_MIN": 4, "EMBALLER_LONG_TRUMPS": 5, "EMBALLER_SHORT_TRUMPS": 4,
+                       "WAIT_BALANCED": True},
+}
+
+
+def set_bid_params(params):
+    """Fixe des reglages du module (dict partiel de constantes en MAJUSCULES,
+    BID_PARAMS ou seuils d'enchere ; {} = defauts). Mesure seule
+    (scripts/expert_bid_ab.py, scripts/expert_tune.py)."""
+    g = globals()
+    for k, v in _BID_DEFAULTS.items():
+        if k not in params:
+            g[k] = v
+    for k, v in params.items():
+        if k not in _BID_DEFAULTS:
+            _BID_DEFAULTS[k] = g[k]
+        g[k] = v
 
 
 # --- evaluation de main ------------------------------------------------------
+
+_BID_DEFAULTS = {k: globals()[k] for k in BID_PARAMS}
+
 
 def _ranks(hand, suit):
     return sorted((rank_of(c) for c in hand if suit_of(c) == suit), reverse=True)
@@ -158,7 +237,37 @@ def solo_suit_ok(hand, suit, level):
 
 def propose_suit_ok(hand, suit):
     ranks = _ranks(hand, suit)
-    return len(ranks) >= PROPOSE_MIN_LENGTH and _honours(ranks) >= PROPOSE_MIN_HONOURS
+    return (len(ranks) >= PROPOSE_MIN_LENGTH and _honours(ranks) >= PROPOSE_MIN_HONOURS
+            and trump_honour_tricks(ranks) >= PROPOSE_TRUMP_HONOUR_TRICKS)
+
+
+def trump_honour_tricks(ranks):
+    """Plis reels des figures d'atout, compte de l'utilisateur (27/10) : ce
+    qu'on gagne et perd vraiment -- R-D-V = 2 (l'As adverse en prend un),
+    A-D-V = 2, A-R = 2, A seul = 1. Figures tenues moins les figures
+    manquantes au-dessus de la plus basse tenue, au moins la sequence
+    depuis l'As."""
+    held = [r for r in (ACE, KING, QUEEN, JACK) if r in ranks]
+    if not held:
+        return 0
+    missing = sum(1 for r in (ACE, KING, QUEEN, JACK) if r > held[-1] and r not in ranks)
+    return max(_top_sequence(ranks, ACE), len(held) - missing)
+
+
+def emballer_suit_ok(hand, suit):
+    """Profil joueur_1027 : 5-6 atouts (meme petits), ou 4 avec au moins une
+    figure ; sans condition pour l'ExpertBot (0, 0)."""
+    ranks = _ranks(hand, suit)
+    return len(ranks) >= EMBALLER_LONG_TRUMPS or (len(ranks) >= EMBALLER_SHORT_TRUMPS and _honours(ranks) >= 1)
+
+
+def balanced_average(hand):
+    """Main moyenne assez repartie : pas de couleur de plus de 4 cartes ni de
+    chicane, et au moins 3 plis surs dans sa meilleure couleur (de quoi
+    emballer une proposition)."""
+    lengths = [len(_ranks(hand, s)) for s in range(NUM_SUITS)]
+    return max(lengths) <= 4 and min(lengths) >= 1 and max(
+        estimate_tricks(hand, s) for s in range(NUM_SUITS)) >= EMBALLER_MIN
 
 
 def misere_slack(hand):
@@ -321,7 +430,8 @@ def choose_bid(bidding, seat, hand):
     #    l'emballage part au plus petit niveau qui depasse l'enchere en tete)
     options = [(estimate_tricks(hand, info["suit"]), a, emballer_min(bidding, info["suit"]))
                for a, info in by_kind.get("emballer", [])]
-    options = [o[:2] for o in options if o[0] >= o[2]]
+    options = [o[:2] for o in options if o[0] >= o[2] and emballer_suit_ok(hand, infos[o[1]]["suit"])
+               and bidding.emballage_entry_level(infos[o[1]]["suit"]) <= RAISE_CAP]
     if options:
         return max(options)[1]
     # 2. proposer si >= 5 plis
@@ -334,6 +444,9 @@ def choose_bid(bidding, seat, hand):
     best = _best_solo(by_kind, hand)
     if best is not None:
         return best
+    # 3b. main moyenne repartie, premier a parler : attendre pour emballer ensuite
+    if WAIT_BALANCED and "wait" in by_kind and balanced_average(hand):
+        return ACTION_WAIT
     # 4. misere (Ecole du whist)
     choice = _misere_choice(bidding, by_kind, hand)
     if choice is not None:
@@ -382,7 +495,7 @@ def _cheapest_solo(by_kind, est, suit, hand, families=("solo", "abondance", "sol
     for fam in families:
         for a, info in by_kind.get(fam, []):
             level = info.get("level", 13)
-            if info["suit"] == suit and level <= est and solo_suit_ok(hand, suit, level):
+            if info["suit"] == suit and level + SOLO_MARGIN <= est and solo_suit_ok(hand, suit, level):
                 choices.append((level, a))
     return min(choices)[1] if choices else None
 
@@ -407,7 +520,7 @@ def _respond_to_outbid(bidding, seat, hand, c, legal, by_kind):
             solo = _best_solo(by_kind, hand, exclude_suit=c["suit"])
             if solo is not None and own < EMBALLER_MIN + (target - 8):
                 return solo
-            if ACTION_RAISE in legal and team >= target:
+            if ACTION_RAISE in legal and team >= target + RAISE_MARGIN and target <= RAISE_CAP:
                 return ACTION_RAISE
             if solo is not None:
                 return solo
@@ -416,13 +529,13 @@ def _respond_to_outbid(bidding, seat, hand, c, legal, by_kind):
             return ACTION_PASS
         # proposeur, parole passee : l'emballeur a montre (niveau - 5) plis ;
         # une seule decision -> sauter directement au niveau que l'equipe porte
-        team = min(EMBALLAGE_MAX_LEVEL, own + (c["level"] - PROPOSER_ASSUMED))
+        team = min(EMBALLAGE_MAX_LEVEL, RAISE_CAP, own + (c["level"] - PROPOSER_ASSUMED) - RAISE_MARGIN)
         if team >= target and bidding.can_raise_to(seat, team):
             return (RAISE_TO, team)
         return ACTION_PASS
     if c["type"] == "solo":
         own = estimate_tricks(hand, c["suit"])
-        return ACTION_RAISE if ACTION_RAISE in legal and own >= target else ACTION_PASS
+        return ACTION_RAISE if ACTION_RAISE in legal and own >= target + RAISE_MARGIN and target <= RAISE_CAP else ACTION_PASS
     return ACTION_PASS  # trou (jamais relancable)
 
 
@@ -497,7 +610,12 @@ class PublicView:
         return all(rank_of(c) < rank_of(card) for c in self.unseen_in(suit_of(card)))
 
     def may_hold(self, seat, suit):
-        return seat != self.seat and not self.void[seat][suit] and bool(self.unseen_in(suit))
+        if seat == self.seat or self.void[seat][suit] or not self.unseen_in(suit):
+            return False
+        if (INFER_OPP_TRUMPS and suit == self.trump and self.seat in self.declarer_side
+                and seat not in self.declarer_side and self.opponent_trumps_outstanding() == 0):
+            return False
+        return True
 
     def may_ruff(self, seat, suit):
         return (self.trump is not None and suit != self.trump and self.void[seat][suit]
@@ -746,8 +864,11 @@ def _follow(v):
     if partner_winning:
         # ne jamais surcouper ni depasser le partenaire ; le laisser tenir la main
         partner_safe = not any(s not in mates for s in later) or _partner_safe(v, win_card, led, later)
+        if RUFF_IF_OPP_LATER and v.trump is not None and not following and suit_of(win_card) != v.trump and any(
+                s not in mates and not v.void[s][v.trump] and v.unseen_in(v.trump) for s in later):
+            partner_safe = False
         if following:
-            if not partner_safe:
+            if not partner_safe and not NO_OVERTAKE:
                 masters = [c for c in following if _wins_now(v, c) and _safe_win(v, c, later)]
                 if masters:
                     return _lowest(masters)
@@ -767,6 +888,8 @@ def _follow(v):
             return _lowest(following)
         if not later or all(s in mates for s in later):
             return _lowest(win_follow)
+        if SECOND_HAND_LOW and len(v.current_trick) == 1 and any(s in mates for s in later):
+            return _lowest(following)
         safe = [c for c in win_follow if _safe_win(v, c, later)]
         if safe:
             return _lowest(safe)
@@ -831,13 +954,20 @@ def _lead(v):
             keep_drawing = outstanding > 0 and len(opps_with_trumps) >= 1
             # Ecole : « garder un atout de controle pour couper la longue
             # adverse » -- ne pas purger avec son dernier atout
-            if len(my_trumps) == 1 and len(my_trumps) < len(v.legal):
+            if len(my_trumps) == 1 and len(my_trumps) < len(v.legal) and not DRAW_WITH_LAST_TRUMP:
                 keep_drawing = False
         else:  # solo : 3 adversaires, tirer tant que 2+ peuvent encore en avoir
             keep_drawing = outstanding > 0 and len(opps_with_trumps) >= 2
         if keep_drawing:
             masters = [c for c in my_trumps if v.is_master(c)]
-            return _highest(masters) if masters else _lowest(my_trumps)
+            if masters:
+                return _highest(masters)
+            if TRUMP_LEAD_SEQUENCE:
+                ranks = {rank_of(c): c for c in my_trumps}
+                seq = [r for r in ranks if r >= JACK and r - 1 in ranks]
+                if seq:
+                    return ranks[max(seq)]
+            return _lowest(my_trumps)
 
     # 2. jouer le renom du coequipier (il coupe), si l'adversaire apres lui ne surcoupe pas
     for m in mates:
@@ -887,9 +1017,24 @@ def _lead(v):
     #    sans coupe adverse. Defense (Ecole) : « jouer la couleur longue de la
     #    defense pour forcer l'annonceur a couper » -- chaque coupe lui mange
     #    un atout ; et jamais l'atout (« purger, c'est lui rendre service »).
+    if LEAD_PARTNER_SUIT and not declaring:
+        theirs = [c for c in side if any(v.proposed_long(m, suit_of(c)) for m in mates)]
+        if theirs:
+            return _seq_top(theirs, SIDE_LEAD_SEQUENCE) or _lowest(theirs)
     safe_side = side if not declaring else ([c for c in side if not ruff_risk(suit_of(c))] or side)
     if safe_side:
         not_theirs = [c for c in safe_side if not any(v.proposed_long(o, suit_of(c)) for o in opps)] or safe_side
         longest = max(count[suit_of(c)] for c in not_theirs)
-        return _lowest([c for c in not_theirs if count[suit_of(c)] == longest])
+        pick = [c for c in not_theirs if count[suit_of(c)] == longest]
+        return (SIDE_LEAD_SEQUENCE and _seq_top(pick, True)) or _lowest(pick)
     return _lowest(v.legal)
+
+
+def _seq_top(cards, on):
+    """Tete de sequence d'honneurs (>= 10 suivi de la carte juste en dessous),
+    ou None."""
+    if not on:
+        return None
+    by = {(suit_of(c), rank_of(c)): c for c in cards}
+    tops = [c for c in cards if rank_of(c) >= JACK - 1 and (suit_of(c), rank_of(c) - 1) in by]
+    return max(tops, key=rank_of) if tops else None

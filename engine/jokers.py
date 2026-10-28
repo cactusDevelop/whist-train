@@ -26,19 +26,27 @@ retient quel siege l'a posee dans le pli en cours.
 
 import random
 
-from engine.cards import NUM_PLAYERS, suit_of, rank_of, trick_winner as classic_trick_winner
+from engine.cards import NUM_PLAYERS, legal_plays, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "d06014bf4ad14903"
+JOKER_SPEC_HASH = "65a78656ef5d863e"
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
 # texte ou de cablage seulement) : un reseau entraine sous l'une d'elles est
 # reexporte tel quel avec JOKER_SPEC_HASH. Une regle qui change -> vider la
 # liste (sauf le hash courant) et reentrainer.
-RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH, "07ac337284322851", "c8f6c08407fe0bf5", "d4c4b009cd0a8ba0"}
+RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH}
+# 65a7 (whist-4-it d74be81 + 48b2dc3 + ff4b72a + f31712b, Chantier Jokers joues) : 2 cases d'effet de donne
+# par siege (3 pour elites/boss/habitues, bot_case), passif arme seulement s'il reste une case ; defausse
+# d'un joker de la main = +1 energie (pas si due, « sans allumettes » ou passif arme), bots : _bot_fuel ;
+# spammers piochent 5 jokers ; 4 jokers de misere (Defausse Discrete, Meche Courte, La Tournee, Cadeau
+# Empoisonne ; jamais lances par les bots -> CASTABLE inchange) -> reentrainement.
+# f01c2461 (whist-4-it ff4faaa) : apres une Trahison du Duel, play_error -> "betrayal" pour tous jusqu'a la fin
+# de la donne, et Trahison ratee partagee entre les 3 autres (whist_table._apply_betrayal). La Trahison est une
+# action humaine du Duel jamais simulee ici (l'ExpertBot ne trahit pas) -> regles vues a l'entrainement = d06014bf.
 # d06014bf (whist-4-it, rapport 2026-10-24) : "slip" -- aux actes I/II les bots face aux joueurs jouent parfois
 # une autre carte legale ; aucun joker, cout ni observation ne change -> regles = 07ac.
 # Exportable sans equivalence de regles : champion du gate cloud MESURE sous les regles courantes
 # (run 40100438746, 07ac : iter 93 champion_vs_heuristic +26..+41, aucune iteration acceptee devant lui).
-MEASURED_CHAMPION_HASHES = {"6c5400e9ac96beb4"}
+MEASURED_CHAMPION_HASHES = set()  # 65a7 : regles changees, le champion 6c54 doit repasser la porte
 # 07ac (whist-4-it 9661351) : Dette de Jeu journalise {"event": "debt"} (aucune regle ne change) -> regles = c8f6.
 # c8f6 (whist-4-it 0f73fa4) : Horloge masquee (pointless) avant le 8e pli, comme le port d4c4 -> regles = d4c4.
 # d4c4 (whist-4-it, rapport admin 2026-10-23 "trop cheat") : Horloge Arretee seulement a partir du 8e pli -> reentrainement.
@@ -139,6 +147,11 @@ CATALOG = {
     "horloge_arretee": ("sort", "cave", 2, False),
     "treizieme_carte": ("aura", "cave", 1, False),
     "livre_de_comptes": ("sort", "cave", 1, False),
+    # 65a7 (whist-4-it f31712b) : jokers de misere, jamais lances par les bots
+    "defausse_discrete": ("sort", "salle", 2, False),
+    "meche_courte": ("aura", "comptoir", 1, False),
+    "la_tournee": ("sort", "comptoir", 1, False),
+    "cadeau_empoisonne": ("piege", "salle", 2, False),
     "cartes_marquees": ("passif", "maudit", 0, False),
     "joueur_fantome": ("passif", "maudit", 0, False),
     "pacte_du_tenancier": ("passif", "maudit", 0, False),
@@ -163,6 +176,10 @@ CASTABLE = sorted(i for i, (t, _r, _c, bc) in CATALOG.items() if bc and t in BOT
 ACTION_DIM = 1 + len(CASTABLE)
 
 DRAW_PER_HAND = 3  # MatchState
+SPAMMER_DRAWS = 5  # 65a7 (ff4b72a) : elites/boss/habitues piochent 5 jokers (tout leur deck avant)
+DISCARD_GAIN = 1  # 65a7 (48b2dc3) : un joker defausse de la main = +1 energie
+LASTING_CASES = 2  # 65a7 (d74be81) : effets de donne par siege (JokerRules.LASTING_CASES)
+SPAMMER_CASES = 3
 ENERGY_PER_HAND = 3
 SUSPICION_MAX = 10
 ELITE_SEATS = (1, 3)
@@ -347,6 +364,10 @@ class Effect:
         """Ce que needs_target() choisit : "seat", ou "suit" (indice de couleur)."""
         return "seat"
 
+    def accepts_target(self, seat, rules):
+        """65a7 : un siege que needs_target() peut viser maintenant (le HUD n'offre que ceux-la)."""
+        return True
+
     def on_play(self, rules, target=-1):
         return {}
 
@@ -392,6 +413,15 @@ class Effect:
     def plays_as_trump(self, play, rules):
         """True = cette carte prend le pli comme l'atout le plus fort (Manche Truquee)."""
         return False
+
+    def takes_trick(self, play, rules):
+        """65a7 : True = ce coup prend le pli, quoi qu'il y ait d'autre (Cadeau Empoisonne)."""
+        return False
+
+    def legal_cards(self, seat, hand, led, legal, rules):
+        """65a7 : les cartes que `seat` peut jouer de `hand`, `legal` = celles
+        que les regles permettent jusqu'ici (jokers de misere)."""
+        return legal
 
     def on_hand_end(self, rules):
         """Donne comptee, avant la defausse de ses jokers (Chope Vide)."""
@@ -1140,6 +1170,115 @@ class BaronneSees(Effect):
         return True
 
 
+# --- jokers de misere (65a7, whist-4-it f31712b) ---------------------------
+
+def in_misere(seat, rules):
+    """JokerEffects.in_misere : `seat` declare la misere jouee."""
+    c = rules.contract or {}
+    return c.get("type", "") == "misere" and seat in c.get("declarers", [])
+
+
+def misere_opponent(seat, other, rules):
+    return in_misere(other, rules) and rules.is_opponent(seat, other)
+
+
+class DefausseDiscrete(Effect):
+    """Dans la misere du proprietaire, ce pli : il n'est pas oblige de fournir."""
+    scope = TRICK
+
+    def pointless(self, rules):
+        return not in_misere(self.owner, rules)
+
+    def legal_cards(self, seat, hand, led, legal, rules):
+        return list(hand) if seat == self.owner else legal
+
+
+class MecheCourte(Aura):
+    """Chaque pli que le proprietaire perd dans sa misere : +1 energie, MAX dans la donne."""
+    MAX = 2
+
+    def __init__(self, jid, owner):
+        super().__init__(jid, owner)
+        self.gained = 0
+
+    def pointless(self, rules):
+        return not in_misere(self.owner, rules)
+
+    def on_trick_resolved(self, winner, plays, rules):
+        if (self.gained >= self.MAX or winner == self.owner or not in_misere(self.owner, rules)
+                or not any(p[0] == self.owner for p in plays)):
+            return
+        self.gained += 1
+        rules.state.gain_energy(self.owner, 1)
+
+
+class LaTournee(Effect):
+    """Ce pli, le declarant de misere vise joue sa plus forte carte de la couleur demandee."""
+    scope = TRICK
+
+    def __init__(self, jid, owner):
+        super().__init__(jid, owner)
+        self.target = -1
+
+    def needs_target(self):
+        return True
+
+    def accepts_target(self, seat, rules):
+        return misere_opponent(self.owner, seat, rules)
+
+    def pointless(self, rules):
+        return not any(self.accepts_target(s, rules) for s in range(NUM_PLAYERS))
+
+    def on_play(self, rules, target=-1):
+        if target < 0 or not self.accepts_target(target, rules):
+            return {"error": "target"}
+        if any(s == target for s, _c in rules.game.current_trick):
+            return {"error": "played"}
+        self.target = target
+        return {}
+
+    def legal_cards(self, seat, hand, led, legal, rules):
+        if seat != self.target:
+            return legal
+        follow = [c for c in legal if suit_of(c) == led]
+        if not follow:
+            return legal
+        return [max(follow, key=rank_of)]
+
+
+class CadeauEmpoisonne(Trap):
+    """La prochaine fois que le declarant de misere vise ne fournit pas, sa carte prend le pli."""
+
+    def __init__(self, jid, owner):
+        super().__init__(jid, owner)
+        self.target = -1
+
+    def needs_target(self):
+        return True
+
+    def accepts_target(self, seat, rules):
+        return misere_opponent(self.owner, seat, rules)
+
+    def pointless(self, rules):
+        return not any(self.accepts_target(s, rules) for s in range(NUM_PLAYERS))
+
+    def on_play(self, rules, target=-1):
+        if target < 0 or not self.accepts_target(target, rules):
+            return {"error": "target"}
+        self.target = target
+        return {}
+
+    def _discards(self, play, rules):
+        return play[0] == self.target and play[0] not in rules.joker_cards and suit_of(play[1]) != rules.current_led
+
+    def takes_trick(self, play, rules):
+        return not self.spent and self._discards(play, rules)
+
+    def on_trick_resolved(self, winner, plays, rules):
+        if not self.spent and any(self._discards(p, rules) for p in plays):
+            self.spent = True
+
+
 EFFECTS = {
     "cameleon": Cameleon, "zero": Zero, "traitre": Traitor, "coup_de_vent": CoupDeVent,
     "main_lourde": MainLourde, "embuscade": Embuscade, "kermesse": Kermesse, "coup_d_oeil": CoupDOeil,
@@ -1161,6 +1300,8 @@ EFFECTS = {
     "sceau_du_grand_maitre": ContratImpose, "cavalier_seul": CavalierSeul,
     "coup_du_chapeau": CoupDuChapeau, "pourboire": Pourboire, "chope_vide": ChopeVide, "faux_pas": FauxPas,
     "pli_refile": PliRefile,
+    "defausse_discrete": DefausseDiscrete, "meche_courte": MecheCourte, "la_tournee": LaTournee,
+    "cadeau_empoisonne": CadeauEmpoisonne,
 }
 assert set(EFFECTS) == set(CATALOG)
 
@@ -1192,6 +1333,7 @@ class MatchState:
         self.eye_threshold = SUSPICION_MAX  # Mise Noire
         self.borrowed = [[] for _ in range(NUM_PLAYERS)]  # jokers de defense d'une elite adaptee (3d47)
         self.to_discard = [0] * NUM_PLAYERS  # Main Lourde (6c54)
+        self.dry_hand = False  # donne du joueur sous « sans allumettes » : sa defausse ne rapporte rien
         for pile in self.draw_pile:
             self.rng.shuffle(pile)
 
@@ -1207,8 +1349,9 @@ class MatchState:
             malus = self.next_hand_malus + self.energy_malus if seat == PLAYER else 0
             extra = self.spammer_energy if seat in self.spammers else 0
             self.energy[seat] = max(0, ENERGY_PER_HAND + extra + bonus - malus)
-            n = len(self.draw_pile[seat]) + len(self.discard[seat]) if seat in self.spammers else DRAW_PER_HAND
+            n = SPAMMER_DRAWS if seat in self.spammers else DRAW_PER_HAND
             self.draw_jokers(seat, n + self.next_hand_draws[seat] + (self.rules.draw_bonus(seat) if self.rules else 0))
+        self.dry_hand = self.next_hand_malus >= NO_ENERGY
         self.next_hand_malus = 0
         self.next_hand_draws = [0] * NUM_PLAYERS
         self.played_this_hand = [0] * NUM_PLAYERS
@@ -1241,7 +1384,8 @@ class MatchState:
                 self.rng.shuffle(self.draw_pile[seat])
             jid = self.draw_pile[seat].pop()
             self.joker_hand[seat].append(jid)
-            if jtype(jid) == "passif" and self.rules is not None:
+            # 65a7 : un passif agit depuis une case libre ; les deux prises, il dort dans la main
+            if jtype(jid) == "passif" and self.rules is not None and self.rules.free_case(seat) >= 0:
                 self.rules.play(seat, jid)
 
     def must_discard(self, seat, n):
@@ -1258,7 +1402,18 @@ class MatchState:
                         break
             self.discard_joker(seat, pick)
 
+    def discard_gain(self, seat, jid):
+        """65a7 : l'energie que defausser `jid` rapporterait a `seat` maintenant
+        (rien si la defausse est due, sous « sans allumettes », ou passif arme)."""
+        if self.to_discard[seat] > 0 or (seat == PLAYER and self.dry_hand):
+            return 0
+        if self.rules is not None and jtype(jid) == "passif" and self.rules.armed(seat, jid):
+            return 0
+        return DISCARD_GAIN
+
     def discard_joker(self, seat, jid):
+        """Due d'abord (Main Lourde), sinon payee DISCARD_GAIN ; -> energie gagnee."""
+        gain = self.discard_gain(seat, jid)
         self.joker_hand[seat].remove(jid)
         if self.rules is not None and jtype(jid) == "passif":
             self.rules.disarm(seat, jid)
@@ -1266,7 +1421,10 @@ class MatchState:
             self.borrowed[seat].remove(jid)
         else:
             self.discard[seat].append(jid)
-        self.to_discard[seat] -= 1
+        if self.to_discard[seat] > 0:
+            self.to_discard[seat] -= 1
+        self.energy[seat] += gain
+        return gain
 
     def win_sous(self, seat, n):
         if seat == PLAYER:
@@ -1346,8 +1504,45 @@ class JokerRules:
         # scorer(game, contract) -> score de base de la donne (WhistTable._score_hand) ; une
         # fonction de module (jamais une fermeture : clone() = deepcopy garde la meme fonction)
         self.scorer = None
+        # 65a7 (d74be81) : par siege, les effets de donne dans ses cases (None = libre) ;
+        # un 3e prend la case de bot_case, celui qu'il remplace s'arrete
+        self.lasting_cases = [LASTING_CASES] * NUM_PLAYERS
+        self.free_cases()
+
+    def set_spammers(self, seats):
+        for seat in seats:
+            self.lasting_cases[seat] = SPAMMER_CASES
+        self.free_cases()
+
+    def free_cases(self):
+        self.cases = [[None] * n for n in self.lasting_cases]
+        self.case_order = [[] for _ in range(NUM_PLAYERS)]
+
+    def free_case(self, seat):
+        return self.cases[seat].index(None) if None in self.cases[seat] else -1
+
+    def bot_case(self, seat):
+        """Case dont l'effet est fini (piege parti), sinon la plus ancienne."""
+        for i, e in enumerate(self.cases[seat]):
+            if e is not None and not any(x is e for x in self.effects):
+                return i
+        return self.case_order[seat][0] if self.case_order[seat] else -1
+
+    def armed(self, seat, jid):
+        return any(e.owner == seat and e.id == jid for e in self.effects)
+
+    def clear_case(self, seat, case):
+        """65a7 (48b2dc3) : `seat` defausse le joker de sa case, son effet s'arrete ; -> son id ou ""."""
+        if case < 0 or case >= len(self.cases[seat]) or self.cases[seat][case] is None:
+            return ""
+        e = self.cases[seat][case]
+        self.effects = [x for x in self.effects if x is not e]
+        self.cases[seat][case] = None
+        self.case_order[seat].remove(case)
+        return e.id
 
     def new_hand(self, game, contract):
+        self.free_cases()
         self.effects = []
         self.trick_winners = []
         self.joker_cards = {}
@@ -1423,6 +1618,13 @@ class JokerRules:
         card = effect.make_card(led if led is not None else 0, self)
         if card is not None and led is None:
             return {"error": "lead"}
+        case = -1
+        if effect.scope == HAND:  # 65a7 : une case libre, sinon celle de bot_case (bots et autopilote)
+            case = self.free_case(seat)
+            if case < 0:
+                case = self.bot_case(seat)
+                if case < 0:
+                    return {"error": "case"}
         if any(e.cancels(seat, jid, self) for e in self.live()):
             return {"cancelled": True}
         result = effect.on_play(self, target)
@@ -1430,6 +1632,16 @@ class JokerRules:
             return result
         if effect.scope != INSTANT:
             self.effects.append(effect)
+        if case >= 0:
+            old = self.cases[seat][case]
+            if old is not None:
+                self.effects = [x for x in self.effects if x is not old]
+                result["replaced"] = old.id
+            self.cases[seat][case] = effect
+            if case in self.case_order[seat]:
+                self.case_order[seat].remove(case)
+            self.case_order[seat].append(case)
+            result["case"] = case
         if card is not None:
             result["card"] = card
         return result
@@ -1438,13 +1650,27 @@ class JokerRules:
         for e in self.effects:
             if e.owner == seat and e.id == jid:
                 self.effects.remove(e)
+                for i, x in enumerate(self.cases[seat]):
+                    if x is e:
+                        self.cases[seat][i] = None
+                        self.case_order[seat].remove(i)
                 return
+
+    def legal_cards(self, hand, led, seat):
+        """65a7 : les jokers de misere plient l'obligation de fournir."""
+        legal = legal_plays(hand, led)
+        for e in self.live():
+            legal = e.legal_cards(seat, hand, led, legal, self)
+        return legal
 
     def trick_winner(self, plays, led, trump):
         self.current_led = led
         self.current_trump = trump
         self.current_plays = list(plays)
         live = self.live()
+        for p in plays:  # 65a7 : Cadeau Empoisonne
+            if any(e.takes_trick(p, self) for e in live):
+                return p[0]
         competing = [p for p in plays if all(e.competes(p, self) for e in live)]
         if not competing:
             return plays[0][0]
@@ -1617,6 +1843,28 @@ class JokerHand:
         if played.get("error"):
             return
         spend(self.state, seat, jid, played)
+
+    def fuel(self, seat):
+        """RogueMatch._bot_fuel (65a7) : sans cast, un joker qu'il ne lancera
+        pas part pour l'energie (+DISCARD_GAIN) qui manque a un joker qu'il
+        veut ; True = defausse faite (le bot rejoue son tour)."""
+        st = self.state
+        hand = st.joker_hand[seat]
+        for jid in hand:
+            if (jtype(jid) not in BOT_TYPES or st.play_error(seat, jid) != "energy"
+                    or st.cost_of(seat, jid) > st.energy[seat] + DISCARD_GAIN
+                    or not make_effect(jid, seat).bot_wants(self.rules)):
+                continue
+            for other in hand:
+                if other != jid and self._spare(seat, other):
+                    st.discard_joker(seat, other)
+                    return True
+        return False
+
+    def _spare(self, seat, jid):
+        if jtype(jid) == "passif" or self.state.discard_gain(seat, jid) <= 0:
+            return False
+        return jtype(jid) not in BOT_TYPES or not make_effect(jid, seat).bot_wants(self.rules)
 
 
 def spend(state, seat, jid, played):

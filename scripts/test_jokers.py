@@ -113,6 +113,7 @@ def main():
     oks.append(check("tricks_won total = valeur du pli", sum(game.tricks_won) in (1, 2), True))
     oks.append(check("le gagnant mene", game.turn, [s for s in range(4) if game.tricks_won[s]][0]))
     oks += v2_tests()
+    oks += jokers_joues_tests()
     print("%d/%d" % (sum(oks), len(oks)))
     sys.exit(0 if all(oks) else 1)
 
@@ -440,8 +441,8 @@ def spammer_tests():
         oks.append(check("spammer mise %d : allumettes elites / joueur" % mise,
                          (m.state.energy[1], m.state.energy[3], m.state.energy[0]),
                          (6 + mise, 6 + mise, 3 - (1 if mise >= 1 else 0))))
-        oks.append(check("spammer mise %d : tout le deck pioche" % mise,
-                         (len(m.state.joker_hand[1]), m.state.draw_pile[1]), (deck1, [])))
+        oks.append(check("spammer mise %d : SPAMMER_DRAWS pioches (65a7)" % mise,
+                         len(m.state.joker_hand[1]), min(J.SPAMMER_DRAWS, deck1)))
         oks.append(check("spammer mise %d : pacte dans le deck, seuil de l'Oeil" % mise,
                          ("pacte_du_tenancier" in m.state.curses[1], m.state.eye_threshold),
                          (True, 8 if mise >= 2 else 10)))
@@ -535,6 +536,119 @@ def elite_tests():
         m.state.end_hand()
         borrowed_left += sum(len(b) for b in m.state.borrowed)
     oks.append(check("acte III : des elites s'adaptent, jamais en attaque", (adapted > 0, borrowed_left), (True, 0)))
+    return oks
+
+
+def misere_setup(declarers=(1,)):
+    state, rules, game = setup()
+    rules.bind(game, {"type": "misere", "kind": "grande", "declarers": list(declarers)})
+    return state, rules, game
+
+
+def jokers_joues_tests():
+    """65a7 (whist-4-it d74be81, 48b2dc3, ff4b72a, f31712b) : 2 cases d'effet
+    de donne (3 spammers), defausse remuneree, 5 pioches, jokers de misere."""
+    from engine.joker_match import Match
+    oks = []
+    # 2 cases : le 3e remplace la plus ancienne, l'effet remplace s'arrete
+    state, rules, game = setup()
+    state.energy[1] = 9
+    r1, r2 = rules.play(1, "kermesse"), rules.play(1, "inversion")
+    r3 = rules.play(1, "coup_du_chapeau")
+    oks.append(check("cases : 2 libres puis remplacement de la plus ancienne",
+                     (r1.get("case"), r2.get("case"), r3.get("case"), r3.get("replaced")), (0, 1, 0, "kermesse")))
+    oks.append(check("cases : kermesse remplacee ne compte plus", sorted(e.id for e in rules.effects),
+                     ["coup_du_chapeau", "inversion"]))
+    oks.append(check("cases : un sort immediat ne prend pas de case", "case" in rules.play(1, "coup_de_vent"), False))
+    # piege parti : bot_case reprend sa case avant la plus ancienne
+    state, rules, game = setup()
+    rules.play(1, "kermesse")
+    rules.play(1, "faux_pas")
+    rules.effects[-1].spent = True
+    rules.on_trick_resolved(1, [(0, card(H, 2)), (1, card(H, 3)), (2, card(H, 4)), (3, card(H, 5))])
+    oks.append(check("cases : piege parti remplace d'abord", rules.bot_case(1), 1))
+    # passif : arme seulement s'il reste une case
+    state, rules, game = setup()
+    rules.play(0, "kermesse")
+    rules.play(0, "inversion")
+    state.draw_pile[0] = ["chope_vide"]
+    state.draw_jokers(0, 1)
+    oks.append(check("passif sans case : dort dans la main", (state.joker_hand[0], rules.armed(0, "chope_vide")),
+                     (["chope_vide"], False)))
+    oks.append(check("passif qui dort : defausse +1", state.discard_gain(0, "chope_vide"), 1))
+    state, rules, game = setup()
+    state.draw_pile[0] = ["chope_vide"]
+    state.draw_jokers(0, 1)
+    oks.append(check("passif arme : defausse 0", (rules.armed(0, "chope_vide"), state.discard_gain(0, "chope_vide")),
+                     (True, 0)))
+    state.discard_joker(0, "chope_vide")
+    oks.append(check("passif defausse : case liberee", rules.free_case(0), 0))
+    # defausse remuneree
+    state, rules, game = setup()
+    state.joker_hand[1] = ["kermesse", "embuscade", "zero"]
+    state.energy[1] = 0
+    oks.append(check("defausse : +1", (state.discard_joker(1, "zero"), state.energy[1]), (1, 1)))
+    state.to_discard[1] = 1
+    oks.append(check("defausse due (Main Lourde) : 0", (state.discard_joker(1, "embuscade"), state.to_discard[1]), (0, 0)))
+    state.joker_hand[0] = ["zero"]
+    state.dry_hand = True
+    oks.append(check("sans allumettes : la defausse du joueur rapporte 0", state.discard_gain(0, "zero"), 0))
+    state.next_hand_malus = J.NO_ENERGY
+    state.start_hand()
+    oks.append(check("start_hand : dry_hand d'apres la sanction", state.dry_hand, True))
+    # _bot_fuel : kermesse (2) voulue avec 1 energie -> zero (jamais lance) defausse, puis lancable
+    state, rules, game = setup()
+    hand = J.JokerHand(game, rules.contract, state, rules)
+    state.joker_hand[1] = ["kermesse", "zero"]
+    state.energy[1] = 1
+    oks.append(check("fuel : defausse le joker inutile", (hand.fuel(1), state.joker_hand[1], state.energy[1]),
+                     (True, ["kermesse"], 2)))
+    oks.append(check("fuel : plus rien a defausser", hand.fuel(1), False))
+    # spammers : 3 cases, 5 pioches
+    m = Match({"kind": "elite", "act": 1, "eye": "points", "deck": [], "mise": 0}, 7)
+    oks.append(check("spammers : 3 cases, joueur 2", [len(c) for c in m.rules.cases], [2, 3, 2, 3]))
+    m.rules.new_hand(None, None)
+    oks.append(check("spammers : cases gardees a la donne suivante", [len(c) for c in m.rules.cases], [2, 3, 2, 3]))
+    # Defausse Discrete : dans ma misere, pas oblige de fournir
+    state, rules, game = misere_setup((0,))
+    hand0 = sorted(game.hands[0])
+    led = H
+    classic = len(J.legal_plays(hand0, led))
+    rules.play(0, "defausse_discrete")
+    oks.append(check("defausse discrete : toute la main", (classic < len(hand0), len(rules.legal_cards(hand0, led, 0))),
+                     (True, len(hand0))))
+    oks.append(check("defausse discrete : pas les autres", len(rules.legal_cards(game.hands[1], led, 1)),
+                     len(J.legal_plays(game.hands[1], led))))
+    state, rules, game = setup()
+    oks.append(check("defausse discrete : hors de ma misere = pointless",
+                     J.make_effect("defausse_discrete", 0).pointless(rules), True))
+    # Meche Courte : +1 par pli perdu dans sa misere, 2 max
+    state, rules, game = misere_setup((0,))
+    rules.play(0, "meche_courte")
+    state.energy[0] = 0
+    for _ in range(3):
+        rules.on_trick_resolved(1, [(0, card(H, 2)), (1, card(H, 9)), (2, card(H, 3)), (3, card(H, 4))])
+    rules.on_trick_resolved(0, [(0, card(H, 14)), (1, card(H, 9)), (2, card(H, 3)), (3, card(H, 4))])
+    oks.append(check("meche courte : +1 par pli perdu, 2 max", state.energy[0], 2))
+    # La Tournee : le declarant vise fournit sa plus forte
+    state, rules, game = misere_setup((1,))
+    oks.append(check("la tournee : cible = declarant adverse seulement",
+                     [J.make_effect("la_tournee", 0).accepts_target(s, rules) for s in range(4)],
+                     [False, True, False, False]))
+    oks.append(check("la tournee : mauvaise cible refusee", rules.play(0, "la_tournee", 2).get("error"), "target"))
+    rules.play(0, "la_tournee", 1)
+    h1 = sorted(game.hands[1])
+    follow = [c for c in h1 if c // 13 == H]
+    oks.append(check("la tournee : plus forte de la demandee", rules.legal_cards(h1, H, 1), [max(follow)]))
+    oks.append(check("la tournee : declarant d'un autre contrat = pointless",
+                     J.make_effect("la_tournee", 0).pointless(setup()[1]), True))
+    # Cadeau Empoisonne : sa prochaine defausse prend le pli, une fois
+    state, rules, game = misere_setup((1,))
+    rules.play(0, "cadeau_empoisonne", 1)
+    plays = [(0, card(H, 9)), (1, card(C, 2)), (2, card(H, 14)), (3, card(H, 3))]
+    oks.append(check("cadeau empoisonne : la defausse prend le pli", rules.trick_winner(plays, H, None), 1))
+    rules.on_trick_resolved(1, plays)
+    oks.append(check("cadeau empoisonne : une fois", rules.trick_winner(plays, H, None), 2))
     return oks
 
 
