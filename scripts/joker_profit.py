@@ -224,6 +224,8 @@ def profit_worker(args):
         rng = random.Random(seed)
         cfg = jm.random_config(rng)
         cfg["style"] = "expert"  # v2 : le joueur joue ses jokers selon les regles (« bien joue »)
+        if len(args) > 2 and args[2]:  # mesure ciblee (scripts/misere_jokers.py) : config(rng) -> cles imposees
+            cfg.update(args[2](cfg, rng))
         mseed = rng.randrange(1 << 30)
         _deck_cf(cfg, mseed, policy, random.Random(seed * 7 + 1), agg)
         match = jm.Match(cfg, mseed)

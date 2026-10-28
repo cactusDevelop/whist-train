@@ -121,7 +121,10 @@ class Match:
                 hands, dealer, whisted = self.chain.deal(self.rng)
                 self.recorded.append(([list(h) for h in hands], dealer, whisted))
             self.rules.deal_hands = hands
-            if self.config["kind"] == "boss":
+            if self.config.get("force_misere"):  # mesure ciblee (scripts/misere_jokers.py), jamais a l'entrainement
+                contract = forced_misere(self.config["force_misere"], hands, self.rng)
+                bid_summary = None
+            elif self.config["kind"] == "boss":
                 contract = boss_contract(self.config["boss"], hands, self.rng)
                 bid_summary = None
             else:
@@ -251,6 +254,20 @@ def specialty_bid(family, hand, bidding, seat):
             if choice is None and kind in offered and spread <= expert_bot.MISERE_SLACK_MAX[kind] + slack:
                 choice = offered[kind]
     return choice
+
+
+FORCED_MISERE_KINDS = ("petite", "piccolo", "grande")
+
+
+def forced_misere(who, hands, rng):
+    """Mesure des jokers de misere : misere imposee, declarant = le joueur
+    ("player") ou un bot ("bot"), qui recoit la main la plus « misere »
+    (expert_bot.misere_slack) parmi les sieges eligibles (mains echangees)."""
+    seats = [PLAYER] if who == "player" else [1, 2, 3]
+    best = min(range(NUM_PLAYERS), key=lambda s: (expert_bot.misere_slack(hands[s]), s))
+    seat = rng.choice(seats)
+    hands[seat], hands[best] = hands[best], hands[seat]
+    return {"type": "misere", "kind": rng.choice(FORCED_MISERE_KINDS), "declarers": [seat]}
 
 
 # --- boss (rogue_bosses.gd) --------------------------------------------------

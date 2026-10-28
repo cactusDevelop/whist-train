@@ -295,7 +295,7 @@ def main():
         json.dump(expert, f, ensure_ascii=False)
     print("fixtures joker_expert v%d : %s" % (expert["joker_expert_version"],
                                               {k: len(v) for k, v in expert["cases"].items()}))
-    print("export : %s (iter %d, eval %s), %d cas de parite" % (gd, ckpt["iter"], ckpt["eval"]["vs_heuristic"], len(cases)))
+    print("export : %s (iter %d, eval %s), %d cas de parite" % (gd, ckpt["iter"], (ckpt["eval"] or {}).get("vs_heuristic"), len(cases)))
     if args.godot_sync:
         shutil.copy(gd, os.path.join(GODOT_GAME_DIR, GD_NAME))
         print("copie dans %s" % GODOT_GAME_DIR)
