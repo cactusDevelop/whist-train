@@ -95,6 +95,16 @@ def worker(args):
     return found, hands
 
 
+def replay_worker(args):
+    """Job de generation (train_jokers.gen_worker) rejoue tel quel, rollouts compris."""
+    from scripts.train_jokers import gen_worker
+    try:
+        gen_worker(args)
+    except EmptyHand as e:
+        return [{"seed": args[0], "policy": "generation", **json.loads(str(e))}]
+    return []
+
+
 def main():
     from agents.network import PolicyValueNet as Net
     from engine import joker_obs as O
@@ -104,12 +114,23 @@ def main():
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--minutes", type=float, default=150)
     parser.add_argument("--seed", type=int, default=93000000)
+    parser.add_argument("--replay-it", type=int, default=None,
+                        help="rejoue les jobs de generation de cette iteration (train_jokers --seed 1, --hands 4000)")
     args = parser.parse_args()
     ckpt = torch.load(CHECKPOINT, map_location="cpu", weights_only=False)
     net = Net(O.OBS_DIM, J.ACTION_DIM)
     net.load_state_dict(ckpt["net"])
     net.eval()
     w = net_to_numpy(net)
+    if args.replay_it is not None:
+        per = 4000 // args.workers
+        jobs = [(1 * 1000003 + args.replay_it * 101 + i, per, w, "hand", "seat") for i in range(args.workers)]
+        with Pool(args.workers) as pool:
+            found = [f for part in pool.map(replay_worker, jobs) for f in part]
+        print("iteration %d rejouee, mains vides : %d" % (args.replay_it, len(found)))
+        for f in found:
+            print(json.dumps(f, default=str))
+        return
     deadline = time.time() + args.minutes * 60
     seeds = list(range(args.seed, args.seed + args.matches))
     found, hands = [], 0
