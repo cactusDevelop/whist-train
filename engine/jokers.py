@@ -28,12 +28,14 @@ import random
 
 from engine.cards import NUM_PLAYERS, legal_plays, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "8f41a24164ec06e5"
+JOKER_SPEC_HASH = "e1f4e72912caab94"
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
 # texte ou de cablage seulement) : un reseau entraine sous l'une d'elles est
 # reexporte tel quel avec JOKER_SPEC_HASH. Une regle qui change -> vider la
 # liste (sauf le hash courant) et reentrainer.
 RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH}
+# e1f4 (whist-4-it d0e3eec) : Courant d'Air garde sur le nombre de plis classique (Horloge remplacee ensuite ->
+# main vide au 13e pli, crash 8f41) -> regle changee, aucune iteration 8f41 acceptee de toute facon.
 # 8f41 (whist-4-it 8e28fa9, Rarete 04) : raretes/couts (Silence cave 3, Dette/Double Valet arriere_salle 3,
 # Cameleon arriere_salle, Traitre salle 1, Atout Errant/Bluff/Fantome/Fausse Piste 2, Defausse Discrete 3,
 # Lune/Zinneke/Main de Fer/Horloge 1, Brouillard 2, La Tournee aura salle 2) ; Valet Borgne abs(), Horloge
@@ -678,7 +680,7 @@ class CourantDAir(Effect):
     def on_play(self, rules, target=-1):
         g = rules.game
         hand = g.hands[self.owner]
-        if len(hand) <= rules.hand_tricks() - g.trick_count:
+        if len(hand) <= rules.classic_tricks() - g.trick_count:  # e1f4 : pas hand_tricks (Horloge retiree ensuite)
             return {"error": "hand"}
         strongest = _strongest(hand)  # 6c54 : la plus forte (la plus faible avant)
         hand.remove(strongest)
@@ -1607,7 +1609,11 @@ class JokerRules:
         return trump
 
     def hand_tricks(self):
-        return self.tricks_in_hand(getattr(self.game, "num_tricks", 13))
+        return self.tricks_in_hand(self.classic_tricks())
+
+    def classic_tricks(self):
+        """WhistTable._classic_tricks (e1f4) : plis de la donne sans modificateurs."""
+        return getattr(self.game, "num_tricks", 13)
 
     def add_score(self, seat, n):
         self.score_bonus[seat] += n

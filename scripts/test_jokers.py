@@ -246,6 +246,11 @@ def v2_tests():
     rules.on_trick_resolved(0, [])
     oks.append(check("horloge : les 7 plis restants au camp en tete", game.tricks_won, [11, 1, 1, 0]))
     state, rules, game = setup()
+    game.trick_count = 5
+    game.hands[0] = game.hands[0][:8]
+    rules.play(0, "horloge_arretee")
+    oks.append(check("courant d'air (e1f4) : refuse sous Horloge, plis classiques", rules.play(0, "courant_d_air"), {"error": "hand"}))
+    state, rules, game = setup()
     game.trick_count = 7
     game.tricks_won[:] = [4, 3, 0, 0]
     rules.play(1, "horloge_arretee")
