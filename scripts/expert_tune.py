@@ -35,7 +35,7 @@ _PLAY = {"SECOND_HAND_LOW": bool, "INFER_OPP_TRUMPS": bool, "TRUMP_LEAD_SEQUENCE
          "SIDE_LEAD_SEQUENCE": bool, "LEAD_PARTNER_SUIT": bool}
 SPACES = {
     "expert": dict({
-        "PROPOSE_MIN": (1, 7), "EMBALLER_MIN": (0, 5), "SOLO_MIN": (5, 8), "ABONDANCE_MIN": (8, 11),
+        "PROPOSE_MIN": (1, 7), "EMBALLER_MIN": (3, 5), "SOLO_MIN": (5, 8), "ABONDANCE_MIN": (8, 11),
         "PROPOSER_ASSUMED": (3, 9), "EMBALLER_ASSUMED": (1, 5), "PROPOSER_TRUMPS_ASSUMED": (3, 7),
         "PROPOSE_MIN_LENGTH": (3, 6), "SOLO_MIN_LENGTH": (4, 7), "SOLO_MIN_TOP_HONOURS": (0, 3),
         "ABONDANCE_MIN_HONOURS": (1, 4), "SOLO_MARGIN": (-1, 1), "RAISE_MARGIN": (-1, 1), "RAISE_CAP": (8, 13),

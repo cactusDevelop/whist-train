@@ -13,7 +13,7 @@ sys.path.insert(0, ".")
 
 from agents import expert_bot
 from agents.expert_bot import estimate_tricks, side_suit_tricks, trump_tricks
-from engine.bidding import Bidding, legal_action_ids_with_hand
+from engine.bidding import ACTION_WAIT, Bidding, legal_action_ids_with_hand
 from engine.cards import deal
 from engine.trou import detect_trou
 
@@ -103,9 +103,49 @@ def test_user_bid_rules_20261027():
                 if kind in seen:
                     seen[kind] += 1
     expert_bot.set_bid_params({})
-    check("ExpertBot inchange", expert_bot.PROPOSE_MIN == 3 and not expert_bot.WAIT_BALANCED)
+    check("ExpertBot inchange", expert_bot.PROPOSE_MIN == 3)
     check("regles 27/10 exercees %r" % seen, all(seen.values()))
     print("    annonces vues : %r" % seen)
+
+
+def test_no_short_emballage_20261030():
+    """Signalement 30/10 (bug_table1_1793367748) : emballage ♣ avec le 7♣ seul
+    atout. Aucun emballage sans 5 atouts ou 4 dont une figure, ni sans 4 plis
+    surs (+1 par niveau d'entree)."""
+    from engine.bidding import bid_action_to_dict
+    H, D, C, S = 0, 1, 2, 3
+    hand = [card(S, r) for r in (1, 2, 3, 0, 6)] + [card(C, 5)] + [card(D, r) for r in (6, 5, 0, 12, 9)] + [
+        card(H, 8), card(H, 10)]
+    proposer = [card(C, r) for r in (12, 10, 9, 4, 2, 0)] + [card(S, 12), card(S, 9)] + [
+        card(H, r) for r in (11, 7, 6, 3)] + [card(D, 8)]
+    bidding = Bidding(3)
+    bidding.apply(0, ACTION_WAIT)
+    propose = [a for a in legal_action_ids_with_hand(bidding, 1, proposer)
+               if bid_action_to_dict(a)["action"] == "propose" and bid_action_to_dict(a)["suit"] == C]
+    check("proposition ♣ legale", len(propose) == 1 and bidding.apply(1, propose[0]))
+    choice = expert_bot.choose_bid(bidding, 2, hand)
+    check("main du signalement : pas d'emballage",
+          isinstance(choice, tuple) or bid_action_to_dict(choice)["action"] != "emballer")
+    rng = random.Random(30)
+    seen = 0
+    for _ in range(3000):
+        hands = deal(rng)
+        bidding = Bidding(rng.randrange(4))
+        trou = detect_trou(hands)
+        if trou is not None:
+            bidding.seed_trou(trou)
+        while not bidding.finished:
+            seat = bidding.turn
+            entry = {a: bidding.emballage_entry_level(bid_action_to_dict(a)["suit"])
+                     for a in legal_action_ids_with_hand(bidding, seat, hands[seat])
+                     if bid_action_to_dict(a)["action"] == "emballer"}
+            choice = expert_bot.apply_bid(bidding, seat, hands[seat])
+            if not isinstance(choice, tuple) and choice in entry:
+                info = bid_action_to_dict(choice)
+                seen += 1
+                check("emballer : atouts", expert_bot.emballer_suit_ok(hands[seat], info["suit"]))
+                check("emballer : plis surs", estimate_tricks(hands[seat], info["suit"]) >= 4 + entry[choice] - 8)
+    check("emballages exerces %d" % seen, seen > 0)
 
 
 def test_bot_play_legal_all_families_and_no_cheating():
@@ -214,7 +254,7 @@ def test_team_trump_rules_20261023():
 
 
 def main():
-    for t in (test_hand_evaluation, test_bot_bidding_always_legal, test_hybrid_bidder_legal_and_guarded, test_user_bid_rules_20261027,
+    for t in (test_hand_evaluation, test_bot_bidding_always_legal, test_hybrid_bidder_legal_and_guarded, test_user_bid_rules_20261027, test_no_short_emballage_20261030,
               test_bot_play_legal_all_families_and_no_cheating, test_team_trump_rules_20261023):
         t()
         print("ok  %s" % t.__name__, flush=True)

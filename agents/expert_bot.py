@@ -100,16 +100,18 @@ ACE, KING, QUEEN, JACK = 12, 11, 10, 9
 # validation 60000 donnes neuves : +1.837 +-0.053 pt/donne vs anciens reglages, z 35).
 # Anciennes valeurs (regles utilisateur du 27/09) : profil "joueur_0927" de PROFILES.
 PROPOSE_MIN = 3  # plis surs pour proposer
-EMBALLER_MIN = 1  # plis surs pour emballer (au niveau 8 ; garde-fou atouts : abondance_rule.EMBALLER_MIN_TRUMPS)
+# Bloc emballer + attente : profil expert_emb1027, vainqueur de la ligue 40651271548 (+0.124 +-0.052,
+# z 2.4), promu le 30/10 (signalement « emballe avec 1 atout » : 1 pli sur suffisait, sans condition d'atouts).
+EMBALLER_MIN = 4  # plis surs pour emballer (au niveau 8)
 SOLO_MIN = 6  # plis surs pour un solo seul
 ABONDANCE_MIN = 10  # solo 10+ d'entree
 PROPOSER_ASSUMED = 7  # ce que l'emballeur suppose chez le proposeur
 EMBALLER_ASSUMED = 2  # longueur d'atout supposee chez l'emballeur
-# Reglages des profils concurrents (PROFILES) ; neutres pour l'ExpertBot.
+# Reglages des profils concurrents (PROFILES) ; neutre pour l'ExpertBot.
 PROPOSE_TRUMP_HONOUR_TRICKS = 0  # plis d'honneurs d'atout exiges pour proposer (trump_honour_tricks)
-EMBALLER_LONG_TRUMPS = 0  # emballer avec au moins ce nombre d'atouts...
-EMBALLER_SHORT_TRUMPS = 0  # ... ou celui-ci avec au moins une figure (0, 0 = sans condition)
-WAIT_BALANCED = False  # premier a parler, main moyenne repartie : attendre (pour emballer ensuite)
+EMBALLER_LONG_TRUMPS = 5  # emballer avec au moins ce nombre d'atouts...
+EMBALLER_SHORT_TRUMPS = 4  # ... ou celui-ci avec au moins une figure (0, 0 = sans condition)
+WAIT_BALANCED = True  # premier a parler, main moyenne repartie : attendre (pour emballer ensuite)
 PROPOSER_TRUMPS_ASSUMED = 5  # longueur d'atout supposee chez le proposeur
 # Ecole du whist (voir docstring) :
 # « au moins quatre cartes avec deux honneurs » : les deux honneurs ont ete
@@ -155,8 +157,12 @@ BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_I
 # nouveau profil ici, jamais un changement des defauts.
 PROFILES = {
     "expert": {},
+    # ExpertBot du 27/10 au 30/10 (tune 40411623914) : emballe des 1 pli sur, sans condition d'atouts
+    "expert_tune1027": {"EMBALLER_MIN": 1, "EMBALLER_LONG_TRUMPS": 0, "EMBALLER_SHORT_TRUMPS": 0,
+                        "WAIT_BALANCED": False},
     # regles du 27/09 (valeurs d'avant le tune 40411623914)
-    "joueur_0927": {"PROPOSE_MIN": 5, "EMBALLER_MIN": 3, "ABONDANCE_MIN": 9, "PROPOSER_ASSUMED": 5,
+    "joueur_0927": {"PROPOSE_MIN": 5, "EMBALLER_MIN": 3, "EMBALLER_LONG_TRUMPS": 0, "EMBALLER_SHORT_TRUMPS": 0,
+                    "WAIT_BALANCED": False, "ABONDANCE_MIN": 9, "PROPOSER_ASSUMED": 5,
                     "EMBALLER_ASSUMED": 3, "SOLO_MIN_TOP_HONOURS": 2, "RAISE_CAP": 11},
     # 27/10 : proposer 6 plis (plancher 5) avec plusieurs grosses figures d'atout comptees en plis
     # reels (R-D-V = 2 : l'As en prend un) ; emballer 4 (plancher 3) avec 5-6 atouts ou 4 dont
@@ -166,10 +172,6 @@ PROFILES = {
                     "EMBALLER_LONG_TRUMPS": 5, "EMBALLER_SHORT_TRUMPS": 4, "WAIT_BALANCED": True,
                     "ABONDANCE_MIN": 9, "PROPOSER_ASSUMED": 5, "EMBALLER_ASSUMED": 3,
                     "SOLO_MIN_TOP_HONOURS": 2, "RAISE_CAP": 11},
-    # 28/10 : ExpertBot + les seules regles de joueur_1027 qui lui rapportent (ablation
-    # 40596843093 : bloc emballer +0.160 z 3.1, attente main repartie +0.025 z 4.6)
-    "expert_emb1027": {"EMBALLER_MIN": 4, "EMBALLER_LONG_TRUMPS": 5, "EMBALLER_SHORT_TRUMPS": 4,
-                       "WAIT_BALANCED": True},
 }
 
 
@@ -255,8 +257,7 @@ def trump_honour_tricks(ranks):
 
 
 def emballer_suit_ok(hand, suit):
-    """Profil joueur_1027 : 5-6 atouts (meme petits), ou 4 avec au moins une
-    figure ; sans condition pour l'ExpertBot (0, 0)."""
+    """5-6 atouts (meme petits), ou 4 avec au moins une figure."""
     ranks = _ranks(hand, suit)
     return len(ranks) >= EMBALLER_LONG_TRUMPS or (len(ranks) >= EMBALLER_SHORT_TRUMPS and _honours(ranks) >= 1)
 
