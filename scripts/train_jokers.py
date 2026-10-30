@@ -321,6 +321,17 @@ def _payload(net, it, ev, best):
             "spec_hash": J.JOKER_SPEC_HASH, "castable": J.CASTABLE, "eval": ev, "iter": it, "best": best}
 
 
+def widen_obs(sd):
+    """Poids d'une obs plus courte : les nouvelles entrees (ajoutees a la fin) partent a 0,
+    le reseau decide comme avant jusqu'a ce qu'il apprenne a s'en servir."""
+    import torch
+    first = sd["trunk.0.weight"]
+    if first.shape[1] < O.OBS_DIM:
+        sd = dict(sd)
+        sd["trunk.0.weight"] = torch.cat([first, torch.zeros(first.shape[0], O.OBS_DIM - first.shape[1])], dim=1)
+    return sd
+
+
 def _compatible(ckpt):
     return (ckpt.get("spec_hash") in J.RULE_EQUIVALENT_HASHES and ckpt.get("castable") == J.CASTABLE
             and ckpt.get("obs_dim") == O.OBS_DIM)
@@ -407,8 +418,9 @@ def main():
         print("reprise : champion iteration %s, depart iteration %d" % (champ["iter"], start_it), flush=True)
     if args.init and champ["sd"] is None:
         ckpt = torch.load(args.init, map_location="cpu", weights_only=False)
-        if ckpt.get("castable") != J.CASTABLE or ckpt.get("obs_dim") != O.OBS_DIM:
+        if ckpt.get("castable") != J.CASTABLE or ckpt.get("obs_dim") > O.OBS_DIM:
             raise SystemExit("%s : autre obs ou autres CASTABLE" % args.init)
+        ckpt["net"] = widen_obs(ckpt["net"])
         net.load_state_dict(ckpt["net"])
         set_champion(ckpt["net"], -1, {"vs_heuristic": None, "init": args.init, "init_spec_hash": ckpt.get("spec_hash"),
                                        "init_iter": ckpt["iter"]})

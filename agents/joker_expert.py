@@ -29,7 +29,7 @@ from engine.cards import NUM_PLAYERS, suit_of, rank_of, legal_plays
 from engine import jokers as J
 from engine.misere import MISERE_MAX_TRICKS
 
-JOKER_EXPERT_VERSION = 1
+JOKER_EXPERT_VERSION = 2  # 2 (30/10) : garde-fou Oeil, Pot-de-Vin reserve aux mains de misere hors piccolo
 
 YES, NO, OPEN_YES, OPEN_NO = "oui", "non", "ouvert_oui", "ouvert_non"
 OPEN = (OPEN_YES, OPEN_NO)
@@ -611,6 +611,16 @@ def _done(trace, action, source, verdicts):
 
 # --- joueur (siege 0) --------------------------------------------------------------------
 
+def eye_risk(state, jid):
+    """Lancer `jid` remplirait la jauge et ferait tomber la sanction de l'Oeil."""
+    if J.jsuspicion(jid) == 0:
+        return False
+    rules = state.rules
+    if rules is not None and (rules.hides_suspicion(J.PLAYER) or rules.absorbs_sanction()):
+        return False
+    return state.suspicion + J.jsuspicion(jid) >= state.eye_threshold
+
+
 def player_trick_choice(hand, candidates):
     """Premier joker (PLAYER_PRIORITY) que les regles lancent a ce tour de
     pli parmi `candidates` (Player._candidates) -> (jid, cible, id_regle) ou
@@ -618,6 +628,8 @@ def player_trick_choice(hand, candidates):
     v = view(hand, J.PLAYER)
     rank = {j: i for i, j in enumerate(PLAYER_PRIORITY)}
     for jid in sorted(dict.fromkeys(candidates), key=lambda j: (rank.get(J.base_id(j), 999), j)):
+        if eye_risk(hand.state, jid):
+            continue
         verdict, rid = rule(v, jid)
         if verdict in (YES, OPEN_YES):
             return jid, target(v, jid), rid
@@ -626,6 +638,8 @@ def player_trick_choice(hand, candidates):
 
 def player_wants(hand, jid):
     """Verdict de la regle pour un joker du joueur (test de rentabilite : « bien joue »)."""
+    if eye_risk(hand.state, jid):
+        return False, "oeil:jauge_pleine"
     verdict, rid = rule(view(hand, J.PLAYER), jid)
     return verdict in (YES, OPEN_YES), rid
 
@@ -647,7 +661,10 @@ def bid_rule(bv, jid):
     if b == "main_de_fer":  # 6c54 : choisit l'atout de son emballage / solo
         return (YES, "main_de_fer:main_forte") if strong else (NO, "main_de_fer:main_moyenne")
     if b == "pot_de_vin":  # 6c54 : 1er pli de sa misere a 0
-        return (YES, "pot_de_vin:misere_probable") if bv["est_tricks"] <= 2 else (NO, "pot_de_vin:pas_de_misere")
+        from agents import expert_bot
+        # hors piccolo : le pli annule ferait rater le « exactement 1 pli »
+        kinds = [k for k in expert_bot.misere_kinds_for(bv["hand"]) if k != "piccolo"]
+        return (YES, "pot_de_vin:misere_probable") if kinds else (NO, "pot_de_vin:pas_de_misere")
     if b == "rachat":
         return YES, "rachat:pli_de_plus"
     if b == "bluff":
@@ -668,6 +685,8 @@ def player_bid_choice(cards, state, candidates):
     bv = bid_view(cards, state)
     rank = {j: i for i, j in enumerate(BID_PRIORITY)}
     for jid in sorted(dict.fromkeys(candidates), key=lambda j: (rank.get(J.base_id(j), 999), j)):
+        if eye_risk(state, jid):
+            continue
         verdict, rid = bid_rule(bv, jid)
         if verdict in (YES, OPEN_YES):
             return jid, bid_target(jid, bv=bv), rid

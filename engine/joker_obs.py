@@ -1,4 +1,4 @@
-"""Observation de l'IA jokers (v1) -- SPEC A PORTER A L'IDENTIQUE en GDScript
+"""Observation de l'IA jokers (v3) -- SPEC A PORTER A L'IDENTIQUE en GDScript
 (voir godot_export/joker_obs_spec.md, verifiee par
 godot_export/joker_parity_cases.json).
 
@@ -9,9 +9,9 @@ contrat (misere : chaque declarant seul, defenseurs allies ; sinon
 [declarer, partner] contre le reste).
 """
 
-from engine.cards import NUM_PLAYERS, suit_of, rank_of, legal_plays
+from engine.cards import NUM_CARDS, NUM_PLAYERS, suit_of, rank_of, legal_plays
 from engine.misere import MISERE_MAX_TRICKS
-from engine.jokers import CASTABLE, FACE_RANKS, ACE, Collet, Embuscade, FaussePiste, Kermesse, VoeuDePauvrete
+from engine.jokers import CASTABLE, FACE_RANKS, ACE, PLAYER, Collet, Embuscade, FaussePiste, Kermesse, VoeuDePauvrete
 
 # (nom, taille) dans l'ordre ; OBS_DIM = somme.
 LAYOUT = [
@@ -45,7 +45,16 @@ LAYOUT = [
     ("kermesse", 1),           # kermesses vivantes (tout proprietaire) / 2
     ("voeu", 1),               # vœu de pauvrete arme a moi
     ("enemy_traps", 2),        # pieges adverses armes non depenses : fausse_piste / collet (0/1) -- v2
+    # v3 (30/10, demande user : tout ce que le joueur voit), AJOUTE A LA FIN (train_jokers.widen_obs)
+    ("my_cards", NUM_CARDS),   # ma main exacte
+    ("played", 4 * NUM_CARDS), # cartes jouees cette donne, par siege relatif (r = (siege - me) % 4)
+    ("trick", 4 * NUM_CARDS),  # pli en cours, par siege relatif
+    ("suspicion", 2),          # jauge de Soupcon du joueur / seuil de l'Oeil (plafonne a 1), seuil / 10
+    ("eye", 4),                # sanction de l'Oeil : aucune / points / confisque / allumettes
+    ("player_seat", 4),        # siege relatif du joueur
+    ("joker_hand_sizes", 4),   # jokers en main par siege relatif / 10 (plafonne a 1)
 ]
+EYE_SANCTIONS = ("", "points", "confisque", "allumettes")
 OBS_DIM = sum(n for _k, n in LAYOUT)
 OFFSETS = {}
 _o = 0
@@ -127,4 +136,16 @@ def build(hand, me):
         elif isinstance(e, Collet) and rules.is_opponent(me, e.owner):
             put("enemy_traps", 1, 1)
     put("kermesse", min(1.0, kermesses / 2.0))
+    for c_ in my:
+        put("my_cards", 1, c_)
+    for s, cd in g.play_log:
+        put("played", 1, ((s - me) % NUM_PLAYERS) * NUM_CARDS + cd)
+    for s, cd in trick:
+        put("trick", 1, ((s - me) % NUM_PLAYERS) * NUM_CARDS + cd)
+    put("suspicion", min(1.0, state.suspicion / state.eye_threshold), 0)
+    put("suspicion", state.eye_threshold / 10.0, 1)
+    put("eye", 1, EYE_SANCTIONS.index(getattr(hand, "eye", "")))
+    put("player_seat", 1, (PLAYER - me) % NUM_PLAYERS)
+    for s in range(NUM_PLAYERS):
+        put("joker_hand_sizes", min(1.0, len(state.joker_hand[s]) / 10.0), (s - me) % NUM_PLAYERS)
     return out

@@ -114,6 +114,9 @@ def raw_state(hand, seat):
         "joker_cards": {str(s): j for s, j in rules.joker_cards.items()},
         "classic_tricks": getattr(g, "num_tricks", 13),
         "play_log": [[s, cd] for s, cd in g.play_log],
+        # v3
+        "suspicion": state.suspicion, "eye_threshold": state.eye_threshold, "eye": getattr(hand, "eye", ""),
+        "joker_hand_sizes": [len(h) for h in state.joker_hand],
     }
 
 

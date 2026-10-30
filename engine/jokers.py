@@ -54,7 +54,9 @@ RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH}
 # une autre carte legale ; aucun joker, cout ni observation ne change -> regles = 07ac.
 # Exportable sans equivalence de regles : champion du gate cloud MESURE sous les regles courantes
 # (run 40100438746, 07ac : iter 93 champion_vs_heuristic +26..+41, aucune iteration acceptee devant lui).
-MEASURED_CHAMPION_HASHES = set()  # 65a7 : regles changees, le champion 6c54 doit repasser la porte
+MEASURED_CHAMPION_HASHES = {"1f49fc6fb6a25cae"}  # e1f4 : champion 1f49 (iter 93) mesure sous 8f41 (run 40783453624,
+# 19 portes, champion_vs_heuristic +12.9..+23.7, se ~3.4) ; 8f41 -> e1f4 ne change que la garde de Courant d'Air
+# 65a7 : regles changees, le champion 6c54 doit repasser la porte
 # 07ac (whist-4-it 9661351) : Dette de Jeu journalise {"event": "debt"} (aucune regle ne change) -> regles = c8f6.
 # c8f6 (whist-4-it 0f73fa4) : Horloge masquee (pointless) avant le 8e pli, comme le port d4c4 -> regles = d4c4.
 # d4c4 (whist-4-it, rapport admin 2026-10-23 "trop cheat") : Horloge Arretee seulement a partir du 8e pli -> reentrainement.
@@ -103,7 +105,7 @@ MEASURED_CHAMPION_HASHES = set()  # 65a7 : regles changees, le champion 6c54 doi
 # 43b8 (whist-4-it 2c63f60 + 6bf4a7c, revue du 2026-10-14) : Rachat, Pot-de-Vin, Inversion
 # (aura, lancee par les bots), Cartes sur Table (main exposee), Silence du Cercle, Fossoyeur,
 # Brim Dore + 5 nouveaux jokers -> CASTABLE change, reentrainement.
-OBS_VERSION = 2  # 2 = enemy_traps rempli (joueur a jokers) ; le jeu ne remplit out[55]/[56] que si OBS_VERSION >= 2
+OBS_VERSION = 3  # 2 = enemy_traps rempli ; 3 = cartes exactes, Soupcon/Oeil, jokers par siege (engine/joker_obs.py)
 
 # id -> (type, rarete, cout, bot_casts) -- joker_catalog.gd / joker_effects.gd
 CATALOG = {

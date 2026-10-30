@@ -670,6 +670,23 @@ def jokers_joues_tests():
     oks.append(check("treizieme : plus refusee dans sa misere, sa carte y perd", rules.trick_winner(plays, H, None), 3))
     game.trick_count = 8
     oks.append(check("treizieme : avant les 4 derniers plis, inchange", rules.trick_winner(plays, H, None), 0))
+    # Obs v3 (30/10) : le reseau voit ce que voit le joueur
+    from agents import joker_expert as X
+    from engine import joker_match as jm, joker_obs as O
+    hand = jm.Match(jm.random_config(random.Random(1)), 1).next_hand()
+    hand.state.suspicion = 5
+    obs = O.build(hand, 1)
+    oks.append(check("obs v3 : taille", len(obs), O.OBS_DIM))
+    oks.append(check("obs v3 : ma main exacte", sum(obs[O.OFFSETS["my_cards"]:O.OFFSETS["played"]]), len(hand.game.hands[1])))
+    oks.append(check("obs v3 : jauge / seuil", obs[O.OFFSETS["suspicion"]], 5 / hand.state.eye_threshold))
+    oks.append(check("obs v3 : siege relatif du joueur", obs[O.OFFSETS["player_seat"] + 3], 1.0))
+    hand.state.suspicion = hand.state.eye_threshold - 2
+    oks.append(check("garde-fou Oeil : joker suspect qui remplit la jauge", X.eye_risk(hand.state, "pot_de_vin"), True))
+    oks.append(check("garde-fou Oeil : joker sans Soupcon", X.eye_risk(hand.state, "kermesse"), False))
+    hand.state.suspicion -= 1
+    oks.append(check("garde-fou Oeil : sous le seuil", X.eye_risk(hand.state, "pot_de_vin"), False))
+    strong = [card(H, r) for r in range(2, 15)]
+    oks.append(check("pot-de-vin : pas sur une main sans misere", X.bid_rule({"hand": strong, "est_tricks": 13}, "pot_de_vin")[0], X.NO))
     return oks
 
 
