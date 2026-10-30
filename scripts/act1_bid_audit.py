@@ -18,7 +18,7 @@ import sys
 
 sys.path.insert(0, ".")
 
-from agents.expert_bot import PROFILES
+from agents.expert_bot import ACT1_BID_PARAMS, PROFILES
 from engine.whisted import DeckChain
 from scripts.eval_vs_random import declarer_successes
 from scripts.expert_bid_ab import play_deal, stat
@@ -31,7 +31,7 @@ VARIANTS = {
     "cap8": {"RAISE_CAP": 8},
     "emb5": {"EMBALLER_MIN": 5},
     "solo7": {"SOLO_MIN": 7},
-    "doux": {"SOLO_MARGIN": 1, "RAISE_MARGIN": 1, "RAISE_CAP": 8, "EMBALLER_MIN": 5, "SOLO_MIN": 7},
+    "doux": ACT1_BID_PARAMS,
 }
 
 

@@ -253,9 +253,24 @@ def test_team_trump_rules_20261023():
     check("atout : tirer tant qu'un adversaire peut couper", expert_bot.choose_card(g, 0) // 13 == spades)
 
 
+def test_keep_trumps_vs_void_20261030():
+    """Demande du 30/10 : adversaires sans atout, on encaisse sa maitresse au
+    lieu de faire couper le partenaire en renom."""
+    from engine.team_trump import TeamTrumpDeal
+    hands = [[51, 12, 0, 1, 25] + list(range(26, 34)), list(range(2, 7)) + list(range(34, 39)) + [20, 21, 22],
+             list(range(39, 51)) + [13], list(range(7, 12)) + list(range(14, 20)) + [23, 24]]
+    g = TeamTrumpDeal(hands, 0, 2, 3, 8, 0, "d", "p", "x")
+    for seat, c in ((0, 51), (1, 34), (2, 39), (3, 14), (0, 12), (1, 2), (2, 13), (3, 7)):
+        g.step(seat, c)
+    check("renom d'atout : encaisser la maitresse", expert_bot.choose_card(g, 0) == 25)
+    expert_bot.set_bid_params({"KEEP_TRUMPS_VS_VOID": False})
+    check("sans la regle : couleur du renom du partenaire", expert_bot.choose_card(g, 0) // 13 == 0)
+    expert_bot.set_bid_params({})
+
+
 def main():
     for t in (test_hand_evaluation, test_bot_bidding_always_legal, test_hybrid_bidder_legal_and_guarded, test_user_bid_rules_20261027, test_no_short_emballage_20261030,
-              test_bot_play_legal_all_families_and_no_cheating, test_team_trump_rules_20261023):
+              test_bot_play_legal_all_families_and_no_cheating, test_team_trump_rules_20261023, test_keep_trumps_vs_void_20261030):
         t()
         print("ok  %s" % t.__name__, flush=True)
     print("%d verifications, toutes OK" % CHECKS[0])

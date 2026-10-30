@@ -146,8 +146,8 @@ DRAW_WITH_LAST_TRUMP = False  # tirer l'atout meme avec son dernier atout (dupli
 SIDE_LEAD_SEQUENCE = True  # duplicate 40406005024 avec LEAD_PARTNER_SUIT : +0.089 +-0.021 ; entame par defaut hors atout : tete de sequence d'honneurs (R-D, D-V, V-10) de la couleur choisie
 LEAD_PARTNER_SUIT = True  # defense : entamer la couleur proposee/emballee par un coequipier
 # Demande du 30/10 « adversaires en renom d'atout : garder ses atouts plutot que bruler ceux du
-# coequipier ». Profils concurrents seulement, neutres ici :
-KEEP_TRUMPS_VS_VOID = False  # adversaires sans atout : encaisser ses maitresses avant de faire couper le partenaire
+# coequipier ». Ligue 41132837609 : +0.023 +-0.003 (z 6.8), promu ; arreter de tirer a 1 atout restant : +0.001, rejete.
+KEEP_TRUMPS_VS_VOID = True  # adversaires sans atout : encaisser ses maitresses avant de faire couper le partenaire
 DRAW_STOP_OUTSTANDING = 0  # contrat d'equipe : ne plus tirer quand il reste au plus ce nombre d'atouts adverses
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
               "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
@@ -176,10 +176,12 @@ PROFILES = {
                     "EMBALLER_LONG_TRUMPS": 5, "EMBALLER_SHORT_TRUMPS": 4, "WAIT_BALANCED": True,
                     "ABONDANCE_MIN": 9, "PROPOSER_ASSUMED": 5, "EMBALLER_ASSUMED": 3,
                     "SOLO_MIN_TOP_HONOURS": 2, "RAISE_CAP": 11},
-    # 30/10 : garder ses atouts contre des adversaires en renom d'atout
-    "expert_renom1030": {"KEEP_TRUMPS_VS_VOID": True},
-    "expert_renom1030b": {"KEEP_TRUMPS_VS_VOID": True, "DRAW_STOP_OUTSTANDING": 1},
+    # ExpertBot du 30/10 avant la regle du renom d'atout
+    "expert_emb1027": {"KEEP_TRUMPS_VS_VOID": False},
 }
+# Adversaires de l'Acte I du roguelike (demande du 30/10) : difficulte, pas un concurrent de la ligue.
+# scripts/act1_bid_audit.py, run 41132837609 : joueur simule +0.892 contre -0.062 face a l'ExpertBot.
+ACT1_BID_PARAMS = {"SOLO_MARGIN": 1, "RAISE_MARGIN": 1, "RAISE_CAP": 8, "EMBALLER_MIN": 5, "SOLO_MIN": 7}
 
 
 def set_bid_params(params):
