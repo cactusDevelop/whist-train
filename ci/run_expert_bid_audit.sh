@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Promotion expert_emb1027 (signalement emballage a 1 atout) : tests, ligue, maillon faible, fixtures de parite Godot.
+# GATES 30/10 : renom d'atout (audit + ligue de profils concurrents) et encheres de l'Acte I. Mesure seule.
 python -u scripts/test_expert_bot.py
-python -u tests/scripts/dump_expert_bot_fixtures.py
-gh release upload checkpoint-latest tests/fixtures/expert_bot_parity.json --clobber
-python -u scripts/bot_league.py --deals 40000 --workers 4
-python -u scripts/emballage_blame.py --deals 20000 --workers 4
+python -u scripts/trump_renom_audit.py --deals 20000 --workers 4
+python -u scripts/bot_league.py --deals 40000 --workers 4 --only expert,expert_renom1030,expert_renom1030b
+python -u scripts/act1_bid_audit.py --deals 20000 --workers 4

@@ -145,9 +145,13 @@ TRUMP_LEAD_SEQUENCE = True
 DRAW_WITH_LAST_TRUMP = False  # tirer l'atout meme avec son dernier atout (duplicate -0.13 : rejete)
 SIDE_LEAD_SEQUENCE = True  # duplicate 40406005024 avec LEAD_PARTNER_SUIT : +0.089 +-0.021 ; entame par defaut hors atout : tete de sequence d'honneurs (R-D, D-V, V-10) de la couleur choisie
 LEAD_PARTNER_SUIT = True  # defense : entamer la couleur proposee/emballee par un coequipier
+# Demande du 30/10 « adversaires en renom d'atout : garder ses atouts plutot que bruler ceux du
+# coequipier ». Profils concurrents seulement, neutres ici :
+KEEP_TRUMPS_VS_VOID = False  # adversaires sans atout : encaisser ses maitresses avant de faire couper le partenaire
+DRAW_STOP_OUTSTANDING = 0  # contrat d'equipe : ne plus tirer quand il reste au plus ce nombre d'atouts adverses
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
               "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
-              "LEAD_PARTNER_SUIT")
+              "LEAD_PARTNER_SUIT", "KEEP_TRUMPS_VS_VOID", "DRAW_STOP_OUTSTANDING")
 
 # Profils CONCURRENTS de l'ExpertBot (utilisateur 2026-10-27 : « mets les regles que je viens
 # de te donner en concurrent a l'ExpertBot, pas en remplacement, idem pour toutes les autres
@@ -172,6 +176,9 @@ PROFILES = {
                     "EMBALLER_LONG_TRUMPS": 5, "EMBALLER_SHORT_TRUMPS": 4, "WAIT_BALANCED": True,
                     "ABONDANCE_MIN": 9, "PROPOSER_ASSUMED": 5, "EMBALLER_ASSUMED": 3,
                     "SOLO_MIN_TOP_HONOURS": 2, "RAISE_CAP": 11},
+    # 30/10 : garder ses atouts contre des adversaires en renom d'atout
+    "expert_renom1030": {"KEEP_TRUMPS_VS_VOID": True},
+    "expert_renom1030b": {"KEEP_TRUMPS_VS_VOID": True, "DRAW_STOP_OUTSTANDING": 1},
 }
 
 
@@ -952,7 +959,7 @@ def _lead(v):
         if v.team_contract:
             # tirer tant qu'UN adversaire peut encore couper (signalement 2026-10-23 :
             # « laisse les adversaires utiliser leurs atouts en renom »)
-            keep_drawing = outstanding > 0 and len(opps_with_trumps) >= 1
+            keep_drawing = outstanding > DRAW_STOP_OUTSTANDING and len(opps_with_trumps) >= 1
             # Ecole : « garder un atout de controle pour couper la longue
             # adverse » -- ne pas purger avec son dernier atout
             if len(my_trumps) == 1 and len(my_trumps) < len(v.legal) and not DRAW_WITH_LAST_TRUMP:
@@ -971,7 +978,9 @@ def _lead(v):
             return _lowest(my_trumps)
 
     # 2. jouer le renom du coequipier (il coupe), si l'adversaire apres lui ne surcoupe pas
-    for m in mates:
+    cash_first = (KEEP_TRUMPS_VS_VOID and trump is not None and all(v.void[o][trump] for o in opps)
+                  and any(suit_of(c) != trump and v.is_master(c) for c in v.legal))
+    for m in ([] if cash_first else mates):
         for s in range(NUM_SUITS):
             if s == trump or not v.may_ruff(m, s):
                 continue

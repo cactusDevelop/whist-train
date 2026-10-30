@@ -31,8 +31,10 @@ def main():
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--seed", type=int, default=20261027)
     parser.add_argument("--extra", action="append", default=[], help="profil='{json}' (reglages en plus)")
+    parser.add_argument("--only", default="", help="profils retenus, separes par des virgules")
     args = parser.parse_args()
-    profiles = {k: dict(v) for k, v in PROFILES.items()}
+    only = args.only.split(",") if args.only else list(PROFILES)
+    profiles = {k: dict(PROFILES[k]) for k in only}
     for spec in args.extra:
         name, js = spec.split("=", 1)
         profiles[name] = dict(profiles.get(name.split("+")[0], {}), **json.loads(js))
