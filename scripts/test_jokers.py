@@ -260,12 +260,26 @@ def v2_tests():
     oks.append(check("horloge : egalite, personne", game.tricks_won, [4, 4, 0, 0]))
     # Enchere et ecarts.
     state, rules, game = setup()
-    oks.append(check("main de fer (6c54) : cible une couleur", rules.play(0, "main_de_fer"), {"error": "target"}))
-    rules.play(0, "main_de_fer", H)
-    c = {"type": "solo", "suit": S, "level": 6, "declarer": 0}
-    oks.append(check("main de fer : son solo dans la couleur choisie", (rules.on_contract(c), c["suit"]), (True, H)))
-    c = {"type": "emballage", "suit": S, "level": 8, "declarer": 1, "partner": 3}
-    oks.append(check("main de fer : rien sur le contrat d'un autre", (rules.on_contract(c), c["suit"]), (False, S)))
+    c = {"type": "solo", "suit": S, "level": 6, "declarer": 1}
+    rules.bind(game, c)
+    game.trump_suit = S
+    fer = J.make_effect("main_de_fer", 0)
+    oks.append(check("main de fer (7567) : sort de 2 sur un contrat adverse",
+                     (J.jtype("main_de_fer"), J.jcost("main_de_fer"), J.jsuspicion("main_de_fer"), fer.pointless(rules)),
+                     ("sort", 2, 2, False)))
+    oks.append(check("main de fer : sans couleur ou la meme, refuse", (rules.play(0, "main_de_fer"), rules.play(0, "main_de_fer", S)),
+                     ({"error": "target"}, {"error": "target"})))
+    oks.append(check("main de fer : atout change", (rules.play(0, "main_de_fer", H), c["suit"], game.trump_suit), ({}, H, H)))
+    rules.bind(game, {"type": "emballage", "suit": S, "level": 8, "declarer": 2, "partner": 0})
+    oks.append(check("main de fer : inutile dans son camp", fer.pointless(rules), True))
+    rules.bind(game, {"type": "misere", "kind": "petite", "declarers": [1]})
+    oks.append(check("main de fer : inutile sans atout", fer.pointless(rules), True))
+    rules.bind(game, c)
+    game.current_trick = [(1, card(H, 2))]
+    oks.append(check("main de fer : inutile une carte posee", fer.pointless(rules), True))
+    game.current_trick = []
+    game.trick_count = 1
+    oks.append(check("main de fer : inutile apres le premier pli", fer.pointless(rules), True))
     state, rules, game = setup()
     rules.bind(game, {"type": "misere", "kind": "petite", "declarers": [0]})
     rules.play(0, "pot_de_vin")

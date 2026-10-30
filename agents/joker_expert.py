@@ -41,7 +41,7 @@ JACK, QUEEN, KING, ACE = 9, 10, 11, 12
 BOT_PRIORITY = ["inversion", "coup_de_vent", "coup_du_chapeau", "kermesse", "embuscade", "faux_pas", "main_lourde"]
 PLAYER_PRIORITY = [
     # sorts / pieges / auras decisifs, puis cartes de pli, puis le reste
-    "horloge_arretee", "valet_borgne", "inversion", "brouillard_de_la_senne", "remonte_pli", "pli_refile",
+    "main_de_fer", "horloge_arretee", "valet_borgne", "inversion", "brouillard_de_la_senne", "remonte_pli", "pli_refile",
     "coup_de_vent",
     "manche_truquee", "gueule_de_bois", "dette_de_jeu", "lune_noire", "coup_du_chapeau", "kermesse",
     "treizieme_carte", "coeur_de_zinneke", "silence_du_cercle", "embuscade", "collet", "fausse_piste", "faux_pas",
@@ -51,7 +51,7 @@ PLAYER_PRIORITY = [
     "borgne", "double_valet", "cameleon", "atout_errant", "traitre", "carte_fantome", "zero", "miroir",
     "courant_d_air", "main_lourde", "pourboire", "regard_furtif", "livre_de_comptes",
 ]
-BID_PRIORITY = ["main_de_fer", "pot_de_vin", "rachat", "bluff", "cartes_sur_table", "coup_d_oeil"]
+BID_PRIORITY = ["pot_de_vin", "rachat", "bluff", "cartes_sur_table", "coup_d_oeil"]
 
 
 # --- vue ---------------------------------------------------------------------
@@ -529,7 +529,13 @@ def _treizieme_carte(v):
     return (YES, "dernier_pli") if v["remaining"] >= 2 else (NO, "trop_tard")
 
 
+def _main_de_fer(v):
+    # pointless() a deja filtre : emballage ou solo adverse, aucune carte posee
+    return YES, "atout_adverse_change"
+
+
 RULES = {
+    "main_de_fer": _main_de_fer,
     "coup_de_vent": _coup_de_vent, "main_lourde": _main_lourde, "embuscade": _embuscade, "kermesse": _kermesse,
     "inversion": _inversion, "coup_du_chapeau": _coup_du_chapeau, "faux_pas": _faux_pas,
     "cameleon": _cameleon, "double_valet": _double_valet, "borgne": _borgne, "atout_errant": _atout_errant,
@@ -549,9 +555,17 @@ RULES = {
 }
 
 
+def main_de_fer_suit(cards, trump):
+    """7567 : ma meilleure couleur autre que l'atout adverse."""
+    from agents import expert_bot
+    return max((s for s in range(4) if s != trump), key=lambda s: (expert_bot.estimate_tricks(cards, s), -s))
+
+
 def target(v, jid):
     """Cible des jokers qui en demandent une (-1 sinon)."""
     b = J.base_id(jid)
+    if b == "main_de_fer":
+        return main_de_fer_suit(v["hand"], v["trump"])
     if b == "dette_de_jeu":
         return v["best_seat"]
     if b == "brouillard_de_la_senne":
@@ -650,7 +664,7 @@ def bid_view(cards, state, me=J.PLAYER):
     from agents import expert_bot
     best = max(range(4), key=lambda s: (expert_bot.estimate_tricks(cards, s), -s))
     return {"hand": sorted(cards), "energy": state.energy[me], "suspicion": state.suspicion,
-            "est_tricks": expert_bot.estimate_tricks(cards, best), "best_suit": best,
+            "est_tricks": expert_bot.estimate_tricks(cards, best),
             "aces": sum(1 for x in cards if rank_of(x) == ACE),
             "joker_hand": list(state.joker_hand[me])}
 
@@ -658,8 +672,6 @@ def bid_view(cards, state, me=J.PLAYER):
 def bid_rule(bv, jid):
     b = J.base_id(jid)
     strong = bv["est_tricks"] >= 6  # assez pour un solo / un emballage meneur
-    if b == "main_de_fer":  # 6c54 : choisit l'atout de son emballage / solo
-        return (YES, "main_de_fer:main_forte") if strong else (NO, "main_de_fer:main_moyenne")
     if b == "pot_de_vin":  # 6c54 : 1er pli de sa misere a 0
         from agents import expert_bot
         # hors piccolo : le pli annule ferait rater le « exactement 1 pli »
@@ -675,9 +687,7 @@ def bid_rule(bv, jid):
     return NO, b + ":information_seulement"
 
 
-def bid_target(jid, me=J.PLAYER, bv=None):
-    if J.base_id(jid) == "main_de_fer":  # couleur (6c54)
-        return bv["best_suit"] if bv is not None else -1
+def bid_target(jid, me=J.PLAYER):
     return (me + 1) % NUM_PLAYERS if J.base_id(jid) == "coup_d_oeil" else -1
 
 
@@ -689,5 +699,5 @@ def player_bid_choice(cards, state, candidates):
             continue
         verdict, rid = bid_rule(bv, jid)
         if verdict in (YES, OPEN_YES):
-            return jid, bid_target(jid, bv=bv), rid
+            return jid, bid_target(jid), rid
     return None

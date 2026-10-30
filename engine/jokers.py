@@ -28,12 +28,14 @@ import random
 
 from engine.cards import NUM_PLAYERS, legal_plays, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "e1f4e72912caab94"
+JOKER_SPEC_HASH = "756724749bd089e1"
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
 # texte ou de cablage seulement) : un reseau entraine sous l'une d'elles est
 # reexporte tel quel avec JOKER_SPEC_HASH. Une regle qui change -> vider la
 # liste (sauf le hash courant) et reentrainer.
 RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH}
+# 7567 (whist-4-it, 30/10) : Main de Fer devient un sort a 2 ⚡, change l'atout d'un emballage ou d'un solo adverse
+# avant le premier pli (jamais lance par les bots -> CASTABLE inchange) -> reentrainement.
 # e1f4 (whist-4-it d0e3eec) : Courant d'Air garde sur le nombre de plis classique (Horloge remplacee ensuite ->
 # main vide au 13e pli, crash 8f41) -> regle changee, aucune iteration 8f41 acceptee de toute facon.
 # 8f41 (whist-4-it 8e28fa9, Rarete 04) : raretes/couts (Silence cave 3, Dette/Double Valet arriere_salle 3,
@@ -143,7 +145,7 @@ CATALOG = {
     "cartes_sur_table": ("enchere", "comptoir", 0, False),
     "bluff": ("enchere", "salle", 2, False),
     "rachat": ("enchere", "salle", 2, False),
-    "main_de_fer": ("enchere", "arriere_salle", 1, False),
+    "main_de_fer": ("sort", "arriere_salle", 2, False),
     "pot_de_vin": ("enchere", "arriere_salle", 1, False),
     "fossoyeur_de_plis": ("passif", "salle", 0, False),
     "brimborion_dore": ("passif", "arriere_salle", 0, False),
@@ -445,7 +447,7 @@ class Effect:
 
     def forces_pass(self, seat, action, bidding):
         """bot_bid : True = l'annonce `action` ({"action": ...}) du bot `seat`
-        devient un passe (Main de Fer, Pot-de-Vin)."""
+        devient un passe."""
         return False
 
     def prepare_bidding(self, bidding):
@@ -972,14 +974,10 @@ class Rachat(Aura):
         return [d + b - a for d, a, b in zip(deltas, base, bought)]
 
 
-class MainDeFer(Aura):
-    """6c54 : le proprietaire qui declare un emballage ou un solo le joue dans
-    la couleur choisie au lancement (les bots ne faisaient que passer avant)."""
+class MainDeFer(Effect):
+    """7567 : le contrat connu, avant la premiere carte, le proprietaire change
+    l'atout d'un emballage ou d'un solo adverse pour la couleur choisie."""
     TYPES = ("emballage", "solo")
-
-    def __init__(self, jid, owner):
-        super().__init__(jid, owner)
-        self.suit = None
 
     def needs_target(self):
         return True
@@ -987,18 +985,17 @@ class MainDeFer(Aura):
     def target_kind(self):
         return "suit"
 
-    def on_play(self, rules, target=-1):
-        if target < 0 or target >= 4:
-            return {"error": "target"}
-        self.suit = target
-        return {}
+    def pointless(self, rules):
+        g, c = rules.game, rules.contract
+        return (g.trick_count > 0 or bool(g.current_trick) or c.get("type", "") not in self.TYPES
+                or c.get("suit") is None or _declares(self.owner, c))
 
-    def on_contract(self, contract, rules):
-        if (self.suit is None or contract.get("type", "") not in self.TYPES
-                or contract.get("suit") in (None, self.suit) or not _declares(self.owner, contract)):
-            return False
-        contract["suit"] = self.suit
-        return True
+    def on_play(self, rules, target=-1):
+        if target < 0 or target >= 4 or target == rules.contract.get("suit"):
+            return {"error": "target"}
+        rules.contract["suit"] = target
+        rules.game.trump_suit = target
+        return {}
 
 
 class PotDeVin(Aura):
@@ -1557,6 +1554,7 @@ class JokerRules:
         self.joker_cards = {}
         self.score_bonus = [0] * NUM_PLAYERS
         self.vanished = []
+        self.trick_window = False  # joker_rules.gd in_trick_window : voir joker_match.play_out
         self.bind(game, contract)
 
     def bind(self, game, contract):

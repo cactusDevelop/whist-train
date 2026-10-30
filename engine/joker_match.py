@@ -181,8 +181,8 @@ class Match:
 def run_bot_bidding(hands, dealer, match=None):
     """Enchere ExpertBot ; sous jokers (`match`) : le joueur peut lancer ses
     jokers d'enchere a son tour, et JokerRules.bot_bid fait passer les bots
-    vises (Main de Fer, Pot-de-Vin) : comme net/whist_table.gd, le bot choisit
-    puis la regle remplace son annonce par un passe (s'il est legal)."""
+    vises : comme net/whist_table.gd, le bot choisit puis la regle remplace
+    son annonce par un passe (s'il est legal)."""
     bidding = Bidding(dealer)
     trou = detect_trou(hands)
     if trou is not None:
@@ -356,13 +356,23 @@ def play_out(hand, policy, first_action=None, on_decision=None, before_player=No
     `first_action` force la decision du premier de ces tours ;
     `on_decision(hand, seat, action)` est appele AVANT le cast. Le joueur
     simule (hand.player) lance ses jokers a son tour de pli ;
-    `before_player(hand)` est appele juste avant (test de rentabilite)."""
+    `before_player(hand)` est appele juste avant (test de rentabilite).
+    7567 : au premier pli, il a aussi la fenetre avant l'entame d'un bot
+    (joker_rules.gd in_trick_window), simulee pour Main de Fer seul."""
     g = hand.game
     holders = set(hand.holders())
     player = getattr(hand, "player", None)
+    window = player is not None and g.trick_count == 0 and not g.current_trick and g.turn != PLAYER
     while not g.done:
         seat = g.turn
         discarding = getattr(g, "pending_discards", None)
+        if window and not discarding:
+            window = False
+            hand.rules.trick_window = True
+            if before_player is not None:
+                before_player(hand)
+            player.trick_turn(hand)
+            hand.rules.trick_window = False
         if seat in holders and not discarding:
             if first_action is not None:
                 action, first_action = first_action, None
@@ -525,6 +535,9 @@ class Player:
     def _target(self, rules, jid=None):
         if jid is not None and J.make_effect(jid, PLAYER).target_kind() == "suit":  # 6c54 : sa plus longue couleur
             cards = rules.game.hands[PLAYER] if rules.game is not None else (rules.deal_hands or [[]])[PLAYER]
+            if J.base_id(jid) == "main_de_fer":
+                from agents import joker_expert as X
+                return X.main_de_fer_suit(cards, rules.contract_trump())
             return J.longest_suit(cards)
         if jid is not None and rules.game is not None:  # 65a7 : le HUD n'offre que les sieges acceptes
             eff = J.make_effect(jid, PLAYER)
@@ -539,6 +552,8 @@ class Player:
         for jid in list(state.joker_hand[PLAYER]):
             t = J.jtype(jid)
             if (t == "enchere") != bidding or state.play_error(PLAYER, jid) != "":
+                continue
+            if rules.trick_window and J.base_id(jid) != "main_de_fer":
                 continue
             if "moine" in boss and t in ("pli", "aura"):  # RogueBosses.blocks_joker (boss = regles des boss)
                 continue
@@ -592,9 +607,7 @@ class Player:
             tgt = None
             if jid and self.style == "expert":
                 from agents import joker_expert as X
-                cards = rules.deal_hands[PLAYER] if rules.deal_hands else []
-                # 8f41 : Main de Fer force vise la couleur que la regle choisirait (best_suit), plus la plus longue
-                tgt = X.bid_target(jid, bv=X.bid_view(cards, state) if cards else None)
+                tgt = X.bid_target(jid)
             self._forced(state, rules, eye, jid, tgt)
             return
         tried = set()
