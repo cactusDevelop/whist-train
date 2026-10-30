@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Promotion du renom d'atout : tests et fixtures de parite Godot.
-python -u scripts/test_expert_bot.py
-python -u tests/scripts/dump_expert_bot_fixtures.py
-gh release upload checkpoint-latest tests/fixtures/expert_bot_parity.json --clobber
+# Renom d'atout : taux apres promotion de KEEP_TRUMPS_VS_VOID. Mesure seule.
+python -u scripts/trump_renom_audit.py --deals 20000 --workers 4
