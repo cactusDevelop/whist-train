@@ -685,7 +685,7 @@ def jokers_joues_tests():
     oks.append(check("garde-fou Oeil : joker sans Soupcon", X.eye_risk(hand.state, "kermesse"), False))
     hand.state.suspicion -= 1
     oks.append(check("garde-fou Oeil : sous le seuil", X.eye_risk(hand.state, "pot_de_vin"), False))
-    strong = [card(H, r) for r in range(2, 15)]
+    strong = [card(s, r) for s in range(4) for r in (14, 13, 12)] + [card(H, 11)]
     oks.append(check("pot-de-vin : pas sur une main sans misere", X.bid_rule({"hand": strong, "est_tricks": 13}, "pot_de_vin")[0], X.NO))
     return oks
 
