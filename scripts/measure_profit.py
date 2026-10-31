@@ -41,9 +41,9 @@ def main():
             for data in pool.map(P.profit_worker, [(seeds[i::args.workers], w) for i in range(args.workers)]):
                 agg.merge(P.Agg(data))
             done += BATCH
+            rows = P.table(agg)  # a chaque lot : une erreur de rendu tombe tout de suite, pas apres des heures
+            P.render({"iterations": [ckpt.get("iter", -1)], "profit_matches": done, "spec_hash": J.JOKER_SPEC_HASH}, rows)
             print("matchs %d, %.0f min restantes" % (done, (end - time.time()) / 60), flush=True)
-    rows = P.table(agg)
-    P.render({"iterations": [ckpt.get("iter", -1)], "profit_matches": done, "spec_hash": J.JOKER_SPEC_HASH}, rows)
     print("valeur d'un point d'energie :", P.energy_value(rows))
     keys = ("id", "cost", "suspicion", "rarity", "n", "gain", "se", "gain_source", "cast_rate", "target_cost",
             "target_cost_low", "target_cost_high", "depends_on_player", "recommended_cost", "note", "verdict")
