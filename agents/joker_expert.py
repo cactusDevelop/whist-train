@@ -40,16 +40,18 @@ JACK, QUEEN, KING, ACE = 9, 10, 11, 12
 # decisif d'abord pour ne pas gaspiller l'energie sur un petit joker.
 BOT_PRIORITY = ["inversion", "coup_de_vent", "coup_du_chapeau", "kermesse", "embuscade", "faux_pas", "main_lourde"]
 PLAYER_PRIORITY = [
-    # sorts / pieges / auras decisifs, puis cartes de pli, puis le reste
+    # remises et energie d'abord, sorts / pieges / auras decisifs, cartes de pli, le reste, les points de fin de tour
+    "complice", "valet_de_chambre", "ardoise", "verre_de_trop", "refrain",
     "main_de_fer", "horloge_arretee", "valet_borgne", "inversion", "brouillard_de_la_senne", "remonte_pli", "la_peche", "pli_refile",
     "coup_de_vent",
-    "manche_truquee", "gueule_de_bois", "dette_de_jeu", "lune_noire", "coup_du_chapeau", "kermesse",
+    "manche_truquee", "gueule_de_bois", "dette_de_jeu", "lune_noire", "bal_des_valets", "beau_valet", "coup_du_chapeau", "kermesse",
     "treizieme_carte", "coeur_de_zinneke", "silence_du_cercle", "embuscade", "collet", "fausse_piste", "faux_pas",
     "croupier_endormi", "contre_espionnage", "fumee_de_pipe", "tournee_generale", "echange_de_manche",
     "defausse_discrete", "la_tournee", "cadeau_empoisonne", "meche_courte",
     "faux_depart",
     "borgne", "double_valet", "cameleon", "atout_errant", "traitre", "carte_fantome", "zero", "miroir",
     "courant_d_air", "main_lourde", "pourboire", "regard_furtif", "livre_de_comptes",
+    "addition", "feu_de_paille",
 ]
 BID_PRIORITY = ["pot_de_vin", "rachat", "bluff", "cartes_sur_table", "coup_d_oeil"]
 
@@ -97,6 +99,7 @@ def view(hand, me):
         "friends": [s for s in range(NUM_PLAYERS) if s != me and not rules.is_opponent(me, s)],
         "side": sorted(side),
         "armed": sorted(e.id for e in rules.effects if e.owner == me and not e.spent),
+        "played": state.played_this_hand[me], "last_spell": state.last_spell[me],
         "enemy_jokers": sum(len(state.joker_hand[s]) for s in range(NUM_PLAYERS) if rules.is_opponent(me, s)),
         "eye": getattr(hand, "eye", "") if me == J.PLAYER else "",
         "best_seat": None, "best_card": None, "best_friendly": False, "enemy_ruff_best": False,
@@ -445,6 +448,74 @@ def _pourboire(v):
     return NO, "garde_l_energie"
 
 
+# --- joueur : jokers de combos (6483) : heuristiques, non mesurees ---------------------
+
+def _castable_others(v, jid):
+    """Les autres jokers de ma main qui se lancent a un tour de pli."""
+    return [j for j in v["joker_hand"] if J.base_id(j) != J.base_id(jid) and J.jtype(j) not in ("passif", "enchere")]
+
+
+def _jacks(v):
+    """Mes Valets, ceux des jokers de pli compris (Cameleon, Double Valet)."""
+    return _count(v, lambda x: rank_of(x) == JACK) + sum(1 for j in v["joker_hand"] if J.base_id(j) in ("cameleon", "double_valet"))
+
+
+def _valets_aura(jid):
+    def judge(v):
+        if v["misere"] or v["remaining"] < 5 or owned(v, jid):
+            return NO, "misere_tard_ou_arme"
+        return (YES, "valets_en_main") if _jacks(v) >= 2 else (NO, "peu_de_valets")
+    return judge
+
+
+def _valet_de_chambre(v):
+    if owned(v, "valet_de_chambre"):
+        return NO, "deja_arme"
+    wanted = [j for j in _castable_others(v, "valet_de_chambre") if J.base_id(j) in J.VALET_FAMILY and J.jcost(j) > 0]
+    return (YES, "valet_a_prix_zero") if wanted else (NO, "pas_de_valet_a_payer")
+
+
+def _complice(v):
+    if owned(v, "complice"):
+        return NO, "deja_arme"
+    return (YES, "remise_utile") if any(J.jcost(j) > 0 for j in _castable_others(v, "complice")) else (NO, "rien_a_payer")
+
+
+def _feu_de_paille(v):
+    if v["remaining"] <= 2:
+        return YES, "fin_de_donne"
+    return (NO, "energie_encore_utile") if any(J.jcost(j) <= v["energy"] for j in _castable_others(v, "feu_de_paille")) else (YES, "energie_sans_emploi")
+
+
+def _ardoise(v):
+    others = _castable_others(v, "ardoise")
+    if any(J.base_id(j) == "feu_de_paille" for j in others):
+        return YES, "alimente_le_feu"
+    gap = any(v["energy"] < J.jcost(j) <= v["energy"] + J.Ardoise.LOAN for j in others)
+    return (YES, "paie_un_joker_hors_de_prix") if gap else (NO, "pas_besoin")
+
+
+def _addition(v):
+    if v["played"] >= 2:
+        return YES, "deux_jokers_joues"
+    return (YES, "fin_de_donne") if v["remaining"] <= 2 else (NO, "attend_d_autres_jokers")
+
+
+def _verre_de_trop(v):
+    if owned(v, "verre_de_trop") or v["remaining"] < 4:
+        return NO, "tard_ou_arme"
+    left = v["energy"] - J.jcost("verre_de_trop")
+    payable = [j for j in _castable_others(v, "verre_de_trop") if J.jcost(j) <= left]
+    return (YES, "enchainement_possible") if v["played"] + 1 + len(payable) >= J.VerreDeTrop.EVERY else (NO, "pas_trois_jokers")
+
+
+def _refrain(v):
+    spell = v["last_spell"]
+    if not spell or J.jsuspicion(spell) > 0:
+        return NO, "pas_de_sort_ou_suspect"
+    return (YES, "relance_utile") if rule(v, spell)[0] in (YES, OPEN_YES) else (NO, "relance_inutile")
+
+
 # --- joueur : pieges -----------------------------------------------------------------
 
 def _fausse_piste(v):
@@ -560,6 +631,9 @@ RULES = {
     "treizieme_carte": _treizieme_carte,
     "defausse_discrete": _defausse_discrete, "la_tournee": _la_tournee,
     "cadeau_empoisonne": _cadeau_empoisonne, "meche_courte": _meche_courte,
+    "beau_valet": _valets_aura("beau_valet"), "bal_des_valets": _valets_aura("bal_des_valets"),
+    "valet_de_chambre": _valet_de_chambre, "feu_de_paille": _feu_de_paille, "ardoise": _ardoise,
+    "addition": _addition, "complice": _complice, "verre_de_trop": _verre_de_trop, "refrain": _refrain,
 }
 
 

@@ -18,7 +18,9 @@ du catalogue. Les bots ne lancent toujours que les jokers `bot_casts`
 
 Ecarts connus (sans effet sur les decisions des bots) : Brimborion Dore
 inerte (pas de donne a points doubles dans la simulation), pas de
-recyclage cote joueur.
+recyclage cote joueur (donc Cendrier / Consigne : defausse seulement), pas
+de sanction choisie (Synergies 04b : celle de l'Oeil tombe), pas d'offres
+orientees par famille (run_nodes.gd, hors empreinte).
 Cartes de pli : une carte de joker est un vrai entier carte (couleur/rang)
 pour le moteur et l'ExpertBot, comme dans le jeu ; JokerRules.joker_cards
 retient quel siege l'a posee dans le pli en cours.
@@ -28,12 +30,16 @@ import random
 
 from engine.cards import NUM_PLAYERS, legal_plays, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "6cb72aca3ae8e438"
+JOKER_SPEC_HASH = "64835039bfe17f48"
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
 # texte ou de cablage seulement) : un reseau entraine sous l'une d'elles est
 # reexporte tel quel avec JOKER_SPEC_HASH. Une regle qui change -> vider la
 # liste (sauf le hash courant) et reentrainer.
-RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH, "4d7df4b731ea2842"}  # 6cb7 : bot_seen seulement (whist-4-it 203f958, regles identiques)
+RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH}
+# 6483 (whist-4-it a62a3e1 + c9dd31a + 764a412, Synergies 04a-04c) : faveurs du run et paliers de Chaleur (siege 0,
+# config, defaut neutre), Double Valet 2 ⚡, 13 jokers de combos jamais lances par les bots (CASTABLE, OBS_DIM
+# inchanges), effets PENDING, ⚡ reportes / dus, joker garde -> regle changee, le champion doit repasser la porte.
+# 6cb7 : bot_seen seulement (whist-4-it 203f958, regles identiques a 4d7d)
 # 7567 (whist-4-it, 30/10) : Main de Fer devient un sort a 2 ⚡, change l'atout d'un emballage ou d'un solo adverse
 # avant le premier pli (jamais lance par les bots -> CASTABLE inchange) -> reentrainement.
 # e1f4 (whist-4-it d0e3eec) : Courant d'Air garde sur le nombre de plis classique (Horloge remplacee ensuite ->
@@ -124,7 +130,7 @@ CATALOG = {
     "miroir": ("pli", "comptoir", 1, False),
     "borgne": ("pli", "salle", 1, False),
     "carte_fantome": ("pli", "salle", 2, False),
-    "double_valet": ("pli", "arriere_salle", 3, False),
+    "double_valet": ("pli", "arriere_salle", 2, False),
     "atout_errant": ("pli", "comptoir", 2, False),
     "courant_d_air": ("sort", "comptoir", 0, False),
     "tournee_generale": ("sort", "comptoir", 1, False),
@@ -165,6 +171,20 @@ CATALOG = {
     "meche_courte": ("aura", "comptoir", 1, False),
     "la_tournee": ("aura", "salle", 2, False),
     "cadeau_empoisonne": ("piege", "salle", 2, False),
+    # 6483 (Synergies 04c) : jokers de combos, jamais lances par les bots
+    "beau_valet": ("aura", "comptoir", 1, False),
+    "bal_des_valets": ("aura", "arriere_salle", 2, False),
+    "valet_de_chambre": ("sort", "comptoir", 0, False),
+    "boite_d_allumettes": ("passif", "salle", 0, False),
+    "poche_interieure": ("passif", "salle", 0, False),
+    "feu_de_paille": ("sort", "salle", 0, False),
+    "ardoise": ("sort", "comptoir", 0, False),
+    "addition": ("sort", "comptoir", 1, False),
+    "complice": ("sort", "comptoir", 0, False),
+    "verre_de_trop": ("aura", "salle", 1, False),
+    "refrain": ("sort", "salle", 1, False),
+    "cendrier": ("passif", "salle", 0, False),
+    "consigne": ("passif", "comptoir", 0, False),
     "cartes_marquees": ("passif", "maudit", 0, False),
     "joueur_fantome": ("passif", "maudit", 0, False),
     "pacte_du_tenancier": ("passif", "maudit", 0, False),
@@ -179,6 +199,7 @@ CATALOG = {
 # JokerCatalog.OPPONENT_ONLY : jamais proposes au joueur (chaise_vide, deck simule)
 OPPONENT_ONLY = ("regle_du_moine", "gant_de_la_baronne", "pelle_du_fossoyeur", "sceau_du_grand_maitre", "cavalier_seul")
 STARTING_DECK = ["cameleon", "embuscade", "main_lourde"]  # JokerCatalog.STARTING_DECK
+VALET_FAMILY = ("cameleon", "double_valet", "beau_valet", "bal_des_valets", "valet_de_chambre")  # JokerCatalog.FAMILIES["valets"]
 UPGRADE_SUFFIX = "+"  # JokerDef : cout -1 (jamais un cout 0 ni un maudit)
 MAX_COPIES = 2
 SUSPICION_BY_RARITY = {"arriere_salle": 2, "cave": 4}  # JokerDef.SUSPICION_BY_RARITY
@@ -195,6 +216,9 @@ LASTING_CASES = 2  # 65a7 (d74be81) : effets de donne par siege (JokerRules.LAST
 SPAMMER_CASES = 3
 ENERGY_PER_HAND = 3
 SUSPICION_MAX = 10
+HEAT_ENERGY_AT = 3  # Synergies 04b : paliers de Chaleur du siege 0 (MatchState)
+HEAT_DRAW_AT = 6
+CARRY_MAX = 6  # Boite d'Allumettes : le plus qu'une donne ouvre grace aux ⚡ reportes
 ELITE_SEATS = (1, 3)
 ELITE_EYE = "points"
 EYE_POINTS = 20  # RogueMatch
@@ -354,6 +378,7 @@ def longest_suit(hand):
 # --- effets (joker_effects.gd) ---------------------------------------------
 
 TRICK, HAND, INSTANT = "trick", "hand", "instant"
+PENDING = "pending"  # 6483 : sans case, jusqu'a ce qu'il soit paye (le prix du prochain joker)
 
 
 class Effect:
@@ -394,6 +419,26 @@ class Effect:
 
     def competes(self, play, rules):
         return True
+
+    def raises(self, play):
+        """6483 : True = le pli voit ce coup au-dessus de tous les rangs (Bal des Valets)."""
+        return False
+
+    def discount(self, jid):
+        """6483 : ce que cet effet retire du prix de `jid` tant qu'il vit."""
+        return 0
+
+    def on_joker_paid(self, seat, jid, rules):
+        """`seat` a paye `jid`, deja compte dans played_this_hand."""
+        pass
+
+    def discard_energy(self):
+        """⚡ que ce joker rapporte lui-meme defausse (remplace DISCARD_GAIN)."""
+        return 0
+
+    def discard_bonus(self, seat, jid):
+        """⚡ de plus pour `jid` defausse par `seat`."""
+        return 0
 
     def inverts(self):
         return False
@@ -1340,6 +1385,125 @@ class CadeauEmpoisonne(Trap):
         return self._discards(play, rules)
 
 
+# --- jokers de combos (6483, whist-4-it 764a412) -----------------------------
+
+class BeauValet(Aura):
+    def on_trick_resolved(self, winner, plays, rules):
+        if winner == self.owner and any(s == self.owner and rank_of(c) == FACE_RANKS[0] for s, c in plays):
+            rules.state.gain_energy(self.owner, 1)
+
+
+class BalDesValets(Aura):
+    def raises(self, play):
+        return play[0] == self.owner and rank_of(play[1]) == FACE_RANKS[0]
+
+
+class Pending(Effect):
+    scope = PENDING
+
+
+class ValetDeChambre(Pending):
+    def discount(self, jid):
+        return jcost(jid) if base_id(jid) in VALET_FAMILY else 0
+
+    def on_joker_paid(self, seat, jid, rules):
+        self.spent = self.spent or (seat == self.owner and self.discount(jid) > 0)
+
+
+class Complice(Pending):
+    def discount(self, jid):
+        return 1
+
+    def on_joker_paid(self, seat, jid, rules):
+        self.spent = self.spent or (seat == self.owner and jcost(jid) > 0)
+
+
+class Refrain(Pending):
+    """Le sort revient en main, sans etre rejoue : il peut demander sa cible."""
+    def __init__(self, jid, owner):
+        super().__init__(jid, owner)
+        self.spell = ""
+
+    def pointless(self, rules):
+        return rules.state.last_spell[self.owner] == ""
+
+    def on_play(self, rules, target=-1):
+        self.spell = rules.state.take_spell(self.owner)
+        return {} if self.spell else {"error": "no_spell"}
+
+    def discount(self, jid):
+        return jcost(jid) if jid == self.spell else 0
+
+    def on_joker_paid(self, seat, jid, rules):
+        self.spent = self.spent or (seat == self.owner and jid == self.spell)
+
+
+class BoiteDAllumettes(Aura):
+    def on_hand_end(self, rules):
+        rules.state.carried[self.owner] = rules.state.energy[self.owner]
+
+
+class PocheInterieure(Aura):
+    """Le plus cher qui reste, jamais un passif : une nouvelle donne ne l'armerait pas."""
+    def on_hand_end(self, rules):
+        best = ""
+        for jid in rules.state.joker_hand[self.owner]:
+            if jtype(jid) != "passif" and (best == "" or jcost(jid) > jcost(best)):
+                best = jid
+        rules.state.kept[self.owner] = best
+
+
+class FeuDePaille(Effect):
+    PER_MATCH = 3
+
+    def pointless(self, rules):
+        return rules.state.energy[self.owner] <= 0
+
+    def on_play(self, rules, target=-1):
+        burnt = rules.state.energy[self.owner]
+        rules.state.energy[self.owner] = 0
+        rules.add_score(self.owner, burnt * self.PER_MATCH)
+        return {}
+
+
+class Ardoise(Effect):
+    LOAN = 2
+
+    def on_play(self, rules, target=-1):
+        rules.state.gain_energy(self.owner, self.LOAN)
+        rules.state.debts[self.owner] += self.LOAN
+        return {}
+
+
+class Addition(Effect):
+    PER_JOKER = 2
+
+    def pointless(self, rules):
+        return rules.state.played_this_hand[self.owner] == 0
+
+    def on_play(self, rules, target=-1):
+        rules.add_score(self.owner, rules.state.played_this_hand[self.owner] * self.PER_JOKER)
+        return {}
+
+
+class VerreDeTrop(Aura):
+    EVERY = 3
+
+    def on_joker_paid(self, seat, jid, rules):
+        if seat == self.owner and rules.state.played_this_hand[self.owner] % self.EVERY == 0:
+            rules.state.draw_jokers(self.owner, 1)
+
+
+class Cendrier(Aura):
+    def discard_bonus(self, seat, jid):
+        return 1 if seat == self.owner and base_id(jid) != base_id(self.id) else 0
+
+
+class Consigne(Aura):
+    def discard_energy(self):
+        return 2
+
+
 EFFECTS = {
     "cameleon": Cameleon, "zero": Zero, "traitre": Traitor, "coup_de_vent": CoupDeVent,
     "main_lourde": MainLourde, "embuscade": Embuscade, "kermesse": Kermesse, "coup_d_oeil": CoupDOeil,
@@ -1363,6 +1527,10 @@ EFFECTS = {
     "pli_refile": PliRefile,
     "defausse_discrete": DefausseDiscrete, "meche_courte": MecheCourte, "la_tournee": LaTournee,
     "cadeau_empoisonne": CadeauEmpoisonne,
+    "beau_valet": BeauValet, "bal_des_valets": BalDesValets, "valet_de_chambre": ValetDeChambre,
+    "boite_d_allumettes": BoiteDAllumettes, "poche_interieure": PocheInterieure, "feu_de_paille": FeuDePaille,
+    "ardoise": Ardoise, "addition": Addition, "complice": Complice, "verre_de_trop": VerreDeTrop,
+    "refrain": Refrain, "cendrier": Cendrier, "consigne": Consigne,
 }
 assert set(EFFECTS) == set(CATALOG)
 
@@ -1395,6 +1563,13 @@ class MatchState:
         self.borrowed = [[] for _ in range(NUM_PLAYERS)]  # jokers de defense d'une elite adaptee (3d47)
         self.to_discard = [0] * NUM_PLAYERS  # Main Lourde (6c54)
         self.dry_hand = False  # donne du joueur sous « sans allumettes » : sa defausse ne rapporte rien
+        self.run_energy = 0  # Synergies 04a : faveurs du run, siege 0
+        self.run_draws = 0
+        self.heat = False  # Synergies 04b : paliers de Chaleur (jamais au Duel)
+        self.carried = [0] * NUM_PLAYERS  # 6483 : ⚡ reportes (Boite d'Allumettes)
+        self.debts = [0] * NUM_PLAYERS  # 6483 : ⚡ dus (L'Ardoise)
+        self.kept = [""] * NUM_PLAYERS  # 6483 : joker garde (Poche Interieure)
+        self.last_spell = [""] * NUM_PLAYERS  # 6483 : dernier sort paye, Refrain a part
         for pile in self.draw_pile:
             self.rng.shuffle(pile)
 
@@ -1404,19 +1579,37 @@ class MatchState:
             for jid in self.curses[seat]:
                 self.rules.curses.append(make_effect(jid, seat))
 
+    def energy_per_hand(self, seat):
+        n = ENERGY_PER_HAND + (self.spammer_energy if seat in self.spammers else 0)
+        if seat == PLAYER:
+            n += self.run_energy + self.heat_energy()
+        return n + (sum(e.energy_bonus() for e in self.rules.curses if e.owner == seat) if self.rules else 0)
+
+    def heat_energy(self):
+        return 1 if self.heat and self.suspicion >= HEAT_ENERGY_AT else 0
+
+    def heat_draws(self):
+        return 1 if self.heat and self.suspicion >= HEAT_DRAW_AT else 0
+
     def start_hand(self):
         for seat in range(NUM_PLAYERS):
-            bonus = sum(e.energy_bonus() for e in self.rules.curses if e.owner == seat) if self.rules else 0
             malus = self.next_hand_malus + self.energy_malus if seat == PLAYER else 0
-            extra = self.spammer_energy if seat in self.spammers else 0
-            self.energy[seat] = max(0, ENERGY_PER_HAND + extra + bonus - malus)
+            base = self.energy_per_hand(seat)
+            opening = max(base, min(CARRY_MAX, base + self.carried[seat]))
+            self.energy[seat] = max(0, opening - self.debts[seat] - malus)
             n = SPAMMER_DRAWS if seat in self.spammers else DRAW_PER_HAND
+            if seat == PLAYER:
+                n += self.run_draws + self.heat_draws()
             self.draw_jokers(seat, n + self.next_hand_draws[seat] + (self.rules.draw_bonus(seat) if self.rules else 0))
         self.dry_hand = self.next_hand_malus >= NO_ENERGY
         self.next_hand_malus = 0
         self.next_hand_draws = [0] * NUM_PLAYERS
         self.played_this_hand = [0] * NUM_PLAYERS
         self.to_discard = [0] * NUM_PLAYERS
+        self.carried = [0] * NUM_PLAYERS
+        self.debts = [0] * NUM_PLAYERS
+        self.kept = [""] * NUM_PLAYERS
+        self.last_spell = [""] * NUM_PLAYERS
 
     def adapt(self, seat, jids):
         """Une elite en defense met sa main de cote pour `jids` (empruntes :
@@ -1432,8 +1625,12 @@ class MatchState:
                 if jid in self.joker_hand[seat]:
                     self.joker_hand[seat].remove(jid)
             self.borrowed[seat] = []
-            self.discard[seat].extend(self.joker_hand[seat])
-            self.joker_hand[seat] = []
+            staying = [self.kept[seat]] if self.kept[seat] in self.joker_hand[seat] else []
+            going = list(self.joker_hand[seat])
+            for jid in staying:
+                going.remove(jid)
+            self.discard[seat].extend(going)
+            self.joker_hand[seat] = staying
 
     def draw_jokers(self, seat, n):
         for _ in range(n):
@@ -1465,12 +1662,22 @@ class MatchState:
 
     def discard_gain(self, seat, jid):
         """65a7 : l'energie que defausser `jid` rapporterait a `seat` maintenant
-        (rien si la defausse est due, sous « sans allumettes », ou passif arme)."""
+        (rien si la defausse est due, sous « sans allumettes », ou passif arme),
+        plus _discard_extra (6483)."""
+        extra = self._discard_extra(seat, jid)
         if self.to_discard[seat] > 0 or (seat == PLAYER and self.dry_hand):
-            return 0
+            return extra
+        if make_effect(jid, seat).discard_energy() > 0:
+            return extra
         if self.rules is not None and jtype(jid) == "passif" and self.rules.armed(seat, jid):
+            return extra
+        return DISCARD_GAIN + extra
+
+    def _discard_extra(self, seat, jid):
+        """Ce que les jokers ajoutent quand `jid` quitte la main, du ou non (La Consigne, Cendrier)."""
+        if seat == PLAYER and self.dry_hand:
             return 0
-        return DISCARD_GAIN
+        return make_effect(jid, seat).discard_energy() + (self.rules.discard_bonus(seat, jid) if self.rules is not None else 0)
 
     def discard_joker(self, seat, jid):
         """Due d'abord (Main Lourde), sinon payee DISCARD_GAIN ; -> energie gagnee."""
@@ -1510,6 +1717,18 @@ class MatchState:
         self.joker_hand[seat].append(jid)
         return jid
 
+    def take_spell(self, seat):
+        """Refrain : le dernier sort de la donne repasse de la defausse a la
+        main ; "" s'il n'y est plus (un remelange l'a pris)."""
+        jid = self.last_spell[seat]
+        if jid == "" or jid not in self.discard[seat]:
+            return ""
+        at = len(self.discard[seat]) - 1 - self.discard[seat][::-1].index(jid)
+        del self.discard[seat][at]
+        self.joker_hand[seat].append(jid)
+        self.last_spell[seat] = ""
+        return jid
+
     def play_error(self, seat, jid):
         if not known(jid) or jid not in self.joker_hand[seat]:
             return "not_in_hand"
@@ -1528,20 +1747,25 @@ class MatchState:
         self.energy[seat] -= self.cost_of(seat, jid)
         self.played_this_hand[seat] += 1
         self.joker_hand[seat].remove(jid)
+        if jtype(jid) == "sort" and base_id(jid) != "refrain":
+            self.last_spell[seat] = jid
         if jid in self.borrowed[seat]:
             self.borrowed[seat].remove(jid)
         else:
             self.discard[seat].append(jid)
         if seat == PLAYER and not (self.rules is not None and self.rules.hides_suspicion(seat)):
             self.suspicion = min(SUSPICION_MAX, self.suspicion + jsuspicion(jid))
+        if self.rules is not None:
+            self.rules.joker_paid(seat, jid)
 
 
 # --- regles (joker_rules.gd) ------------------------------------------------
 
-def beats(ch, best, led, trump):
-    """WhistTrick._beats : meme couleur -> rang ; sinon seul l'atout bat."""
+def beats(ch, best, led, trump, ch_rank=None, best_rank=None):
+    """WhistTrick._beats : meme couleur -> rang ; sinon seul l'atout bat.
+    ch_rank / best_rank : le rang vu par le pli s'il differe (Bal des Valets)."""
     if suit_of(ch) == suit_of(best):
-        return rank_of(ch) > rank_of(best)
+        return (rank_of(ch) if ch_rank is None else ch_rank) > (rank_of(best) if best_rank is None else best_rank)
     return trump is not None and suit_of(ch) == trump
 
 
@@ -1775,7 +1999,10 @@ class JokerRules:
         plays = [(s, self.card_suit(c) * 13 + rank_of(c)) for s, c in real_plays]
         led = self.suit_name(real_led)
         blackened = {s for (s, c), (_s, r) in zip(plays, real_plays) if suit_of(c) != suit_of(r)}
-        stands_in = lambda seat: seat in self.joker_cards or seat in blackened
+        # 6483 : RaisedCard, au-dessus de l'As, et ni joker ni carte recoloree pour l'egalite
+        raised = {s for s, c in real_plays if any(e.raises((s, c)) for e in self.live())}
+        stands_in = lambda seat: seat not in raised and (seat in self.joker_cards or seat in blackened)
+        seen_rank = lambda p: ACE + 1 if p[0] in raised else rank_of(p[1])
         self.current_led = led
         self.current_trump = trump
         self.current_plays = list(plays)
@@ -1797,9 +2024,9 @@ class JokerRules:
         for p in competing:
             if inverted:
                 # joker_rules.gd : la plus faible de la couleur demandee gagne
-                if suit_of(p[1]) == led and (suit_of(best[1]) != led or rank_of(p[1]) < rank_of(best[1])):
+                if suit_of(p[1]) == led and (suit_of(best[1]) != led or seen_rank(p) < seen_rank(best)):
                     best = p
-            elif beats(p[1], best[1], led, trump):
+            elif beats(p[1], best[1], led, trump, seen_rank(p), seen_rank(best)):
                 best = p
             if (stands_in(best[0]) and not stands_in(p[0])
                     and suit_of(p[1]) == suit_of(best[1]) and rank_of(p[1]) == rank_of(best[1])):
@@ -1862,7 +2089,19 @@ class JokerRules:
         for e in self.curses:
             if e.owner == seat and e.cost_override(jid) >= 0:
                 cost = min(cost, e.cost_override(jid))
+        for e in self.effects:
+            if e.owner == seat:
+                cost = max(0, cost - e.discount(jid))
         return cost
+
+    def joker_paid(self, seat, jid):
+        """6483 : `seat` vient de payer `jid`, les remises servies disparaissent aussitot."""
+        for e in self.live():
+            e.on_joker_paid(seat, jid, self)
+        self.effects = [e for e in self.effects if not e.spent or e.scope != PENDING]
+
+    def discard_bonus(self, seat, jid):
+        return sum(e.discard_bonus(seat, jid) for e in self.live())
 
     def draw_bonus(self, seat):
         return sum(e.draw_bonus() for e in self.curses if e.owner == seat)

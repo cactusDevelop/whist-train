@@ -92,6 +92,9 @@ class Match:
         self.state.spammer_energy = J.spammer_energy(mise)
         self.state.energy_malus = J.mise_energy_malus(mise, config["act"])
         self.state.eye_threshold = J.eye_threshold(mise)
+        self.state.run_energy = config.get("run_energy", 0)  # RogueMatch : config du match (04a, 04b), jamais le Duel
+        self.state.run_draws = config.get("run_draws", 0)
+        self.state.heat = config.get("heat", False)
         self.rules = JokerRules(self.state, random.Random(self.rng.random()))
         self.rules.set_spammers(spammers)  # 65a7 : 3 cases d'effet de donne
         boss = config.get("boss", "")

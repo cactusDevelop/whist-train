@@ -741,6 +741,159 @@ def jokers_joues_tests():
     oks.append(check("garde-fou Oeil : sous le seuil", X.eye_risk(hand.state, "pot_de_vin"), False))
     strong = [card(s, r) for s in range(4) for r in (14, 13, 12)] + [card(H, 11)]
     oks.append(check("pot-de-vin : pas sur une main sans misere", X.bid_rule({"hand": strong, "est_tricks": 13}, "pot_de_vin")[0], X.NO))
+    oks.extend(combo_tests())
+    return oks
+
+
+def combo_state(hand0=()):
+    state, rules, game = setup()
+    state.joker_hand[0] = list(hand0)
+    state.energy[0] = 3
+    return state, rules, game
+
+
+def cast(state, rules, jid, seat=0):
+    played = rules.play(seat, jid)
+    if not played.get("error"):
+        J.spend(state, seat, jid, played)
+    return played
+
+
+def combo_tests():
+    """Synergies 04a-04c (empreinte 6483), contre joker_effects.gd / match_state.gd."""
+    oks = []
+    oks.append(check("04c : Double Valet a 2", J.jcost("double_valet"), 2))
+    oks.append(check("04c : CASTABLE inchange", len(J.CASTABLE), 7))
+    # Bal des Valets : au-dessus de l'As, jamais d'un atout, faible sous inversion
+    state, rules, game = combo_state()
+    rules.effects.append(J.make_effect("bal_des_valets", 0))
+    plays = [(1, card(H, 14)), (2, card(H, 2)), (3, card(H, 3)), (0, card(H, 11))]
+    oks.append(check("bal : mon Valet bat l'As", rules.trick_winner(plays, H, S), 0))
+    plays2 = [(1, card(H, 14)), (2, card(S, 2)), (3, card(H, 3)), (0, card(H, 11))]
+    oks.append(check("bal : l'atout bat mon Valet", rules.trick_winner(plays2, H, S), 2))
+    plays3 = [(0, card(H, 11)), (1, card(H, 14)), (2, card(H, 2)), (3, card(H, 3))]
+    oks.append(check("bal : en entame aussi", rules.trick_winner(plays3, H, S), 0))
+    rules.effects.append(J.make_effect("inversion", 1))
+    oks.append(check("bal + inversion : le plus faible gagne", rules.trick_winner(plays, H, S), 2))
+    other = [(1, card(H, 14)), (2, card(H, 11)), (3, card(H, 3)), (0, card(H, 2))]
+    rules.effects.pop()
+    oks.append(check("bal : le Valet d'un autre reste un Valet", rules.trick_winner(other, H, S), 1))
+    # Beau Valet
+    state, rules, game = combo_state()
+    rules.effects.append(J.make_effect("beau_valet", 0))
+    state.energy[0] = 0
+    rules.on_trick_resolved(0, [(0, card(H, 11)), (1, card(H, 2))])
+    oks.append(check("beau valet : +1 sur un pli gagne au Valet", state.energy[0], 1))
+    rules.on_trick_resolved(0, [(0, card(H, 12)), (1, card(H, 2))])
+    rules.on_trick_resolved(1, [(0, card(D, 11)), (1, card(D, 12))])
+    oks.append(check("beau valet : rien sinon", state.energy[0], 1))
+    # Complice : pas de case, retire au paiement, reste s'il paie un joker a 0
+    state, rules, game = combo_state(["complice", "ardoise", "kermesse", "kermesse"])
+    cast(state, rules, "complice")
+    oks.append(check("complice : aucune case", rules.free_case(0), 0))
+    oks.append(check("complice : kermesse a 1", state.cost_of(0, "kermesse"), 1))
+    cast(state, rules, "ardoise")
+    oks.append(check("complice : survit a un joker a 0", state.cost_of(0, "kermesse"), 1))
+    state.energy[0] = 3
+    cast(state, rules, "kermesse")
+    oks.append(check("complice : paye 1", state.energy[0], 2))
+    oks.append(check("complice : parti apres paiement", state.cost_of(0, "kermesse"), 2))
+    # Valet de Chambre
+    state, rules, game = combo_state(["valet_de_chambre", "bal_des_valets"])
+    cast(state, rules, "valet_de_chambre")
+    oks.append(check("valet de chambre : famille a 0", state.cost_of(0, "bal_des_valets"), 0))
+    oks.append(check("valet de chambre : hors famille", state.cost_of(0, "kermesse"), 2))
+    cast(state, rules, "bal_des_valets")
+    oks.append(check("valet de chambre : consomme", state.cost_of(0, "double_valet"), 2))
+    # Feu de Paille, Addition
+    state, rules, game = combo_state(["feu_de_paille", "addition"])
+    state.played_this_hand[0] = 2
+    cast(state, rules, "addition")
+    oks.append(check("addition : +2 par joker deja joue", rules.score_bonus[0], 4))
+    cast(state, rules, "feu_de_paille")
+    oks.append(check("feu : +3 par energie", (rules.score_bonus[0], state.energy[0]), (10, 0)))
+    state, rules, game = combo_state(["feu_de_paille"])
+    state.energy[0] = 0
+    oks.append(check("feu : sans energie, injouable", state.play_error(0, "feu_de_paille"), "pointless"))
+    # Ardoise, Boite : ouverture de la donne suivante
+    state, rules, game = combo_state(["ardoise"])
+    cast(state, rules, "ardoise")
+    oks.append(check("ardoise : +2 maintenant", state.energy[0], 5))
+    state.end_hand()
+    rules.new_hand(None, None)
+    state.start_hand()
+    oks.append(check("ardoise : -2 ensuite, dette soldee", (state.energy[0], state.debts[0]), (1, 0)))
+    state, rules, game = combo_state()
+    rules.effects.append(J.make_effect("boite_d_allumettes", 0))
+    state.energy[0] = 2
+    rules.adjust_deltas([0, 0, 0, 0], rules.contract)
+    state.end_hand()
+    rules.new_hand(None, None)
+    state.start_hand()
+    oks.append(check("boite : 3 + 2 reportes", state.energy[0], 5))
+    state, rules, game = combo_state()
+    rules.effects.append(J.make_effect("boite_d_allumettes", 0))
+    state.energy[0] = 5
+    rules.adjust_deltas([0, 0, 0, 0], rules.contract)
+    state.end_hand()
+    rules.new_hand(None, None)
+    state.start_hand()
+    oks.append(check("boite : plafond 6", (state.energy[0], state.carried[0]), (6, 0)))
+    # Poche Interieure
+    state, rules, game = combo_state(["zero", "kermesse", "chope_vide"])
+    rules.effects.append(J.make_effect("poche_interieure", 0))
+    rules.adjust_deltas([0, 0, 0, 0], rules.contract)
+    state.end_hand()
+    oks.append(check("poche : garde le plus cher", state.joker_hand[0], ["kermesse"]))
+    oks.append(check("poche : le reste defausse", sorted(state.discard[0]), ["chope_vide", "zero"]))
+    # Refrain
+    state, rules, game = combo_state(["courant_d_air", "refrain", "pourboire"])
+    state.play_error(0, "refrain")
+    oks.append(check("refrain : sans sort, injouable", state.play_error(0, "refrain"), "pointless"))
+    cast(state, rules, "pourboire")
+    oks.append(check("dernier sort", state.last_spell[0], "pourboire"))
+    cast(state, rules, "refrain")
+    oks.append(check("refrain : le sort revient", "pourboire" in state.joker_hand[0] and "pourboire" not in state.discard[0], True))
+    oks.append(check("refrain : il coute 0", state.cost_of(0, "pourboire"), 0))
+    cast(state, rules, "pourboire")
+    oks.append(check("refrain : remise partie", state.cost_of(0, "pourboire"), 1))
+    # Verre de Trop : chaque 3e joker pioche
+    state, rules, game = combo_state(["verre_de_trop", "ardoise", "complice"])
+    state.draw_pile[0] = ["zero"]
+    cast(state, rules, "verre_de_trop")
+    cast(state, rules, "ardoise")
+    oks.append(check("verre : pas au 2e", state.joker_hand[0], ["complice"]))
+    cast(state, rules, "complice")
+    oks.append(check("verre : pioche au 3e", state.joker_hand[0], ["zero"]))
+    # Consigne, Cendrier
+    state, rules, game = combo_state(["consigne"])
+    oks.append(check("consigne : +2 sans le +1", state.discard_gain(0, "consigne"), 2))
+    state.to_discard[0] = 1
+    oks.append(check("consigne : +2 meme due", state.discard_gain(0, "consigne"), 2))
+    state, rules, game = combo_state(["cendrier", "zero"])
+    rules.effects.append(J.make_effect("cendrier", 0))
+    oks.append(check("cendrier : +1 de plus", state.discard_gain(0, "zero"), 2))
+    state.to_discard[0] = 1
+    oks.append(check("cendrier : +1 meme due", state.discard_gain(0, "zero"), 1))
+    state.dry_hand = True
+    oks.append(check("sans allumettes : rien", state.discard_gain(0, "zero"), 0))
+    # Faveurs et Chaleur, seulement avec la config
+    state, rules, game = combo_state()
+    state.suspicion = 6
+    state.draw_pile[0] = ["zero"] * 8
+    state.end_hand()
+    state.start_hand()
+    oks.append(check("sans heat : rien ne change", (state.energy[0], len(state.joker_hand[0])), (3, 3)))
+    state.end_hand()
+    state.draw_pile[0] = ["zero"] * 8
+    state.heat, state.run_energy, state.run_draws = True, 1, 1
+    state.start_hand()
+    oks.append(check("heat + faveurs : +2 energie, +2 jokers", (state.energy[0], len(state.joker_hand[0])), (5, 5)))
+    # Joueur simule : une regle par joker lancable
+    from agents import joker_expert as X
+    missing = [j for j in ("beau_valet", "bal_des_valets", "valet_de_chambre", "feu_de_paille", "ardoise", "addition",
+                       "complice", "verre_de_trop", "refrain") if j not in X.RULES]
+    oks.append(check("regles du joueur simule : les 9 lancables", missing, []))
     return oks
 
 
