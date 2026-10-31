@@ -28,12 +28,12 @@ import random
 
 from engine.cards import NUM_PLAYERS, legal_plays, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "4d7df4b731ea2842"
+JOKER_SPEC_HASH = "6cb72aca3ae8e438"
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
 # texte ou de cablage seulement) : un reseau entraine sous l'une d'elles est
 # reexporte tel quel avec JOKER_SPEC_HASH. Une regle qui change -> vider la
 # liste (sauf le hash courant) et reentrainer.
-RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH}
+RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH, "4d7df4b731ea2842"}  # 6cb7 : bot_seen seulement (whist-4-it 203f958, regles identiques)
 # 7567 (whist-4-it, 30/10) : Main de Fer devient un sort a 2 ⚡, change l'atout d'un emballage ou d'un solo adverse
 # avant le premier pli (jamais lance par les bots -> CASTABLE inchange) -> reentrainement.
 # e1f4 (whist-4-it d0e3eec) : Courant d'Air garde sur le nombre de plis classique (Horloge remplacee ensuite ->
