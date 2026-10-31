@@ -4,6 +4,12 @@ set -euo pipefail
 if [ -f ci/jokers_paused ] && [ -z "${JOKER_MINUTES:-}" ]; then echo "jokers en pause : $(cat ci/jokers_paused)"; exit 1; fi
 # An iteration lasts ~18 min past --until: keep the save step inside the 6 h job cap.
 UNTIL=$(date -u -d "+${JOKER_MINUTES:-310} minutes" +%Y-%m-%dT%H:%M)
+# Stop date (UTC): chained runs end here, ci/jokers_stop_at holds it. Failing stops the chain.
+if [ -f ci/jokers_stop_at ] && [ -z "${JOKER_MINUTES:-}" ]; then
+  STOP=$(cat ci/jokers_stop_at)
+  if [[ "$(date -u +%Y-%m-%dT%H:%M)" > "$STOP" ]]; then echo "chainage jokers fini : $STOP"; exit 1; fi
+  if [[ "$UNTIL" > "$STOP" ]]; then UNTIL=$STOP; fi
+fi
 # Rules changed since jokers.pt (spec hash not rule-equivalent): warm start from
 # that champion, kept apart once as archive_<old hash>_champion.pt.
 OLD=$(python - <<'PY'
