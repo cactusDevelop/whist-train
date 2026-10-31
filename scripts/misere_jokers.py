@@ -25,6 +25,7 @@ ATTACK = ("defausse_discrete", "meche_courte", "pot_de_vin")
 DEFENCE = ("la_tournee", "cadeau_empoisonne")
 MISERE = ATTACK + DEFENCE
 ATOUT = ("main_de_fer", "brouillard_de_la_senne")
+OEIL = ("horloge_arretee", "brouillard_de_la_senne", "silence_du_cercle", "treizieme_carte", "manche_truquee")
 OUT = "misere_jokers.json"
 
 
@@ -45,7 +46,14 @@ def atout_overrides(cfg, rng):
             "deck": [j for j in cfg["deck"] if J.base_id(j) not in ATOUT] + [j for j in ATOUT for _ in range(2)]}
 
 
-SETS = {"misere": (misere_overrides, MISERE), "atout": (atout_overrides, ATOUT)}
+def oeil_overrides(cfg, rng):
+    """7567 (Synergies) : les 5 negatifs a Soupcon, x2 dans le deck, avec / sans l'Oeil."""
+    act = rng.choice((1, 2, 3))
+    return {"kind": "elite", "act": act, "eye": J.ELITE_EYE, "boss": "",
+            "deck": [j for j in cfg["deck"] if J.base_id(j) not in OEIL] + [j for j in OEIL for _ in range(2)]}
+
+
+SETS = {"misere": (misere_overrides, MISERE), "atout": (atout_overrides, ATOUT), "oeil": (oeil_overrides, OEIL)}
 
 
 def _overrides(name, no_eye):
