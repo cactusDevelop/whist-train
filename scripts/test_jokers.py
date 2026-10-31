@@ -877,6 +877,9 @@ def combo_tests():
     oks.append(check("cendrier : +1 meme due", state.discard_gain(0, "zero"), 1))
     state.dry_hand = True
     oks.append(check("sans allumettes : rien", state.discard_gain(0, "zero"), 0))
+    state, rules, game = combo_state(["consigne", "zero"])
+    state.must_discard(0, 1)
+    oks.append(check("joueur : defausse due sur la Consigne", (state.joker_hand[0], state.energy[0]), (["zero"], 5)))
     # Faveurs et Chaleur, seulement avec la config
     state, rules, game = combo_state()
     state.suspicion = 6

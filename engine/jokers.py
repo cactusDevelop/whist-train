@@ -1658,6 +1658,8 @@ class MatchState:
                     if jtype(jid) not in BOT_TYPES or not make_effect(jid, seat).bot_casts():
                         pick = jid
                         break
+            else:  # 6483 : un joueur defausse d'abord ce qui paie (La Consigne), l'autopilote non
+                pick = next((j for j in self.joker_hand[seat] if make_effect(j, seat).discard_energy() > 0), pick)
             self.discard_joker(seat, pick)
 
     def discard_gain(self, seat, jid):

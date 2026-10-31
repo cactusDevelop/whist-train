@@ -212,6 +212,8 @@ def _coup_de_vent(v):
 def _main_lourde(v):
     if v["piles"] == 0 or spare_energy(v, "main_lourde") < 1:
         return NO, "rien_a_piocher_ou_plus_d_energie"
+    if any(J.base_id(j) == "consigne" for j in v["joker_hand"]) or owned(v, "cendrier"):
+        return YES, "defausse_payee"  # 6483
     if v["remaining"] < 4:
         return NO, "trop_tard"
     return OPEN_NO, "pioche"  # audit : -0.31 +- 0.27

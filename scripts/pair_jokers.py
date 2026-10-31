@@ -14,6 +14,10 @@ Les jokers de la paire sont mis en main du joueur a chaque donne et les autres
 retires (pas de bruit d'un autre joker). Une paire plus chere que l'energie de la
 donne est mesuree avec l'energie gonflee dans TOUTES les branches : hypothese.
 Limite : un seul lancer par tour de pli du joueur.
+6483 (etape 05 Synergies) : Chaleur active comme dans un run ; les passifs de la paire
+sont armes en debut de branche, ceux du deck retires ; une paire de LATER mesure le
+report : le 1er joker a la donne 1, le 2e seulement a la donne suivante. Seule en main,
+une carte comme Feu de Paille recoit toute l'energie : gain a lire comme un plafond.
 
 Usage : python scripts/pair_jokers.py --minutes 15 --workers 4
 """
@@ -34,18 +38,18 @@ from engine import jokers as J
 from scripts import joker_profit as P
 
 PAIRS = [
-    ("double_valet", "kermesse", ""),
-    ("manche_truquee", "kermesse", ""),
-    ("treizieme_carte", "kermesse", ""),
-    ("la_tournee", "cadeau_empoisonne", "bot"),
-    ("faux_depart", "la_tournee", "bot"),
-    ("faux_depart", "cadeau_empoisonne", "bot"),
-    ("remonte_pli", "pli_refile", ""),
-    ("remonte_pli", "pli_refile", "player"),
-    ("lune_noire", "brouillard_de_la_senne", ""),
-    ("faux_pas", "lune_noire", ""),
-    ("horloge_arretee", "double_valet", ""),
+    ("complice", "kermesse", ""),
+    ("complice", "addition", ""),
+    ("complice", "bal_des_valets", ""),
+    ("feu_de_paille", "ardoise", ""),
+    ("boite_d_allumettes", "feu_de_paille", ""),
+    ("main_lourde", "consigne", ""),
+    ("main_lourde", "cendrier", ""),
+    ("valet_de_chambre", "bal_des_valets", ""),
+    ("bal_des_valets", "beau_valet", ""),
+    ("refrain", "ardoise", ""),
 ]
+LATER = {("boite_d_allumettes", "feu_de_paille"): "feu_de_paille"}  # le 2e arrive a la donne suivante
 SINGLE_TRIES = 6   # moments essayes par joker seul
 PAIR_TRIES = 12    # couples de moments essayes pour la paire
 NATURAL_SHARE = 0.15  # part du temps pour la frequence naturelle
@@ -83,7 +87,7 @@ def _fmt(cell):
 
 
 def _setup(cfg, rng, force_misere):
-    cfg.update({"kind": "elite", "act": rng.choice((1, 2, 3)), "eye": J.ELITE_EYE, "boss": "", "style": "expert"})
+    cfg.update({"kind": "elite", "act": rng.choice((1, 2, 3)), "eye": J.ELITE_EYE, "boss": "", "style": "expert", "heat": True})
     if force_misere:
         cfg["force_misere"] = force_misere
 
@@ -105,16 +109,28 @@ def _branch(match, hand, keep, pair, boost, policy, spare, more, hook=None):
     """-> (points du joueur, jokers de la paire lances)."""
     m, h = copy.deepcopy((match, hand))
     s = h.state
-    s.joker_hand[P0] = list(keep)
+    later = LATER.get(pair, "")
+    first = [j for j in keep if j != later]
+    for jid in s.joker_hand[P0]:
+        if J.jtype(jid) == "passif":
+            h.rules.disarm(P0, jid)
+    s.joker_hand[P0] = list(first)
+    for jid in first:  # un passif agit depuis une case, comme a la pioche
+        if J.jtype(jid) == "passif" and h.rules.free_case(P0) >= 0:
+            h.rules.play(P0, jid)
     if boost:
         s.energy[P0] = max(s.energy[P0], boost)
     pts = list(jm.play_out(h, policy, before_player=hook))
-    cast = [j for j in keep if j not in s.joker_hand[P0]]
+    cast = [j for j in first if j not in s.joker_hand[P0] or J.base_id(j) == "boite_d_allumettes"]
     s.joker_hand[P0] = [j for j in s.joker_hand[P0] if J.base_id(j) not in pair]
     if more:
         m.deals = list(spare)
         h2 = m.next_hand()
+        if later in keep:
+            h2.state.joker_hand[P0].append(later)
         pts = [a + b for a, b in zip(pts, jm.play_out(h2, policy))]
+        if later in keep and later not in h2.state.joker_hand[P0]:
+            cast.append(later)
     return pts[P0], cast
 
 
