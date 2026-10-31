@@ -493,7 +493,9 @@ def _ardoise(v):
     others = _castable_others(v, "ardoise")
     if any(J.base_id(j) == "feu_de_paille" for j in others):
         return YES, "alimente_le_feu"
-    gap = any(v["energy"] < J.jcost(j) <= v["energy"] + J.Ardoise.LOAN for j in others)
+    # Refrain relance L'Ardoise pour 1 ⚡ : 1 ⚡ net de plus, a condition d'avoir un joker a financer
+    loan = J.Ardoise.LOAN + (J.Ardoise.LOAN - J.jcost("refrain") if any(J.base_id(j) == "refrain" for j in others) else 0)
+    gap = any(J.base_id(j) != "refrain" and v["energy"] < J.jcost(j) <= v["energy"] + loan for j in others)
     return (YES, "paie_un_joker_hors_de_prix") if gap else (NO, "pas_besoin")
 
 

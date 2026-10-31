@@ -30,12 +30,13 @@ import random
 
 from engine.cards import NUM_PLAYERS, legal_plays, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "64835039bfe17f48"
+JOKER_SPEC_HASH = "32859c9a65be6d2c"
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
 # texte ou de cablage seulement) : un reseau entraine sous l'une d'elles est
 # reexporte tel quel avec JOKER_SPEC_HASH. Une regle qui change -> vider la
 # liste (sauf le hash courant) et reentrainer.
 RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH}
+# 3285 (whist-4-it, Synergies 05) : Feu de Paille +2 points par ⚡ (3 avant) -> regle changee, joker jamais lance par les bots.
 # 6483 (whist-4-it a62a3e1 + c9dd31a + 764a412, Synergies 04a-04c) : faveurs du run et paliers de Chaleur (siege 0,
 # config, defaut neutre), Double Valet 2 ⚡, 13 jokers de combos jamais lances par les bots (CASTABLE, OBS_DIM
 # inchanges), effets PENDING, ⚡ reportes / dus, joker garde -> regle changee, le champion doit repasser la porte.
@@ -1454,7 +1455,7 @@ class PocheInterieure(Aura):
 
 
 class FeuDePaille(Effect):
-    PER_MATCH = 3
+    PER_MATCH = 2  # 3285 (3 en 6483, mesure bloc 41234459930)
 
     def pointless(self, rules):
         return rules.state.energy[self.owner] <= 0

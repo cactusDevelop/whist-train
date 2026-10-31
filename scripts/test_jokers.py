@@ -762,6 +762,7 @@ def cast(state, rules, jid, seat=0):
 def combo_tests():
     """Synergies 04a-04c (empreinte 6483), contre joker_effects.gd / match_state.gd."""
     oks = []
+    from agents import joker_expert as X
     oks.append(check("04c : Double Valet a 2", J.jcost("double_valet"), 2))
     oks.append(check("04c : CASTABLE inchange", len(J.CASTABLE), 7))
     # Bal des Valets : au-dessus de l'As, jamais d'un atout, faible sous inversion
@@ -811,7 +812,7 @@ def combo_tests():
     cast(state, rules, "addition")
     oks.append(check("addition : +2 par joker deja joue", rules.score_bonus[0], 4))
     cast(state, rules, "feu_de_paille")
-    oks.append(check("feu : +3 par energie", (rules.score_bonus[0], state.energy[0]), (10, 0)))
+    oks.append(check("feu : +2 par energie", (rules.score_bonus[0], state.energy[0]), (8, 0)))
     state, rules, game = combo_state(["feu_de_paille"])
     state.energy[0] = 0
     oks.append(check("feu : sans energie, injouable", state.play_error(0, "feu_de_paille"), "pointless"))
@@ -880,6 +881,10 @@ def combo_tests():
     state, rules, game = combo_state(["consigne", "zero"])
     state.must_discard(0, 1)
     oks.append(check("joueur : defausse due sur la Consigne", (state.joker_hand[0], state.energy[0]), (["zero"], 5)))
+    v = {"joker_hand": ["refrain", "silence_du_cercle"], "energy": 0}
+    oks.append(check("ardoise : la boucle Refrain finance un joker a 3", X._ardoise(v)[0], X.YES))
+    v = {"joker_hand": ["silence_du_cercle"], "energy": 0}
+    oks.append(check("ardoise : sans Refrain, 2 de trop peu", X._ardoise(v)[0], X.NO))
     # Faveurs et Chaleur, seulement avec la config
     state, rules, game = combo_state()
     state.suspicion = 6
@@ -893,7 +898,6 @@ def combo_tests():
     state.start_hand()
     oks.append(check("heat + faveurs : +2 energie, +2 jokers", (state.energy[0], len(state.joker_hand[0])), (5, 5)))
     # Joueur simule : une regle par joker lancable
-    from agents import joker_expert as X
     missing = [j for j in ("beau_valet", "bal_des_valets", "valet_de_chambre", "feu_de_paille", "ardoise", "addition",
                        "complice", "verre_de_trop", "refrain") if j not in X.RULES]
     oks.append(check("regles du joueur simule : les 9 lancables", missing, []))
