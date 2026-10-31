@@ -252,6 +252,8 @@ def profit_worker(args):
                         if not m.player.forced_ok:
                             continue
                         verdict, rid = X.bid_rule(bv, jid) if bv else (X.NO, "-")
+                        if X.eye_risk(base_h.state, jid):  # le joueur ne le lance pas : pas du « bien joue »
+                            verdict, rid = X.NO, "oeil:jauge_pleine"
                         picked = verdict in (X.YES, X.OPEN_YES)
                         situ = situation(base_h, jm.PLAYER, None, energy, cfg, rid)
                         own, gap = _gain(_finish_branch(m, h, policy, spare, more))
@@ -286,6 +288,8 @@ def profit_worker(args):
                     if J.base_id(jid) in DECK_CF:
                         continue  # mesure par contrefactuel de deck
                     verdict, rid = X.rule(v, jid)
+                    if X.eye_risk(h_now.state, jid):  # le joueur ne le lance pas : pas du « bien joue »
+                        verdict, rid = X.NO, "oeil:jauge_pleine"
                     picked = verdict in (X.YES, X.OPEN_YES)
                     situ = situation(h_now, jm.PLAYER, h_now.game.trick_count, energy, cfg, rid)
                     m, h = copy.deepcopy((match, h_now))
@@ -522,11 +526,46 @@ def table(agg):
                             "pick_rate": round(e["picks"] / e["offers"], 3) if side == "bot" and e["offers"] else None,
                             "gain_all_offers": round(_stat(e["all"])[0], 3) if side == "bot" else None,
                             "picked_n": e.get("picked", {}).get("n", 0),
+                            "gain_source": "bien_joue" if judged_cell(side, e) is e.get("picked") else "toutes_occasions",
+                            "cast_rate": round(e["picks"] / e["offers"], 4) if e["offers"] else None,
                             "best": best, "worst": worst,
                             "by": {d: {v2: {"n": c["n"], "gain": round(c["s"] / c["n"], 2)}
                                        for v2, c in sorted(_judged_by(e).get(d, {}).items())} for d in DIMS}})
             rows.append(row)
+    add_target_costs(rows)
     return rows
+
+
+# Droite cout/force (whist-4-it 31/10) : valeur d'un ⚡ = mediane de gain / cout effectif sur les jokers
+# fiables, bien joues ; force = gain central (gain, se), sans plancher ; cout vise = celui qui met le joker
+# sur la droite, Soupcon deduit.
+ENERGY_MIN_N = 100
+TARGET_MAX = 5
+
+
+def energy_value(rows):
+    """-> (pts par ⚡ effectif, nombre de jokers pris en compte) ; (None, 0) si inutilisable."""
+    vals = sorted(r["gain"] / effective_cost(r["id"], "joueur") for r in rows
+                  if r["side"] == "joueur" and r.get("measure") == "occasion" and r.get("gain_source") == "bien_joue"
+                  and r.get("n", 0) >= ENERGY_MIN_N and r["cost"] > 0 and r["id"] not in OFF_POINTS)
+    if not vals:
+        return None, 0
+    k = len(vals)
+    return (vals[k // 2] + vals[(k - 1) // 2]) / 2, k
+
+
+def add_target_costs(rows):
+    value, _k = energy_value(rows)
+    if value is None or value <= 0:
+        return
+    for r in rows:
+        if r["side"] != "joueur" or "gain" not in r or r.get("measure") != "occasion":
+            continue
+        cost_of = lambda g: max(0, min(TARGET_MAX, round(g / value - r["suspicion"] / SOUPCON_PER_ENERGY)))
+        r["target_cost"] = cost_of(r["gain"])
+        r["target_cost_low"] = cost_of(r["gain"] - 2 * r["se"])
+        r["target_cost_high"] = cost_of(r["gain"] + 2 * r["se"])
+        r["depends_on_player"] = r["gain_source"] != "bien_joue" or (r["cast_rate"] or 0) < 0.1
 
 
 ORDER = ("trop fort", "utile", "marginal", "inutile", "jamais pris", "trop peu de donnees", "non mesurable")
@@ -604,7 +643,8 @@ def render(st, rows):
     if st["spec_hash"] != J.JOKER_SPEC_HASH:  # mesure sous d'autres couts, reaffichee faute de mieux
         meta["measured_spec_hash"] = st["spec_hash"]
     write_summary(rows, meta)
-    out = {"format": FORMAT, "note_formula": NOTE_FORMULA, **meta, "dims": list(DIMS), "verdicts": list(ORDER), "jokers": rows}
+    out = {"format": FORMAT, "note_formula": NOTE_FORMULA, **meta, "energy_value": energy_value(rows)[0], "energy_value_jokers": energy_value(rows)[1],
+           "dims": list(DIMS), "verdicts": list(ORDER), "jokers": rows}
     os.makedirs(os.path.dirname(GODOT_FILE), exist_ok=True)  # absent sur un runner neuf
     with open(GODOT_FILE, "w", encoding="utf-8", newline="\n") as f:
         json.dump(out, f, ensure_ascii=False, indent=1)
@@ -651,7 +691,8 @@ def record_iteration(it, iter_agg, n_matches):
     with open(LOG_FILE, "a", encoding="utf-8") as f:
         f.write(json.dumps({"iter": it, **meta, "iteration": table(iter_agg), "cumul": rows}, ensure_ascii=False) + "\n")
     write_summary(rows, meta)
-    out = {"format": FORMAT, "note_formula": NOTE_FORMULA, **meta, "dims": list(DIMS), "verdicts": list(ORDER), "jokers": rows}
+    out = {"format": FORMAT, "note_formula": NOTE_FORMULA, **meta, "energy_value": energy_value(rows)[0], "energy_value_jokers": energy_value(rows)[1],
+           "dims": list(DIMS), "verdicts": list(ORDER), "jokers": rows}
     os.makedirs(os.path.dirname(GODOT_FILE), exist_ok=True)  # absent sur un runner neuf
     with open(GODOT_FILE, "w", encoding="utf-8", newline="\n") as f:
         json.dump(out, f, ensure_ascii=False, indent=1)
