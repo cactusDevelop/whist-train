@@ -203,12 +203,24 @@ def v2_tests():
     oks.append(check("silence : toute la donne (043f)", rules.blocked("coup_de_vent", 1), True))
     state, rules, game = setup(trump=H)
     rules.effects.append(J.make_effect("lune_noire", 0))
-    oks.append(check("lune noire : atout rouge annule", rules.trick_trump(), None))
-    oks.append(check("lune noire : injouable sans atout rouge", state.play_error(0, "lune_noire"), "not_in_hand"))
+    oks.append(check("lune noire (dcf1) : atout coeur -> pique", rules.trick_trump(), S))
+    plays = [(0, card(C, 5)), (1, card(H, 9)), (2, card(S, 3)), (3, card(C, 9))]
+    oks.append(check("lune noire : un coeur coupe comme un pique, le plus haut gagne", rules.trick_winner(plays, C, S), 1))
+    plays = [(0, card(H, 9)), (1, card(S, 9)), (2, card(H, 2)), (3, card(C, 9))]
+    oks.append(check("lune noire : entre jumelles la vraie noire gagne", rules.trick_winner(plays, H, S), 1))
+    plays = [(0, card(H, 10)), (1, card(S, 9)), (2, card(H, 2)), (3, card(C, 9))]
+    oks.append(check("lune noire : fausse plus haute bat vraie plus basse", rules.trick_winner(plays, H, S), 0))
+    oks.append(check("lune noire : fournir un pique avec un coeur",
+                     rules.legal_cards([card(H, 5), card(C, 5)], S, 0), [card(H, 5)]))
     state, rules, game = setup(trump=S)
     state.joker_hand[0] = ["lune_noire"]
     state.energy[0] = 3
-    oks.append(check("lune noire : pointless a pique", state.play_error(0, "lune_noire"), "pointless"))
+    oks.append(check("lune noire (dcf1) : plus de pointless", state.play_error(0, "lune_noire"), ""))
+    rules.effects.append(J.make_effect("lune_noire", 0))
+    rules.effects.append(J.make_effect("coeur_de_zinneke", 0))
+    plays = [(0, card(H, 14)), (1, card(H, 2)), (2, card(H, 3)), (3, card(H, 4))]
+    rules.on_trick_resolved(0, plays)
+    oks.append(check("coeur de zinneke : lit la couleur transformee", rules.score_bonus[0], 0))
     state, rules, game = setup(trump=S)
     oks.append(check("brouillard (6c54) : cible une couleur", rules.play(0, "brouillard_de_la_senne"), {"error": "target"}))
     rules.play(0, "brouillard_de_la_senne", C)
@@ -228,10 +240,26 @@ def v2_tests():
     rules.on_trick_resolved(1, [])
     oks.append(check("dette : 5 points cedes", rules.score_bonus, [5, -5, 0, 0]))
     state, rules, game = setup()
-    rules.trick_winners = [0, 1, 3]
-    game.tricks_won[3] = 1
-    rules.play(0, "remonte_pli")
-    oks.append(check("remonte-pli : dernier pli adverse", (game.tricks_won[0], game.tricks_won[3]), (1, 0)))
+    oks.append(check("hamecon : cible obligatoire", rules.play(0, "remonte_pli"), {"error": "target"}))
+    oks.append(check("hamecon : pas soi-meme", rules.play(0, "remonte_pli", 0), {"error": "target"}))
+    game.hands[0][:] = [card(S, 2), card(S, 14)]
+    game.hands[1][:] = [card(H, 9)]
+    got = rules.play(0, "remonte_pli", 1)
+    oks.append(check("hamecon : carte volee contre ma plus faible",
+                     (got, sorted(game.hands[0]), game.hands[1]),
+                     ({"hooked": card(H, 9)}, sorted([card(S, 14), card(H, 9)]), [card(S, 2)])))
+    game.hands[1][:] = []
+    oks.append(check("hamecon : main vide", rules.play(0, "remonte_pli", 1), {"error": "none"}))
+    state, rules, game = setup()
+    state.joker_hand[0] = ["la_peche"]
+    state.energy[0] = 3
+    oks.append(check("la peche : pointless sans defausse", state.play_error(0, "la_peche"), "pointless"))
+    state.discard[0] = ["kermesse", "inversion"]
+    oks.append(check("la peche : jouable", state.play_error(0, "la_peche"), ""))
+    rules.play(0, "la_peche")
+    oks.append(check("la peche : le dernier joker revient", (state.joker_hand[0], state.discard[0]),
+                     (["la_peche", "inversion"], ["kermesse"])))
+    oks.append(check("la peche : les bots ne la jouent pas", "la_peche" in J.CASTABLE or "remonte_pli" in J.CASTABLE, False))
     state, rules, game = setup()
     game.trick_count = 4
     oks.append(check("horloge (8f41) : pas avant le 6e pli", rules.play(0, "horloge_arretee"), {"error": "early"}))
@@ -434,16 +462,28 @@ def review_20261014_tests():
     state.played_this_hand[0] = 1
     rules.adjust_deltas([0, 0, 0, 0], {"type": "emballage", "declarer": 0, "partner": 2})
     oks.append(check("chope vide : un joker joue, rien", state.next_hand_draws, [0, 0, 0, 0]))
-    # Faux Pas.
-    state, rules, game = setup()
-    rules.play(0, "faux_pas")
-    plays = [(0, card(S, 14)), (1, card(H, 2)), (2, card(S, 3)), (3, card(S, 5))]
-    rules.trick_winner(plays, S, S)
-    rules.on_trick_resolved(1, plays)
-    plays = [(0, card(C, 14)), (1, card(D, 2)), (2, card(C, 3)), (3, card(C, 5))]
-    rules.trick_winner(plays, C, S)
-    rules.on_trick_resolved(0, plays)
-    oks.append(check("faux pas : 3 cedes au proprietaire, une fois (043f)", rules.score_bonus, [3, -3, 0, 0]))
+    # Faux Pas (dcf1) : la renonce rendue legale.
+    state, rules, game = setup(trump=S)
+    hand = [card(H, 3), card(S, 2), card(S, 9)]
+    effect = J.make_effect("faux_pas", 0)
+    oks.append(check("faux pas : atout legal avec la couleur demandee",
+                     sorted(effect.legal_cards(0, hand, H, [card(H, 3)], rules)), sorted(hand)))
+    oks.append(check("faux pas : rien pour un autre siege", effect.legal_cards(1, hand, H, [card(H, 3)], rules), [card(H, 3)]))
+    oks.append(check("faux pas : pli d'un seul tour", effect.scope, J.TRICK))
+    state, rules, game = setup(trump=None)
+    oks.append(check("faux pas : pointless sans atout", J.make_effect("faux_pas", 0).pointless(rules), True))
+    # Plis doubles en defense (dcf1) : le camp du contrat perd autant de plis, plancher 0.
+    state, rules, game = setup(trump=S)
+    rules.contract = {"type": "emballage", "declarer": 0, "partner": 2}
+    game.tricks_won[:] = [4, 5, 3, 1]
+    rules.bonus_tricks = [0, 2, 0, 0]
+    seen = []
+    rules.counted(lambda: seen.append(game.tricks_won[0] + game.tricks_won[2]))
+    oks.append(check("pli double : 2 plis de moins au camp", (seen, game.tricks_won), ([5], [4, 5, 3, 1])))
+    rules.bonus_tricks = [0, 20, 0, 0]
+    seen = []
+    rules.counted(lambda: seen.append(game.tricks_won[0] + game.tricks_won[2]))
+    oks.append(check("pli double : plancher 0", seen, [0]))
     oks.extend(spammer_tests())
     oks.extend(elite_tests())
     return oks
@@ -584,7 +624,7 @@ def jokers_joues_tests():
     # piege parti : bot_case reprend sa case avant la plus ancienne
     state, rules, game = setup()
     rules.play(1, "kermesse")
-    rules.play(1, "faux_pas")
+    rules.play(1, "collet")
     rules.effects[-1].spent = True
     rules.on_trick_resolved(1, [(0, card(H, 2)), (1, card(H, 3)), (2, card(H, 4)), (3, card(H, 5))])
     oks.append(check("cases : piege parti remplace d'abord", rules.bot_case(1), 1))

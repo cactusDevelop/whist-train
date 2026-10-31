@@ -41,7 +41,7 @@ JACK, QUEEN, KING, ACE = 9, 10, 11, 12
 BOT_PRIORITY = ["inversion", "coup_de_vent", "coup_du_chapeau", "kermesse", "embuscade", "faux_pas", "main_lourde"]
 PLAYER_PRIORITY = [
     # sorts / pieges / auras decisifs, puis cartes de pli, puis le reste
-    "main_de_fer", "horloge_arretee", "valet_borgne", "inversion", "brouillard_de_la_senne", "remonte_pli", "pli_refile",
+    "main_de_fer", "horloge_arretee", "valet_borgne", "inversion", "brouillard_de_la_senne", "remonte_pli", "la_peche", "pli_refile",
     "coup_de_vent",
     "manche_truquee", "gueule_de_bois", "dette_de_jeu", "lune_noire", "coup_du_chapeau", "kermesse",
     "treizieme_carte", "coeur_de_zinneke", "silence_du_cercle", "embuscade", "collet", "fausse_piste", "faux_pas",
@@ -80,7 +80,7 @@ def view(hand, me):
     led = suit_of(trick[0][1]) if trick else None
     eff = rules.trick_trump()
     my = list(g.hands[me])
-    legal = legal_plays(my, led) if trick else list(my)
+    legal = rules.legal_cards(my, led, me) if trick else list(my)
     side = declarer_side(c)
     misere = c["type"] == "misere"
     v = {
@@ -90,6 +90,7 @@ def view(hand, me):
         "declares": me in side, "misere_declarer": misere and me in (c.get("declarers") or []),
         "hand": my, "legal": legal, "energy": state.energy[me], "suspicion": state.suspicion,
         "joker_hand": list(state.joker_hand[me]), "piles": len(state.draw_pile[me]) + len(state.discard[me]),
+        "discard_top": state.discard[me][-1] if state.discard[me] else "",
         "tricks_won": list(g.tricks_won), "declarer_tricks": sum(g.tricks_won[s] for s in side),
         "my_tricks": g.tricks_won[me],
         "opponents": [s for s in range(NUM_PLAYERS) if rules.is_opponent(me, s)],
@@ -129,6 +130,8 @@ def view(hand, me):
         # Traitre (pli inverse : la plus faible de la demandee gagne, ma carte ne concourt pas)
         lows = [(rank_of(cd), s) for s, cd in trick if suit_of(cd) == led]
         v["inverted_winner"] = min(lows)[1] if lows else trick[0][0]
+    v["faux_pas_wants"] = eff is not None and J.make_effect("faux_pas", me).bot_wants(rules)
+    v["merged_trumps"] = sum(1 for x in my if eff is not None and J.BLACK_TWIN.get(suit_of(x), suit_of(x)) == J.BLACK_TWIN.get(eff, eff))
     return v
 
 
@@ -257,11 +260,8 @@ def _coup_du_chapeau(v):
 
 
 def _faux_pas(v):
-    if v["remaining"] < 3:
-        return OPEN_YES, "tard"
-    if v["remaining"] >= 9:
-        return OPEN_NO, "tot"  # audit : -0.71 +- 0.15
-    return OPEN_YES, "les_defausses_arrivent"
+    # dcf1 : aucune carte fournie ne prend le pli, un atout le prend
+    return (YES, "renonce_qui_prend") if v["faux_pas_wants"] and not v["best_friendly"] else (NO, "pas_besoin")
 
 
 # --- joueur : cartes de pli ------------------------------------------------------
@@ -365,11 +365,18 @@ def _echange_de_manche(v):
 
 
 def _remonte_pli(v):
+    # 4d7d, L'Hameçon : ma plus faible contre une carte au hasard, tot pour qu'elle serve encore
     if v["misere"]:
         return NO, "misere"
-    if not any(v["tricks_won"][s] > 0 for s in v["opponents"]):
-        return NO, "aucun_pli_adverse"
-    return YES, "reprend_un_pli"
+    return (YES, "vole_une_carte") if v["remaining"] >= 5 else (NO, "tard")
+
+
+def _la_peche(v):
+    # 4d7d : reprend le dernier joker si l'energie paie aussi sa relance
+    top = v["discard_top"]
+    if not top or J.base_id(top) == "la_peche" or J.jcost(top) < 1:
+        return NO, "rien_a_reprendre"
+    return (YES, "relance_payable") if v["energy"] >= 1 + J.jcost(top) else (NO, "energie")
 
 
 def _pli_refile(v):
@@ -492,11 +499,12 @@ def _silence_du_cercle(v):
 
 
 def _lune_noire(v):
-    if v["trump"] not in J.RED_SUITS or v["eff_trump"] not in J.RED_SUITS or v["misere"]:
-        return NO, "atout_pas_rouge"
-    if v["declares"]:
-        return NO, "je_declare"
-    return (YES, "coupe_l_atout_adverse") if trumps(v) <= 2 and v["remaining"] >= 5 else (NO, "j_ai_de_l_atout")
+    # dcf1 : les atouts fusionnent avec leur jumelle -> a jouer quand la fusion me sert
+    if v["misere"] or v["eff_trump"] is None or v["remaining"] < 5:
+        return NO, "sans_atout_misere_ou_tard"
+    if owned(v, "lune_noire"):
+        return NO, "deja_armee"
+    return (YES, "fusion_a_mon_avantage") if v["merged_trumps"] * 2 > len(v["hand"]) else (NO, "fusion_contre_moi")
 
 
 def _coeur_de_zinneke(v):
@@ -542,7 +550,7 @@ RULES = {
     "zero": _zero, "miroir": _miroir, "carte_fantome": _carte_fantome, "traitre": _traitre,
     "coup_d_oeil": _never_info, "regard_furtif": _never_info, "livre_de_comptes": _never_info,
     "courant_d_air": _courant_d_air, "tournee_generale": _tournee_generale, "gueule_de_bois": _gueule_de_bois,
-    "echange_de_manche": _echange_de_manche, "remonte_pli": _remonte_pli, "pli_refile": _pli_refile, "faux_depart": _faux_depart,
+    "echange_de_manche": _echange_de_manche, "remonte_pli": _remonte_pli, "la_peche": _la_peche, "pli_refile": _pli_refile, "faux_depart": _faux_depart,
     "manche_truquee": _manche_truquee, "valet_borgne": _valet_borgne, "horloge_arretee": _horloge_arretee,
     "pourboire": _pourboire,
     "fausse_piste": _fausse_piste, "collet": _collet, "contre_espionnage": _contre_espionnage,

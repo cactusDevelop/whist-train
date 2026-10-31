@@ -6,3 +6,6 @@ python -u scripts/test_jokers.py
 rm -rf /tmp/smoke && mkdir -p /tmp/smoke
 python -u scripts/train_jokers.py --checkpoint-dir /tmp/smoke --init checkpoints_jokers/jokers.pt --iters 1 --hands 80 \
   --gate-matches 16 --profit-matches 0 --workers 4
+# Fixtures de parite de l'ExpertBot sensible aux regles, pour le portage Godot.
+python -u scripts/dump_expert_seen_fixtures.py --out expert_seen_cases.json
+gh release upload checkpoint-latest expert_seen_cases.json --clobber

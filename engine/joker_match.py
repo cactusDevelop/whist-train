@@ -194,12 +194,17 @@ def run_bot_bidding(hands, dealer, match=None):
         if match is not None and seat == PLAYER:
             match.player.bidding_turn(match.state, match.rules, match.config.get("eye", ""), match.bosses)
         if match is not None and seat != PLAYER:
-            choice = expert_bot.choose_bid(bidding, seat, hands[seat])
-            info = {"action": "raise"} if isinstance(choice, tuple) else bid_action_to_dict(choice)
-            if info["action"] == "pass" and seat in match.specialties:  # JokerRules.bot_bid, avant les effets
-                biased = specialty_bid(match.specialties[seat], hands[seat], bidding, seat)
-                if biased is not None:
-                    choice, info = biased, bid_action_to_dict(biased)
+            # 4d7d (rogue_run.gd) : enchere adoucie a l'acte I et dans tout match sans boss
+            expert_bot.set_bid_params(expert_bot.ACT1_BID_PARAMS if match.config.get("act") == 1 or not match.bosses else {})
+            try:
+                choice = expert_bot.choose_bid(bidding, seat, hands[seat])
+                info = {"action": "raise"} if isinstance(choice, tuple) else bid_action_to_dict(choice)
+                if info["action"] == "pass" and seat in match.specialties:  # JokerRules.bot_bid, avant les effets
+                    biased = specialty_bid(match.specialties[seat], hands[seat], bidding, seat)
+                    if biased is not None:
+                        choice, info = biased, bid_action_to_dict(biased)
+            finally:
+                expert_bot.set_bid_params({})
             if match.rules.forces_pass(seat, info, bidding):
                 passes = [a for a in legal_action_ids_with_hand(bidding, seat, hands[seat])
                           if bid_action_to_dict(a)["action"] == "pass"]
@@ -346,7 +351,8 @@ def points_of(hand):
     Borgne...) + points ajoutes au score pendant la donne (score_bonus)."""
     from scripts.train import declarer_role_and_seats, real_points_by_seat
     role, _seats = declarer_role_and_seats(hand.contract)
-    deltas = hand.rules.adjust_deltas(real_points_by_seat(role, hand.game, hand.contract), hand.contract)
+    base = hand.rules.counted(lambda: real_points_by_seat(role, hand.game, hand.contract))
+    deltas = hand.rules.adjust_deltas(base, hand.contract)
     return [d + b for d, b in zip(deltas, hand.rules.score_bonus)]
 
 
@@ -390,28 +396,29 @@ def play_out(hand, policy, first_action=None, on_decision=None, before_player=No
             before_player(hand)
         if seat == PLAYER and player is not None and not discarding and player.trick_turn(hand):
             continue  # carte de joker posee dans le pli a la place d'une carte
-        card = _player_card(hand, seat) if seat == PLAYER else expert_bot.choose_card(g, seat)
+        card = expert_bot.choose_card(g, seat, rules_seen(hand, seat))
         if not discarding:
             card = _rules_card(hand, seat, card)
         hand.step(seat, card)
     return points_of(hand)
 
 
-def _player_card(hand, seat):
-    """8f41 : le joueur (humain) voit l'atout effectif du pli qu'il entame
-    (Brouillard de la Senne : sa couleur choisie) ; l'ExpertBot ne lit que
-    game.trump_suit -> on le lui montre le temps du choix. Les bots, comme
-    WhistExpertBot dans le jeu, gardent l'atout du contrat."""
-    g = hand.game
-    trump = g.trump_suit
-    eff = hand.rules.trick_trump() if not g.current_trick else trump
-    if eff is None or eff == trump:
-        return expert_bot.choose_card(g, seat)
-    g.trump_suit = eff
-    try:
-        return expert_bot.choose_card(g, seat)
-    finally:
-        g.trump_suit = trump
+def rules_seen(hand, seat):
+    """Lot 1 du 31/10 (ExpertBot sensible aux regles, bots et joueur) : l'atout
+    effectif du pli, les cartes que les jokers rendent jouables, l'inversion.
+    None quand les jokers ne changent rien : le jeu reste exactement classique.
+    Lune Noire (couleurs jumelles) : atout et legalite seulement, lot 2."""
+    g, rules = hand.game, hand.rules
+    if not rules.live() or getattr(g, "pending_discards", None):
+        return None
+    led = suit_of(g.current_trick[0][1]) if g.current_trick else None
+    cards = sorted(g.hands[seat])
+    trump = rules.trick_trump()
+    legal = rules.legal_cards(cards, led, seat)
+    inverted = any(e.inverts() for e in rules.live())
+    if trump == g.trump_suit and not inverted and sorted(legal) == sorted(legal_plays(cards, led)):
+        return None
+    return {"trump": trump, "legal": legal, "inverted": inverted}
 
 
 def _rules_card(hand, seat, card):
@@ -424,6 +431,10 @@ def _rules_card(hand, seat, card):
     legal = rules.legal_cards(sorted(g.hands[seat]), led, seat)
     if seat != PLAYER and rules.overrides_bot_card():
         card = rules.bot_card(seat, card, expert_bot.PublicView(g, seat).legal)
+    if seat == PLAYER:  # dcf1 : le joueur qui a lance Faux Pas coupe avec le plus petit atout qui prend
+        for e in rules.effects:
+            if e.owner == PLAYER and J.base_id(e.id) == "faux_pas":
+                card = e.bot_card(seat, card, legal, rules)
     if seat == PLAYER and led is not None and J.in_misere(PLAYER, rules) and len(legal) > len(legal_plays(g.hands[seat], led)):
         trump = rules.trick_trump()
         safe = [c for c in legal if rules.trick_winner(list(g.current_trick) + [(seat, c)], led, trump) != seat]

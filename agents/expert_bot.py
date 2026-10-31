@@ -551,15 +551,26 @@ def _respond_to_outbid(bidding, seat, hand, c, legal, by_kind):
 
 # --- vue publique du jeu de la carte ----------------------------------------
 
+def mirror_card(card):
+    """La carte de rang miroir (2 <-> As) : ordre des rangs inverse (Inversion)."""
+    return suit_of(card) * 13 + 12 - rank_of(card)
+
+
 class PublicView:
     """Tout ce que le siege `seat` a le droit de savoir. Construite depuis un
     moteur de jeu (TeamTrumpDeal / LoneDeclarerDeal) sans jamais copier les
     mains des autres."""
 
-    def __init__(self, game, seat):
+    def __init__(self, game, seat, seen=None):
+        """`seen` (jokers, lot 1 du 31/10) : ce que les regles changent pour ce
+        pli, {"trump": atout effectif, "legal": cartes jouables, "inverted": bool}.
+        Inverse : la plus faible de la demandee gagne, sans atout -> tout est lu
+        en rangs miroirs et le jeu reste le meme ; choose_card rend la vraie carte.
+        None = jeu classique, rien ne change."""
         self.seat = seat
         self.hand = list(game.hands[seat])
-        self.trump = game.trump_suit
+        self.trump = game.trump_suit if seen is None else seen["trump"]
+        self.mirrored = bool(seen and seen.get("inverted"))
         self.contract = game.public_contract()
         self.bid_summary = game.bid_summary
         self.play_log = list(game.play_log)
@@ -572,12 +583,20 @@ class PublicView:
         self.is_misere = self.contract["type"] == "misere"
         self.kind = self.contract.get("kind")
         self.team_contract = self.contract["partner"] is not None
-        self.legal = [c for c, ok in enumerate(game.legal_action_mask(seat)) if ok]
+        self.legal = (list(seen["legal"]) if seen and seen.get("legal") is not None
+                      else [c for c, ok in enumerate(game.legal_action_mask(seat)) if ok])
         # misere etalee : les mains des declarants sont PUBLIQUES (regle du jeu)
         self.revealed = ({d: list(game.hands[d]) for d in self.contract["declarers"]}
                          if getattr(game, "reveal_declarer_hands", False) else {})
         for d in getattr(game, "exposed", ()):  # roguelike : Cartes sur Table (WhistExpertBot._revealed)
             self.revealed[d] = list(game.hands[d])
+        if self.mirrored:
+            self.trump = None
+            self.hand = [mirror_card(c) for c in self.hand]
+            self.legal = [mirror_card(c) for c in self.legal]
+            self.play_log = [(s, mirror_card(c)) for s, c in self.play_log]
+            self.current_trick = [(s, mirror_card(c)) for s, c in self.current_trick]
+            self.revealed = {d: [mirror_card(c) for c in h] for d, h in self.revealed.items()}
         self._analyse()
 
     def teammates(self, seat):
@@ -697,10 +716,15 @@ def trou_opening_card(hand, anchor_card):
     return _highest(in_suit)
 
 
-def choose_card(game, seat):
+def choose_card(game, seat, seen=None):
     if getattr(game, "trou_pending", lambda: False)():
         return trou_opening_card(game.hands[seat], game.anchor_card)
-    v = PublicView(game, seat)
+    v = PublicView(game, seat, seen)
+    card = _choose(v)
+    return mirror_card(card) if v.mirrored else card
+
+
+def _choose(v):
     if len(v.legal) == 1:
         return v.legal[0]
     if v.discard_phase:

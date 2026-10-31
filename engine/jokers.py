@@ -28,7 +28,7 @@ import random
 
 from engine.cards import NUM_PLAYERS, legal_plays, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "756724749bd089e1"
+JOKER_SPEC_HASH = "4d7df4b731ea2842"
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
 # texte ou de cablage seulement) : un reseau entraine sous l'une d'elles est
 # reexporte tel quel avec JOKER_SPEC_HASH. Une regle qui change -> vider la
@@ -129,7 +129,8 @@ CATALOG = {
     "courant_d_air": ("sort", "comptoir", 0, False),
     "tournee_generale": ("sort", "comptoir", 1, False),
     "gueule_de_bois": ("sort", "salle", 1, False),
-    "remonte_pli": ("sort", "salle", 1, False),
+    "remonte_pli": ("sort", "salle", 1, False),  # 4d7d : L'Hameçon, id inchange
+    "la_peche": ("sort", "salle", 1, False),
     "faux_depart": ("sort", "salle", 1, False),
     "inversion": ("aura", "salle", 2, True),
     "fausse_piste": ("piege", "comptoir", 2, False),
@@ -153,7 +154,7 @@ CATALOG = {
     "coup_du_chapeau": ("aura", "comptoir", 1, True),
     "pourboire": ("sort", "comptoir", 1, False),
     "chope_vide": ("passif", "comptoir", 0, False),
-    "faux_pas": ("piege", "comptoir", 1, True),
+    "faux_pas": ("sort", "comptoir", 1, True),
     "pli_refile": ("sort", "salle", 1, False),
     "valet_borgne": ("sort", "cave", 2, False),
     "horloge_arretee": ("sort", "cave", 1, False),
@@ -242,6 +243,7 @@ FACE_RANKS = (9, 10, 11)  # J, Q, K (engine/cards.py : rang 12 = As)
 ACE = 12
 HEARTS = 0  # WhistCard.SUITS : ♥ ♦ ♣ ♠ = 0..3
 RED_SUITS = (0, 1)
+BLACK_TWIN = {0: 3, 1: 2}  # Lune Noire : ♥ compte comme ♠, ♦ comme ♣
 
 
 def base_id(jid):
@@ -292,7 +294,7 @@ DEFENCE = {  # contre le type du contrat, pour une elite adaptee en defense (6c5
     "trou": ["inversion", "inversion", "coup_du_chapeau", "kermesse"],
 }
 ADAPT_FROM_ACT = 3
-BID_SLACK = {"emballage": 1, "solo": 2, "misere": 2}  # plis de marge par famille (d8f1)
+BID_SLACK = {"emballage": 1, "solo": 1, "misere": 1}  # plis de marge par famille (d8f1)
 
 
 def elite_specialties(rng):
@@ -385,6 +387,10 @@ class Effect:
 
     def trump(self, trump, rules):
         return trump
+
+    def suit_as(self, suit):
+        """La couleur que `suit` vaut tant que cet effet vit (Lune Noire)."""
+        return suit
 
     def competes(self, play, rules):
         return True
@@ -711,14 +717,36 @@ class GueuleDeBois(Effect):
 
 
 class RemontePli(Effect):
+    """4d7d, L'Hameçon (id garde) : une carte au hasard de la main visee contre
+    la plus faible du lanceur."""
+    def needs_target(self):
+        return True
+
+    def accepts_target(self, seat, rules):
+        return seat != self.owner
+
     def on_play(self, rules, target=-1):
-        g = rules.game
-        for w in reversed(rules.trick_winners):
-            if rules.is_opponent(self.owner, w) and g.tricks_won[w] > 0:
-                g.tricks_won[w] -= 1
-                g.tricks_won[self.owner] += 1
-                return {"from": w}
-        return {"error": "none"}
+        if target < 0 or target == self.owner:
+            return {"error": "target"}
+        theirs, mine = rules.game.hands[target], rules.game.hands[self.owner]
+        if not theirs or not mine:
+            return {"error": "none"}
+        hooked = theirs[rules.rng.randrange(len(theirs))]
+        weakest = min(mine, key=rank_of)
+        theirs.remove(hooked)
+        mine.remove(weakest)
+        theirs.append(weakest)
+        mine.append(hooked)
+        return {"hooked": hooked}
+
+
+class LaPeche(Effect):
+    """4d7d : le dernier joker de la defausse du lanceur revient en main."""
+    def pointless(self, rules):
+        return not rules.state.discard[self.owner]
+
+    def on_play(self, rules, target=-1):
+        return {} if rules.state.take_back(self.owner) else {"error": "none"}
 
 
 class PliRefile(Effect):
@@ -776,27 +804,45 @@ class Trap(Effect):
     scope = HAND
 
 
-class FauxPas(Trap):
-    """Le premier adversaire qui ne fournit pas (hors carte de joker) cede
-    POINTS au proprietaire (043f : il ne faisait que les perdre) ; une fois."""
-    POINTS = 3
+class FauxPas(Effect):
+    """dcf1 : la renonce rendue legale, pour ce pli le proprietaire peut jouer
+    atout alors qu'il a la couleur demandee."""
+    scope = TRICK
 
     def bot_casts(self):
         return True
 
-    def bot_wants(self, rules):
-        return True
+    def _trumps(self, hand, rules):
+        t = rules.trick_trump()
+        return [c for c in hand if rules.card_suit(c) == t]
 
-    def on_trick_resolved(self, winner, plays, rules):
-        if self.spent:
-            return
-        for seat, card in plays:
-            if (rules.is_opponent(self.owner, seat) and seat not in rules.joker_cards
-                    and suit_of(card) != rules.current_led):
-                rules.add_score(seat, -self.POINTS)
-                rules.add_score(self.owner, self.POINTS)
-                self.spent = True
-                return
+    def pointless(self, rules):
+        return rules.trick_trump() is None
+
+    def legal_cards(self, seat, hand, led, legal, rules):
+        if seat != self.owner:
+            return legal
+        return list(legal) + [c for c in self._trumps(hand, rules) if c not in legal]
+
+    def _takes_it(self, card, rules):
+        plays = list(rules.game.current_trick) + [(self.owner, card)]
+        return rules.trick_winner(plays, rules.led_suit(), rules.trick_trump()) == self.owner
+
+    def bot_wants(self, rules):
+        g, led = rules.game, rules.led_suit()
+        hand = g.hands[self.owner]
+        if led is None or rules.suit_name(led) == rules.trick_trump():
+            return False
+        return (not any(self._takes_it(c, rules) for c in legal_plays(hand, led))
+                and any(self._takes_it(c, rules) for c in self._trumps(hand, rules)))
+
+    def bot_card(self, seat, card, legal, rules):
+        if seat != self.owner:
+            return card
+        for c in sorted(self._trumps(rules.game.hands[self.owner], rules), key=rank_of):
+            if self._takes_it(c, rules):
+                return c
+        return card
 
 
 class FaussePiste(Trap):
@@ -880,11 +926,20 @@ class SilenceDuCercle(Aura):
 
 
 class LuneNoire(Aura):
-    def trump(self, trump, rules):
-        return None if trump in RED_SUITS else trump
+    """dcf1 : ♥ compte comme ♠ et ♦ comme ♣ jusqu'a la fin de la donne, atout
+    compris ; entre jumelles, la vraie noire gagne (JokerRules.trick_winner)."""
+    def suit_as(self, suit):
+        return BLACK_TWIN.get(suit, suit)
 
-    def pointless(self, rules):
-        return rules.trick_trump() not in RED_SUITS
+    def trump(self, trump, rules):
+        return self.suit_as(trump)
+
+    def legal_cards(self, seat, hand, led, legal, rules):
+        """Ignore `legal` : passe avant les autres (Faux Pas, Defausse Discrete y ajoutent)."""
+        if led is None:
+            return legal
+        follow = [c for c in hand if self.suit_as(suit_of(c)) == self.suit_as(led)]
+        return follow if follow else list(hand)
 
 
 class CoeurDeZinneke(Aura):
@@ -892,7 +947,7 @@ class CoeurDeZinneke(Aura):
 
     def on_trick_resolved(self, winner, plays, rules):
         for seat, card in plays:
-            if seat == winner and winner == self.owner and suit_of(card) == HEARTS:
+            if seat == winner and winner == self.owner and rules.card_suit(card) == HEARTS:
                 rules.add_score(self.owner, self.BONUS)
 
 
@@ -1291,7 +1346,7 @@ EFFECTS = {
     "regard_furtif": RegardFurtif, "voeu_de_pauvrete": VoeuDePauvrete, "miroir": Miroir, "borgne": Borgne,
     "carte_fantome": CarteFantome, "double_valet": DoubleValet, "atout_errant": AtoutErrant,
     "courant_d_air": CourantDAir, "tournee_generale": TourneeGenerale, "gueule_de_bois": GueuleDeBois,
-    "remonte_pli": RemontePli, "faux_depart": FauxDepart,
+    "remonte_pli": RemontePli, "la_peche": LaPeche, "faux_depart": FauxDepart,
     "inversion": Inversion, "fausse_piste": FaussePiste, "collet": Collet,
     "contre_espionnage": ContreEspionnage, "croupier_endormi": CroupierEndormi, "dette_de_jeu": DetteDeJeu,
     "fumee_de_pipe": FumeeDePipe, "silence_du_cercle": SilenceDuCercle, "lune_noire": LuneNoire,
@@ -1447,6 +1502,14 @@ class MatchState:
     def cost_of(self, seat, jid):
         return self.rules.cost_of(seat, jid) if self.rules is not None else jcost(jid)
 
+    def take_back(self, seat):
+        """La Peche : le dessus de la defausse revient en main ; "" sans defausse."""
+        if not self.discard[seat]:
+            return ""
+        jid = self.discard[seat].pop()
+        self.joker_hand[seat].append(jid)
+        return jid
+
     def play_error(self, seat, jid):
         if not known(jid) or jid not in self.joker_hand[seat]:
             return "not_in_hand"
@@ -1506,6 +1569,7 @@ class JokerRules:
         self.trick_winners = []
         self.joker_cards = {}  # siege -> joker de pli pose dans le pli en cours
         self.score_bonus = [0] * NUM_PLAYERS
+        self.bonus_tricks = [0] * NUM_PLAYERS  # dcf1 : plis comptes au-dela de 1 par un joker
         self.vanished = []  # cartes defaussees par Courant d'Air
         # scorer(game, contract) -> score de base de la donne (WhistTable._score_hand) ; une
         # fonction de module (jamais une fermeture : clone() = deepcopy garde la meme fonction)
@@ -1553,6 +1617,7 @@ class JokerRules:
         self.trick_winners = []
         self.joker_cards = {}
         self.score_bonus = [0] * NUM_PLAYERS
+        self.bonus_tricks = [0] * NUM_PLAYERS
         self.vanished = []
         self.trick_window = False  # joker_rules.gd in_trick_window : voir joker_match.play_out
         self.bind(game, contract)
@@ -1562,7 +1627,24 @@ class JokerRules:
         self.contract = contract
 
     def score_hand(self):
-        return self.scorer(self.game, self.contract)
+        return self.counted(lambda: self.scorer(self.game, self.contract))
+
+    def counted(self, score):
+        """dcf1 (WhistTable._taken_by) : un pli double de la defense enleve au camp
+        du contrat autant de plis que ses plis bonus, plancher 0."""
+        c, tricks = self.contract or {}, self.game.tricks_won
+        if not any(self.bonus_tricks) or "declarers" in c or "declarer" not in c:
+            return score()
+        camp = self.sides()[0]
+        saved, cost = list(tricks), sum(self.bonus_tricks[s] for s in range(NUM_PLAYERS) if s not in camp)
+        for s in camp:
+            taken = min(cost, tricks[s])
+            tricks[s] -= taken
+            cost -= taken
+        try:
+            return score()
+        finally:
+            tricks[:] = saved
 
     def live(self):
         return self.curses + self.effects
@@ -1670,11 +1752,30 @@ class JokerRules:
     def legal_cards(self, hand, led, seat):
         """65a7 : les jokers de misere plient l'obligation de fournir."""
         legal = legal_plays(hand, led)
-        for e in self.live():
+        live = self.live()
+        for e in [e for e in live if self._remaps(e)] + [e for e in live if not self._remaps(e)]:
             legal = e.legal_cards(seat, hand, led, legal, self)
         return legal
 
-    def trick_winner(self, plays, led, trump):
+    @staticmethod
+    def _remaps(e):
+        return e.suit_as(HEARTS) != HEARTS
+
+    def suit_name(self, suit):
+        """La couleur que `suit` vaut sous les jokers en jeu (Lune Noire)."""
+        for e in self.live():
+            suit = e.suit_as(suit)
+        return suit
+
+    def card_suit(self, card):
+        return self.suit_name(suit_of(card))
+
+    def trick_winner(self, real_plays, real_led, trump):
+        # dcf1 : le pli vu sous Lune Noire ; une carte recoloree perd l'egalite comme un joker
+        plays = [(s, self.card_suit(c) * 13 + rank_of(c)) for s, c in real_plays]
+        led = self.suit_name(real_led)
+        blackened = {s for (s, c), (_s, r) in zip(plays, real_plays) if suit_of(c) != suit_of(r)}
+        stands_in = lambda seat: seat in self.joker_cards or seat in blackened
         self.current_led = led
         self.current_trump = trump
         self.current_plays = list(plays)
@@ -1700,7 +1801,7 @@ class JokerRules:
                     best = p
             elif beats(p[1], best[1], led, trump):
                 best = p
-            if (best[0] in self.joker_cards and p[0] not in self.joker_cards
+            if (stands_in(best[0]) and not stands_in(p[0])
                     and suit_of(p[1]) == suit_of(best[1]) and rank_of(p[1]) == rank_of(best[1])):
                 best = p
         return best[0]
@@ -1815,6 +1916,7 @@ class JokerHand:
         classic = g.turn if not g.done else classic_trick_winner(plays, g.trump_suit)
         g.tricks_won[classic] -= 1
         g.tricks_won[winner] += value
+        self.rules.bonus_tricks[winner] += max(0, value - 1)
         leader = self.rules.next_leader(winner)
         self.rules.on_trick_resolved(winner, plays)
         if not g.done and g.trick_count >= self.rules.hand_tricks():
