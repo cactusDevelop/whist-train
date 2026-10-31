@@ -48,6 +48,12 @@ jobs:
 
       - run: pip install -r requirements.txt
 
+      # Small block queued while a long jokers run is still saving: wait for its state.
+      - name: Wait for the running jokers block
+        if: env.MODE == 'jokers_small'
+        run: |
+          while [ "$(gh run view 41187870739 -R "$GITHUB_REPOSITORY" --json status -q .status)" != completed ]; do sleep 60; done
+
       - id: restore
         name: Restore state
         run: |
