@@ -5,6 +5,6 @@ MIN=${FREE_MINUTES:-}
 if [ -n "$MIN" ] && [ "$MIN" -lt 90 ]; then
   EXTRA="--cycle-seconds $(( MIN * 60 / 3 )) --select-deals 400 --gate-deals 2000"
 else
-  EXTRA=""
+  EXTRA="--cycle-seconds 1800"
 fi
 python -u scripts/train_free.py --until "$(date -u -d "+${MIN:-320} minutes" +%Y-%m-%dT%H:%M)" $EXTRA
