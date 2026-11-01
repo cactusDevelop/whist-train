@@ -8,6 +8,8 @@ Usage : python scripts/measure_profit.py --minutes 150 --workers 4
 import argparse
 import json
 import sys
+import os
+import subprocess
 import time
 from multiprocessing import Pool
 
@@ -18,6 +20,16 @@ from engine import jokers as J
 from scripts import joker_profit as P
 
 BATCH = 400
+
+
+UPLOAD_EVERY_S = 900
+
+
+def upload_partial():
+    if not os.environ.get("GH_TOKEN"):
+        return
+    subprocess.run(["gh", "release", "upload", "checkpoint-latest", "godot_export/joker_profit_stats.json",
+                    "joker_profit_summary.md", "--clobber"], check=False)
 
 
 def main():
@@ -35,6 +47,7 @@ def main():
     net.eval()
     w = net_to_numpy(net)
     agg, done, end = P.Agg(), 0, time.time() + args.minutes * 60
+    next_upload = time.time() + UPLOAD_EVERY_S
     with Pool(args.workers) as pool:
         while time.time() < end:
             seeds = list(range(args.seed + done, args.seed + done + BATCH))
@@ -44,6 +57,9 @@ def main():
             rows = P.table(agg)  # a chaque lot : une erreur de rendu tombe tout de suite, pas apres des heures
             P.render({"iterations": [ckpt.get("iter", -1)], "profit_matches": done, "spec_hash": J.JOKER_SPEC_HASH}, rows)
             print("matchs %d, %.0f min restantes" % (done, (end - time.time()) / 60), flush=True)
+            if time.time() >= next_upload:  # une mesure interrompue garde ce qu'elle a deja
+                next_upload = time.time() + UPLOAD_EVERY_S
+                upload_partial()
     print("valeur d'un point d'energie :", P.energy_value(rows))
     keys = ("id", "cost", "suspicion", "rarity", "n", "gain", "se", "gain_source", "cast_rate", "target_cost",
             "target_cost_low", "target_cost_high", "depends_on_player", "recommended_cost", "note", "verdict")
