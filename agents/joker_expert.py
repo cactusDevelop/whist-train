@@ -51,7 +51,7 @@ PLAYER_PRIORITY = [
     "faux_depart2",
     "borgne", "double_valet", "cameleon", "atout_errant", "traitre", "zero", "miroir",
     "courant_d_air", "main_lourde", "pourboire", "regard_furtif", "livre_de_comptes",
-    "addition", "feu_de_paille",
+    "trouble_fete", "cierge", "addition", "pot_commun", "feu_de_paille",
 ]
 BID_PRIORITY = ["pot_de_vin", "rachat", "bluff", "cartes_sur_table", "coup_d_oeil"]
 
@@ -554,6 +554,23 @@ def _addition(v):
     return (YES, "fin_de_donne") if v["remaining"] <= 2 else (NO, "attend_d_autres_jokers")
 
 
+def _pot_commun(v):
+    heat = v["suspicion"]
+    if heat >= 4:
+        return YES, "chaleur_haute"
+    return (YES, "fin_de_donne") if v["remaining"] <= 2 and heat >= 2 else (NO, "trop_peu_de_chaleur")
+
+
+def _trouble_fete(v):
+    return (YES, "plis_a_venir") if v["remaining"] >= 6 and aces(v) >= 1 else (NO, "trop_peu_de_plis")
+
+
+def _cierge(v):
+    """Chaque ⚡ restant coute 2 points : il faut de quoi les depenser."""
+    spend = sum(J.jcost(j) for j in _castable_others(v, "cierge"))
+    return (YES, "energie_utile") if v["remaining"] >= 8 and spend >= 3 else (NO, "energie_perdue")
+
+
 def _verre_de_trop(v):
     if owned(v, "verre_de_trop") or v["remaining"] < 4:
         return NO, "tard_ou_arme"
@@ -700,6 +717,7 @@ RULES = {
     "beau_valet": _valets_aura("beau_valet"), "bal_des_valets": _valets_aura("bal_des_valets"),
     "valet_de_chambre": _valet_de_chambre, "feu_de_paille": _feu_de_paille, "ardoise": _ardoise,
     "addition": _addition, "complice": _complice, "verre_de_trop": _verre_de_trop, "refrain": _refrain,
+    "pot_commun": _pot_commun, "trouble_fete": _trouble_fete, "cierge": _cierge,
 }
 
 

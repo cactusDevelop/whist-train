@@ -920,6 +920,61 @@ def combo_tests():
     state, rules, game = setup()
     game.turn = 1
     oks.append(check("faux depart 2 : entame deplacee", (rules.play(0, "faux_depart2", 3), game.turn), ({}, 3)))
+    # 61ef (Synergies 08-09)
+    state, rules, game = setup()
+    effect = J.make_effect("vieille_habitude", 0)
+    energy = state.energy[0]
+    effect.on_joker_paid(0, "zero", rules)
+    oks.append(check("vieille habitude : joker sans chaleur ignore", state.energy[0], energy))
+    effect.on_joker_paid(0, "main_de_fer", rules)
+    effect.on_joker_paid(0, "main_de_fer", rules)
+    oks.append(check("vieille habitude : 1 energie, une seule fois", state.energy[0], energy + 1))
+    state, rules, game = setup()
+    state.suspicion = 5
+    score = list(rules.score_bonus)
+    oks.append(check("pot commun : vide la chaleur", (J.make_effect("pot_commun", 0).on_play(rules), state.suspicion, rules.score_bonus[0] - score[0]), ({}, 0, 5)))
+    state, rules, game = setup()
+    effect = J.make_effect("trouble_fete", 1)
+    energy = state.energy[1]
+    for _ in range(5):
+        effect.on_trick_resolved(1, [], rules)
+    oks.append(check("trouble-fete : 3 energies max", state.energy[1] - energy, 3))
+    state, rules, game = setup()
+    state.debts[3] = 0
+    J.make_effect("mauvais_perdant", 3).on_hand_scored([0, 0, 0, -4], rules)
+    oks.append(check("mauvais perdant : +2 a la donne suivante", state.debts[3], -2))
+    state, rules, game = setup()
+    effect = J.make_effect("cierge", 2)
+    energy = state.energy[2]
+    rules.trick_winners = [0] * (rules.hand_tricks() - 1)
+    effect.on_trick_resolved(0, [], rules)
+    rules.trick_winners.append(0)
+    effect.on_trick_resolved(0, [], rules)
+    oks.append(check("cierge : rien apres le dernier pli", state.energy[2] - energy, 1))
+    state.energy[2] = 3
+    score = rules.score_bonus[2]
+    effect.on_hand_end(rules)
+    oks.append(check("cierge : -2 par energie restante", rules.score_bonus[2] - score, -6))
+    patron = J.MatchState([["patron", "zero", "traitre", "borgne", "miroir", "cameleon", "embuscade"], [], [], []], random.Random(1))
+    patron.rules = J.JokerRules(patron, random.Random(2))
+    patron.arm_curses()
+    patron.start_hand()
+    oks.append(check("patron : pioche 5, en remet 2 sous la pioche", (len(patron.joker_hand[0]), len(patron.draw_pile[0]), patron.discard[0], patron.to_discard[0]), (3, 3, [], 0)))
+    oks.append(check("boss : deck de combos sous Chaleur seulement", (J.boss_deck("baronne", True)[4], J.boss_deck("baronne", False)[4], J.boss_deck("moine", True) == J.BOSS_DECKS["moine"]), ("complice", "inversion", True)))
+    state, rules, game = setup()
+    state.joker_hand[1] = ["consigne", "zero", "kermesse"]
+    oks.append(check("defausse de bot : la consigne d'abord", state._bot_discard(1), "consigne"))
+    state.joker_hand[1] = ["kermesse", "ardoise", "zero"]
+    oks.append(check("defausse de bot : jamais un joker de combo", state._bot_discard(1), "zero"))
+    state, rules, game = setup()
+    state.joker_hand[1] = ["ardoise", "kermesse"]
+    state.energy[1] = 0
+    oks.append(check("combo : ardoise seulement si l'energie manque", J.combo_wants("ardoise", 1, rules, state),
+                     J._planned_cost(1, rules, state) > 0))
+    state.last_spell[1] = "coup_de_vent"
+    oks.append(check("combo : refrain sur un sort qui vaut la peine", J.combo_wants("refrain", 1, rules, state), True))
+    state.discard[1] = ["zero"]
+    oks.append(check("combo : pas de peche sur un joker quelconque", J.combo_wants("la_peche", 1, rules, state), False))
     # Faux Depart sur l'entame d'un Trou : le contrat se fixe a la premiere carte du bouche-trou
     from agents import expert_bot
     from engine.trou import new_trou_deal
@@ -938,6 +993,9 @@ def combo_tests():
             trou.step(seat, pick)
             if pending and not trou.trou_pending():
                 fixed = (seat, trou.trump_suit, trou.level in (8, 9))
+        pointless_game = new_trou_deal([list(range(52))[i::4] for i in range(4)], 0, 1, hands[1][0], 1)
+        pointless_rules = type("R", (), {"game": pointless_game})()
+        oks.append(check(f"faux depart interdit sur l'entame du Trou ({lead})", J.make_effect("faux_depart2", 0).pointless(pointless_rules), True))
         oks.append(check(f"trou, entame deplacee sur {lead}", (fixed[0], fixed[2], sum(trou.tricks_won)), (1, True, 13)))
     state, rules, game = setup()
     oks.append(check("contrat facile : declarant exclu", (J.easy_contract(0, rules.contract), J.easy_contract(1, rules.contract)), (False, True)))

@@ -81,7 +81,7 @@ class Match:
             if config["act"] >= J.ADAPT_FROM_ACT:
                 self.adapts = list(ELITE_SEATS)
         else:
-            decks[BOSS_SEAT] = list(BOSS_DECKS[config["boss"]])
+            decks[BOSS_SEAT] = J.boss_deck(config["boss"], config.get("heat", False))
         spammers = [s for s in range(NUM_PLAYERS) if s != PLAYER and decks[s]]
         for s in spammers:  # RogueMatch : elites/boss = spammers (79ac)
             decks[s] = decks[s] + J.SPAMMER_EXTRA
@@ -391,6 +391,8 @@ def play_out(hand, policy, first_action=None, on_decision=None, before_player=No
             player.trick_turn(hand)
             hand.rules.trick_window = False
         if seat in holders and not discarding and key != bot_done:
+            if rules.priority and hand.combo_turn(seat):
+                continue
             bot_done = key
             if first_action is not None:
                 action, first_action = first_action, None
@@ -439,6 +441,8 @@ def _priority_window(hand, policy, first_action, on_decision, before_player):
                 before_player(hand)
             if player is None or not player.window_turn(hand):
                 rules.pass_window(seat)
+            continue
+        if hand.combo_turn(seat):
             continue
         before = state.played_this_hand[seat]
         if first_action is not None:
