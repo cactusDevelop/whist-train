@@ -920,6 +920,25 @@ def combo_tests():
     state, rules, game = setup()
     game.turn = 1
     oks.append(check("faux depart 2 : entame deplacee", (rules.play(0, "faux_depart2", 3), game.turn), ({}, 3)))
+    # Faux Depart sur l'entame d'un Trou : le contrat se fixe a la premiere carte du bouche-trou
+    from agents import expert_bot
+    from engine.trou import new_trou_deal
+    for lead in (0, 2, 3):
+        hands = [list(range(52))[i::4] for i in range(4)]
+        trou = new_trou_deal(hands, 0, 1, hands[1][0], 1)
+        trou.set_public_context(0)
+        trou.turn = lead
+        fixed = None
+        while not trou.done:
+            seat = trou.turn
+            pending = trou.trou_pending()
+            mask = trou.legal_action_mask(seat)
+            pick = expert_bot.choose_card(trou, seat)
+            pick = pick if mask[pick] else mask.index(True)
+            trou.step(seat, pick)
+            if pending and not trou.trou_pending():
+                fixed = (seat, trou.trump_suit, trou.level in (8, 9))
+        oks.append(check(f"trou, entame deplacee sur {lead}", (fixed[0], fixed[2], sum(trou.tricks_won)), (1, True, 13)))
     state, rules, game = setup()
     oks.append(check("contrat facile : declarant exclu", (J.easy_contract(0, rules.contract), J.easy_contract(1, rules.contract)), (False, True)))
     oks.append(check("contrat facile : niveau 10 exclu", J.easy_contract(1, dict(rules.contract, level=10)), False))

@@ -88,7 +88,7 @@ class TeamTrumpDeal:
             raise ValueError("hors-tour ou donne terminee")
         if card not in self.hands[seat]:
             raise ValueError("carte pas en main")
-        if self.trou_pending():
+        if self.trou_pending() and seat == self.partner:
             self._fix_trou_contract(seat, card)
         self.hands[seat].remove(card)
         self.current_trick.append((seat, card))
@@ -109,9 +109,9 @@ class TeamTrumpDeal:
     def _fix_trou_contract(self, seat, card):
         """Regle du 2026-10-01 : la 1re carte du bouche-trou fixe le contrat
         AVANT la resolution du pli -- carte d'ancrage -> 8 plis, toute autre
-        carte -> 9 plis ; atout = couleur de la carte jouee dans les deux cas."""
-        if seat != self.partner:
-            raise ValueError("le Trou s'ouvre par l'entame du bouche-trou")
+        carte -> 9 plis ; atout = couleur de la carte jouee dans les deux cas.
+        Faux Depart peut donner l'entame a un autre siege : le contrat se fixe
+        alors a la premiere carte du bouche-trou (_is_trou_opening_lead)."""
         self.trump_suit = suit_of(card)
         self.level = 8 if card == self.anchor_card else 9
         if self.contract_record is not None:

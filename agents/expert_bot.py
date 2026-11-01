@@ -717,7 +717,7 @@ def trou_opening_card(hand, anchor_card):
 
 
 def choose_card(game, seat, seen=None):
-    if getattr(game, "trou_pending", lambda: False)():
+    if getattr(game, "trou_pending", lambda: False)() and seat == game.partner:
         return trou_opening_card(game.hands[seat], game.anchor_card)
     v = PublicView(game, seat, seen)
     card = _choose(v)
