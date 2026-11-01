@@ -100,6 +100,8 @@ class Match:
         boss = config.get("boss", "")
         # regle du boss + celle d'un autre en Mise Doree (RogueMises.second_rule)
         self.bosses = tuple(b for b in (boss, J.second_rule(mise, boss)) if b)
+        self.rules.bosses = self.bosses
+        self.rules.priority = config.get("priority", False)  # RogueRun : heat ; Duel et Belle : toujours
         self.state.arm_curses()
         if "baronne" in self.bosses:
             self.rules.curses.append(J.BaronneSees("baronne", BOSS_SEAT))
@@ -369,12 +371,18 @@ def play_out(hand, policy, first_action=None, on_decision=None, before_player=No
     7567 : au premier pli, il a aussi la fenetre avant l'entame d'un bot
     (joker_rules.gd in_trick_window), simulee pour Main de Fer seul."""
     g = hand.game
+    rules = hand.rules
     holders = set(hand.holders())
     player = getattr(hand, "player", None)
-    window = player is not None and g.trick_count == 0 and not g.current_trick and g.turn != PLAYER
+    window = (not rules.priority and player is not None and g.trick_count == 0
+              and not g.current_trick and g.turn != PLAYER)
+    bot_done = player_done = None  # un seul tour de jokers par siege et par carte (une fenetre peut rouvrir)
     while not g.done:
-        seat = g.turn
         discarding = getattr(g, "pending_discards", None)
+        if rules.priority and not discarding and not g.current_trick:
+            first_action = _priority_window(hand, policy, first_action, on_decision, before_player)
+        seat = g.turn
+        key = (seat, g.trick_count, len(g.current_trick))
         if window and not discarding:
             window = False
             hand.rules.trick_window = True
@@ -382,7 +390,8 @@ def play_out(hand, policy, first_action=None, on_decision=None, before_player=No
                 before_player(hand)
             player.trick_turn(hand)
             hand.rules.trick_window = False
-        if seat in holders and not discarding:
+        if seat in holders and not discarding and key != bot_done:
+            bot_done = key
             if first_action is not None:
                 action, first_action = first_action, None
             else:
@@ -395,15 +404,58 @@ def play_out(hand, policy, first_action=None, on_decision=None, before_player=No
                 if on_decision is not None:
                     on_decision(hand, seat, action)
                 hand.cast(seat, action)
-        if seat == PLAYER and player is not None and not discarding and before_player is not None:
-            before_player(hand)
-        if seat == PLAYER and player is not None and not discarding and player.trick_turn(hand):
-            continue  # carte de joker posee dans le pli a la place d'une carte
+            if rules.priority_seat() >= 0:
+                continue  # un joker lance avant l'entame rouvre la fenetre
+        if seat == PLAYER and player is not None and not discarding and key != player_done:
+            player_done = key
+            if before_player is not None:
+                before_player(hand)
+            if player.trick_turn(hand):
+                continue  # carte de joker posee dans le pli a la place d'une carte
+            if rules.priority_seat() >= 0:
+                continue
         card = expert_bot.choose_card(g, seat, rules_seen(hand, seat))
         if not discarding:
             card = _rules_card(hand, seat, card)
         hand.step(seat, card)
     return points_of(hand)
+
+
+WINDOW_GUARD = 64  # garde-fou du simulateur ; le jeu n'a pas de limite
+
+
+def _priority_window(hand, policy, first_action, on_decision, before_player):
+    """JokerRules.priority_seat + RogueMatch._bot_turn : la fenetre avant la
+    premiere carte du pli (4a38). La priorite part du siege apres le meneur ;
+    chaque joker la rouvre depuis le siege apres le lanceur. -> first_action restant."""
+    rules, state = hand.rules, hand.state
+    player = getattr(hand, "player", None)
+    for _ in range(WINDOW_GUARD):
+        seat = rules.priority_seat()
+        if seat < 0:
+            break
+        if seat == PLAYER:
+            if player is not None and before_player is not None:
+                before_player(hand)
+            if player is None or not player.window_turn(hand):
+                rules.pass_window(seat)
+            continue
+        before = state.played_this_hand[seat]
+        if first_action is not None:
+            action, first_action = first_action, None
+        else:
+            action = policy(hand, seat)
+        if on_decision is not None:
+            on_decision(hand, seat, action)
+        hand.cast(seat, action)
+        if action == 0 and hand.fuel(seat):
+            action = policy(hand, seat)
+            if on_decision is not None:
+                on_decision(hand, seat, action)
+            hand.cast(seat, action)
+        if state.played_this_hand[seat] == before:
+            rules.pass_window(seat)
+    return first_action
 
 
 def rules_seen(hand, seat):
@@ -496,7 +548,7 @@ def player_deck(act, rng):
     """Deck d'un run a l'acte `act` : STARTING_DECK + jokers des raretes de
     l'acte (MAX_COPIES par joker), certains ameliores, parfois un maudit."""
     deck = list(J.STARTING_DECK)
-    pool = sorted(i for i, (_t, r, _c, _b) in J.CATALOG.items() if r in J.RARITIES_BY_ACT[act])
+    pool = sorted(i for i, (_t, r, _c, _b) in J.CATALOG.items() if r in J.RARITIES_BY_ACT[act] and i not in J.REPLACED)
     lo, hi = EXTRA_JOKERS[act]
     for _ in range(rng.randint(lo, hi)):
         jid = rng.choice(pool)
@@ -520,7 +572,8 @@ def random_config(rng):
             style = name
             break
         x -= p
-    cfg.update({"deck": player_deck(cfg["act"], rng), "suspicion": rng.randint(0, 7),
+    cfg.update({"heat": True, "priority": True,  # une run neuve (RogueRun.match_config)
+                "deck": player_deck(cfg["act"], rng), "suspicion": rng.randint(0, 7),
                 "style": style, "cast_prob": round(rng.uniform(0.15, 0.6), 3),
                 "mise": rng.randrange(J.MISE_COUNT)})  # Mises 0..3 (79ac)
     return cfg
@@ -568,6 +621,8 @@ class Player:
             if (t == "enchere") != bidding or state.play_error(PLAYER, jid) != "":
                 continue
             if rules.trick_window and J.base_id(jid) != "main_de_fer":
+                continue
+            if not bidding and rules.priority and rules.turn_error(jid, PLAYER):  # RogueAutopilot._try_joker
                 continue
             if "moine" in boss and t in ("pli", "aura"):  # RogueBosses.blocks_joker (boss = regles des boss)
                 continue
@@ -634,7 +689,13 @@ class Player:
             tried.add(jid)
             self._cast(state, rules, eye, jid, tgt)
 
-    def trick_turn(self, hand):
+    def window_turn(self, hand):
+        """Sa priorite dans la fenetre : au plus un joker ; True si paye."""
+        before = hand.state.played_this_hand[PLAYER]
+        self.trick_turn(hand, once=True)
+        return hand.state.played_this_hand[PLAYER] > before
+
+    def trick_turn(self, hand, once=False):
         """Avant la carte du joueur ; True si une carte de joker a ete posee
         a sa place."""
         if self.force_trick is not None:
@@ -659,4 +720,6 @@ class Player:
             if played is not None and played.get("card") is not None:
                 hand.step_joker_card(PLAYER, played["card"], jid)
                 return True
+            if once and played is not None:
+                return False
         return False

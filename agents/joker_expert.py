@@ -29,7 +29,7 @@ from engine.cards import NUM_PLAYERS, suit_of, rank_of, legal_plays
 from engine import jokers as J
 from engine.misere import MISERE_MAX_TRICKS
 
-JOKER_EXPERT_VERSION = 2  # 2 (30/10) : garde-fou Oeil, Pot-de-Vin reserve aux mains de misere hors piccolo
+JOKER_EXPERT_VERSION = 3  # 3 (177e) : regles relues pour la fenetre avant le pli ; 2 : 2 (30/10) : garde-fou Oeil, Pot-de-Vin reserve aux mains de misere hors piccolo
 
 YES, NO, OPEN_YES, OPEN_NO = "oui", "non", "ouvert_oui", "ouvert_non"
 OPEN = (OPEN_YES, OPEN_NO)
@@ -42,14 +42,14 @@ BOT_PRIORITY = ["inversion", "coup_de_vent", "coup_du_chapeau", "kermesse", "emb
 PLAYER_PRIORITY = [
     # remises et energie d'abord, sorts / pieges / auras decisifs, cartes de pli, le reste, les points de fin de tour
     "complice", "valet_de_chambre", "ardoise", "verre_de_trop", "refrain",
-    "main_de_fer", "horloge_arretee", "valet_borgne", "inversion", "brouillard_de_la_senne", "remonte_pli", "la_peche", "pli_refile",
+    "main_de_fer", "horloge_arretee", "valet_borgne", "inversion", "brouillard_de_la_senne", "remonte_pli", "la_peche", "pli_refile2",
     "coup_de_vent",
     "manche_truquee", "gueule_de_bois", "dette_de_jeu", "lune_noire", "bal_des_valets", "beau_valet", "coup_du_chapeau", "kermesse",
-    "treizieme_carte", "coeur_de_zinneke", "silence_du_cercle", "embuscade", "collet", "fausse_piste", "faux_pas",
-    "croupier_endormi", "contre_espionnage", "fumee_de_pipe", "tournee_generale", "echange_de_manche",
-    "defausse_discrete", "la_tournee", "cadeau_empoisonne", "meche_courte",
-    "faux_depart",
-    "borgne", "double_valet", "cameleon", "atout_errant", "traitre", "carte_fantome", "zero", "miroir",
+    "treizieme_carte", "coeur_de_zinneke2", "silence_du_cercle", "embuscade", "collet", "fausse_piste", "faux_pas",
+    "croupier_endormi2", "contre_espionnage", "fumee_de_pipe", "tournee_generale", "echange_de_manche",
+    "defausse_discrete", "la_tournee2", "cadeau_empoisonne2", "meche_courte",
+    "faux_depart2",
+    "borgne", "double_valet", "cameleon", "atout_errant", "traitre", "zero", "miroir",
     "courant_d_air", "main_lourde", "pourboire", "regard_furtif", "livre_de_comptes",
     "addition", "feu_de_paille",
 ]
@@ -104,7 +104,9 @@ def view(hand, me):
         "eye": getattr(hand, "eye", "") if me == J.PLAYER else "",
         "best_seat": None, "best_card": None, "best_friendly": False, "enemy_ruff_best": False,
         "can_win_now": False, "forced_win": False, "wins_with": {},
+        "leader": trick[0][0] if trick else g.turn, "last_winner": rules.trick_winners[-1] if rules.trick_winners else -1,
     }
+    v["leads"] = v["leader"] == me
     # 65a7 : declarants de misere adverses (La Tournee, Cadeau Empoisonne) ; Tournee = pas encore joue ce pli
     v["misere_opponents"] = [s for s in range(NUM_PLAYERS) if J.misere_opponent(me, s, rules)]
     played = {s for s, _c in trick}
@@ -393,8 +395,13 @@ def _pli_refile(v):
 
 def _defausse_discrete(v):
     """65a7 : ma misere, la demandee me forcerait a prendre -> je me defausse ailleurs."""
-    if not v["misere_declarer"] or v["position"] == 0:
-        return NO, "hors_ma_misere_ou_entame"
+    if not v["misere_declarer"]:
+        return NO, "hors_ma_misere"
+    if v["position"] == 0:  # 177e : fenetre, la demandee encore inconnue
+        if v["leads"]:
+            return NO, "entame"
+        tops = [min((rank_of(x) for x in v["hand"] if suit_of(x) == s), default=-1) for s in range(4)]
+        return (YES, "couleur_dangereuse") if any(r >= QUEEN for r in tops) else (NO, "je_peux_passer_dessous")
     off = [x for x in v["hand"] if suit_of(x) != v["led"]]
     return (YES, "sort_du_pli_force") if v["forced_win"] and off else (NO, "je_peux_passer_dessous")
 
@@ -412,10 +419,52 @@ def _faux_depart(v):
     return YES, "garde_la_main_au_camp"
 
 
+def _contested(v):
+    return not contract_made(v) and not hopeless_declarer(v)
+
+
+def _pli_refile2(v):
+    last = v["last_winner"]
+    if last < 0:
+        return NO, "aucun_pli"
+    if v["misere"]:
+        return (YES, "rend_le_pli") if last == v["me"] else (NO, "garde_ses_plis")
+    return (YES, "vole_le_pli") if last in v["opponents"] and _contested(v) else (NO, "pas_besoin")
+
+
+def _faux_depart2(v):
+    if v["remaining"] < 2:
+        return NO, "tard"
+    if v["misere"]:
+        if v["misere_declarer"]:
+            return (YES, "je_ne_veux_pas_entamer") if v["leads"] else (NO, "pas_besoin")
+        d = v["misere_opponents"]
+        return (YES, "le_declarant_entame") if d and v["leader"] not in d else (NO, "pas_besoin")
+    return (YES, "je_reprends_la_main") if v["leader"] in v["opponents"] and aces(v) >= 1 else (NO, "pas_besoin")
+
+
+def _la_tournee2(v):
+    if owned(v, "la_tournee2") or v["remaining"] < 4:
+        return NO, "tard_ou_arme"
+    return YES, "force_ses_hautes"
+
+
+def _cadeau_empoisonne2(v):
+    return (NO, "arme") if owned(v, "cadeau_empoisonne2") else (YES, "deux_plis_de_moins")
+
+
+def _coeur_de_zinneke2(v):
+    if v["misere"] or v["remaining"] < 5 or owned(v, "coeur_de_zinneke2"):
+        return NO, "misere_tard_ou_arme"
+    good = _count(v, lambda x: suit_of(x) != v["trump"] and rank_of(x) >= KING)
+    return (YES, "gains_hors_atout") if good >= 2 else (NO, "peu_de_gains_hors_atout")
+
+
 def _manche_truquee(v):
-    if not want_trick(v) or v["position"] != 3 or v["can_win_now"]:
+    # 177e : lancee avant le pli, ma carte le prend quoi qu'il arrive et il compte double
+    if not want_trick(v) or contract_made(v) or hopeless_declarer(v):
         return NO, "pas_besoin"
-    return (YES, "ma_carte_coupe") if v.get("truquee_wins") else (NO, "ne_gagne_pas")
+    return YES, "pli_double_decisif"
 
 
 def _valet_borgne(v):
@@ -445,7 +494,7 @@ def _horloge_arretee(v):
 
 def _pourboire(v):
     # pas de points : seulement l'energie qui serait perdue en fin de donne
-    if v["remaining"] <= 2 and v["can_win_now"] and v["energy"] >= 1:
+    if v["remaining"] <= 2 and (v["can_win_now"] or v["position"] == 0) and v["energy"] >= 1:
         return YES, "energie_restante"
     return NO, "garde_l_energie"
 
@@ -532,7 +581,7 @@ def _collet(v):
     # 6c54 : ma prochaine carte ne peut pas gagner son pli -> la sortie d'une misere
     if not v["misere_declarer"] or owned(v, "collet"):
         return NO, "hors_ma_misere_ou_arme"
-    return (YES, "evite_un_pli_force") if v["forced_win"] else (NO, "je_peux_passer_dessous")
+    return (YES, "evite_un_pli_force") if v["forced_win"] or v["leads"] else (NO, "je_peux_passer_dessous")
 
 
 def _contre_espionnage(v):
@@ -556,7 +605,17 @@ def _cadeau_empoisonne(v):
     return (YES, "punit_sa_defausse") if v["remaining"] >= 4 else (NO, "tard")
 
 
+def _croupier_endormi2(v):
+    if owned(v, "croupier_endormi2") or v["remaining"] < 5:
+        return NO, "tard_ou_arme"
+    return (YES, "je_vais_perdre_des_plis") if v["misere_declarer"] or honours(v) <= 1 else (NO, "main_forte")
+
+
 def _dette_de_jeu(v):
+    if v["position"] == 0:  # 177e : fenetre, on vise le meneur adverse
+        if v["misere"] or v["leader"] not in v["opponents"] or aces(v) > 0:
+            return NO, "pas_sur"
+        return YES, "le_meneur_paie"
     if v["position"] != 3 or v["best_friendly"] or v["can_win_now"]:
         return NO, "pas_sur"
     return YES, "le_gagnant_paie"
@@ -635,6 +694,9 @@ RULES = {
     "treizieme_carte": _treizieme_carte,
     "defausse_discrete": _defausse_discrete, "la_tournee": _la_tournee,
     "cadeau_empoisonne": _cadeau_empoisonne, "meche_courte": _meche_courte,
+    "pli_refile2": _pli_refile2, "faux_depart2": _faux_depart2, "la_tournee2": _la_tournee2,
+    "cadeau_empoisonne2": _cadeau_empoisonne2, "coeur_de_zinneke2": _coeur_de_zinneke2,
+    "croupier_endormi2": _croupier_endormi2,
     "beau_valet": _valets_aura("beau_valet"), "bal_des_valets": _valets_aura("bal_des_valets"),
     "valet_de_chambre": _valet_de_chambre, "feu_de_paille": _feu_de_paille, "ardoise": _ardoise,
     "addition": _addition, "complice": _complice, "verre_de_trop": _verre_de_trop, "refrain": _refrain,
@@ -653,7 +715,17 @@ def target(v, jid):
     if b == "main_de_fer":
         return main_de_fer_suit(v["hand"], v["trump"])
     if b == "dette_de_jeu":
-        return v["best_seat"]
+        return v["best_seat"] if v["best_seat"] is not None else v["leader"]
+    if b == "pli_refile2":
+        if v["last_winner"] != v["me"]:
+            return v["last_winner"]
+        decl = [s for s in v["opponents"] if s in v["side"]]
+        defs = [s for s in v["opponents"] if s not in v["side"]]
+        return ((defs or decl) if v["misere_declarer"] else (decl or v["opponents"]))[0]
+    if b == "faux_depart2":
+        if v["misere_declarer"]:
+            return v["opponents"][0]
+        return v["misere_opponents"][0] if v["misere"] else v["me"]
     if b == "brouillard_de_la_senne":
         return J.longest_suit(v["hand"])  # couleur (6c54)
     if b == "pli_refile":

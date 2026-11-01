@@ -496,7 +496,7 @@ def table(agg):
     rows = []
     kept_ids = admin_kept()
     for side in ("joueur", "bot"):
-        ids = sorted(J.CATALOG) if side == "joueur" else list(J.CASTABLE)
+        ids = sorted(i for i in J.CATALOG if i not in J.REPLACED) if side == "joueur" else list(J.CASTABLE)
         for jid in ids:
             e = agg.data[side].get(jid)
             v, why = verdict(side, jid, e)

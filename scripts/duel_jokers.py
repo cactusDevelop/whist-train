@@ -92,7 +92,7 @@ def worker(args):
         row = {}
         for name, deck, armed in VARIANTS:
             current[0] = name
-            cfg = {"kind": "duel", "act": 1, "eye": EYE, "mise": 0, "suspicion": 0, "style": "expert",
+            cfg = {"kind": "duel", "priority": True, "act": 1, "eye": EYE, "mise": 0, "suspicion": 0, "style": "expert",
                    "deck": list(deck), "duel_seed": duel_seed,
                    "habitues": habitues if armed else {}}
             pts = play_duel(cfg, duel_seed, policy, counts)

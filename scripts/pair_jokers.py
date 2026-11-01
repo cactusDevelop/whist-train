@@ -87,7 +87,7 @@ def _fmt(cell):
 
 
 def _setup(cfg, rng, force_misere):
-    cfg.update({"kind": "elite", "act": rng.choice((1, 2, 3)), "eye": J.ELITE_EYE, "boss": "", "style": "expert", "heat": True})
+    cfg.update({"kind": "elite", "act": rng.choice((1, 2, 3)), "eye": J.ELITE_EYE, "boss": "", "style": "expert", "heat": True, "priority": True})
     if force_misere:
         cfg["force_misere"] = force_misere
 

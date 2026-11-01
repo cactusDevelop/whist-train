@@ -897,6 +897,64 @@ def combo_tests():
     state.heat, state.run_energy, state.run_draws = True, 1, 1
     state.start_hand()
     oks.append(check("heat + faveurs : +2 energie, +2 jokers", (state.energy[0], len(state.joker_hand[0])), (5, 5)))
+    # 177e : fenetre de priorite
+    state, rules, game = combo_state(["courant_d_air"])
+    rules.priority = True
+    state.joker_hand[3] = ["pourboire"]
+    state.energy[3] = 3
+    game.turn = 1
+    oks.append(check("fenetre : passe sans reponse, va au siege qui peut", rules.priority_seat(), 3))
+    rules.pass_window(3)
+    oks.append(check("fenetre : puis le joueur", rules.priority_seat(), 0))
+    rules.cast_seen(3)
+    oks.append(check("fenetre : un joker la rouvre apres le lanceur", (rules.priority_seat(), rules.priority_from), (0, 0)))
+    oks.append(check("fenetre : sort hors de sa priorite refuse", rules.turn_error("pourboire", 3), "turn"))
+    oks.append(check("timing", [J.timing(j) for j in ("faux_pas", "zero", "bluff", "consigne", "pourboire")],
+                     ["turn", "card", "bidding", "none", "trick_start"]))
+    # 177e : reworks
+    state, rules, game = setup()
+    rules.trick_winners = [1]
+    game.tricks_won[:] = [0, 1, 0, 0]
+    oks.append(check("pli refile 2 : vise le dernier gagnant", J.make_effect("pli_refile2", 0).accepts_target(3, rules), False))
+    oks.append(check("pli refile 2 : vole", (rules.play(0, "pli_refile2", 1), game.tricks_won[:2]), ({"to": 0}, [1, 0])))
+    state, rules, game = setup()
+    game.turn = 1
+    oks.append(check("faux depart 2 : entame deplacee", (rules.play(0, "faux_depart2", 3), game.turn), ({}, 3)))
+    state, rules, game = setup()
+    oks.append(check("contrat facile : declarant exclu", (J.easy_contract(0, rules.contract), J.easy_contract(1, rules.contract)), (False, True)))
+    oks.append(check("contrat facile : niveau 10 exclu", J.easy_contract(1, dict(rules.contract, level=10)), False))
+    oks.append(check("contrat facile : misere exclue", J.easy_contract(1, {"type": "misere", "declarers": [0]}), False))
+    rules.effects.append(J.make_effect("la_tournee2", 1))
+    oks.append(check("la tournee 2 : atout d'abord", rules.legal_cards([card(H, 14), card(S, 2), card(S, 5)], None, 0), [card(S, 5)]))
+    oks.append(check("la tournee 2 : defenseur libre", len(rules.legal_cards([card(H, 14), card(S, 2)], None, 3)), 2))
+    state, rules, game = setup()
+    rules.scorer = lambda g, c: [g.tricks_won[0] + g.tricks_won[2] - 8] * 1 + [0, 0, 0]
+    game.tricks_won[:] = [4, 5, 0, 4]
+    rules.effects.append(J.make_effect("cadeau_empoisonne2", 1))
+    oks.append(check("cadeau 2 : deux plis de moins, moitie de la perte", rules.adjust_deltas([0, 0, 0, 0], rules.contract), [-2, 1, 0, 0]))
+    oks.append(check("cadeau 2 : plis restaures", game.tricks_won, [4, 5, 0, 4]))
+    state, rules, game = setup()
+    state.draw_pile[0] = ["chope_vide2", "chope_vide2"]
+    state.draw_jokers(0, 2)
+    rules.adjust_deltas([0, 0, 0, 0], rules.contract)
+    oks.append(check("chope vide 2 : ses copies ne comptent pas", state.next_hand_draws[0], 2))
+    # 177e : matchs complets sous fenetre, regles lues par le joueur simule
+    import engine.joker_match as jm
+    casts = {}
+    rng = random.Random(5)
+    for _ in range(12):
+        cfg = jm.random_config(rng)
+        cfg["style"] = "expert"
+        cfg["deck"] = cfg["deck"] + ["faux_depart2", "pli_refile2", "la_tournee2", "cadeau_empoisonne2", "coeur_de_zinneke2", "manche_truquee"]
+        m = jm.Match(cfg, rng.randrange(1 << 30))
+        for _h in range(jm.HANDS_PER_MATCH):
+            hand = m.next_hand()
+            jm.play_out(hand, J.heuristic_action)
+            m.finish(hand)
+            for j in hand.state.cast_ids[0]:
+                casts[J.base_id(j)] = casts.get(J.base_id(j), 0) + 1
+    print("lances par le joueur simule :", sorted(casts.items()))
+    oks.append(check("matchs sous fenetre : le joueur lance", sum(casts.values()) > 0, True))
     # Joueur simule : une regle par joker lancable
     missing = [j for j in ("beau_valet", "bal_des_valets", "valet_de_chambre", "feu_de_paille", "ardoise", "addition",
                        "complice", "verre_de_trop", "refrain") if j not in X.RULES]
