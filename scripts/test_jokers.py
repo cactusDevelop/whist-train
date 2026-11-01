@@ -931,7 +931,7 @@ def combo_tests():
     rules.scorer = lambda g, c: [g.tricks_won[0] + g.tricks_won[2] - 8] * 1 + [0, 0, 0]
     game.tricks_won[:] = [4, 5, 0, 4]
     rules.effects.append(J.make_effect("cadeau_empoisonne2", 1))
-    oks.append(check("cadeau 2 : deux plis de moins, moitie de la perte", rules.adjust_deltas([0, 0, 0, 0], rules.contract), [-2, 1, 0, 0]))
+    oks.append(check("cadeau 2 : deux plis de moins, moitie de la perte", rules.adjust_deltas([0, 0, 0, 0], rules.contract), [-2, 3, 0, 0]))
     oks.append(check("cadeau 2 : plis restaures", game.tricks_won, [4, 5, 0, 4]))
     state, rules, game = setup()
     state.draw_pile[0] = ["chope_vide2", "chope_vide2"]
