@@ -27,7 +27,7 @@ DISTILL_COEF = 1.0
 
 def update(net, optimizer, obs_batch, action_mask_batch, action_batch, old_logp_batch,
            return_batch, advantage_batch, return_scale=1.0, epochs=EPOCHS, minibatch_size=MINIBATCH_SIZE,
-           targets=None, distill_coef=DISTILL_COEF, target_weights=None):
+           targets=None, distill_coef=DISTILL_COEF, target_weights=None, entropy_coef=ENTROPY_COEF):
     obs = torch.stack(obs_batch)
     masks = torch.stack(action_mask_batch)
     actions = torch.tensor(action_batch, dtype=torch.long)
@@ -61,7 +61,7 @@ def update(net, optimizer, obs_batch, action_mask_batch, action_batch, old_logp_
             policy_loss = -torch.min(surr1, surr2).mean()
             value_loss = ((values - value_targets[idx]) ** 2).mean()
             entropy = dist.entropy().mean()
-            loss = policy_loss + VALUE_COEF * value_loss - ENTROPY_COEF * entropy
+            loss = policy_loss + VALUE_COEF * value_loss - entropy_coef * entropy
             if n_targets:
                 w = has_target[idx]
                 if w.sum() > 0:

@@ -5,12 +5,16 @@ on:
     inputs:
       mode:
         type: choice
-        options: [ppo, jokers, jokers_small, jokers_eval, jokers_defence, jokers_test, jokers_duel, jokers_misere, jokers_pairs, jokers_diag, jokers_profit, ppo_team_errors, dds_test, ppo_smoke, ppo_atout_diag, ppo_camp_diag, expert_bid_audit]
+        options: [ppo, ppo_free, jokers, jokers_small, jokers_eval, jokers_defence, jokers_test, jokers_duel, jokers_misere, jokers_pairs, jokers_diag, jokers_profit, ppo_team_errors, dds_test, ppo_smoke, ppo_atout_diag, ppo_camp_diag, expert_bid_audit]
         default: ppo
       init:
         description: "Jokers : repartir de l'archive (--init) au lieu de --resume"
         type: boolean
         default: false
+      minutes:
+        description: "ppo_free : duree en minutes (vide = bloc long)"
+        type: string
+        default: ""
   schedule:
     - cron: "17 */6 * * *"
 
@@ -33,6 +37,7 @@ jobs:
       MEASURE: ${{ inputs.mode == 'jokers_eval' || inputs.mode == 'jokers_defence' || inputs.mode == 'jokers_test' || inputs.mode == 'jokers_duel' || inputs.mode == 'jokers_misere' || inputs.mode == 'jokers_pairs' || inputs.mode == 'jokers_diag' || inputs.mode == 'jokers_profit' || inputs.mode == 'ppo_team_errors' || inputs.mode == 'ppo_atout_diag' || inputs.mode == 'ppo_camp_diag' || inputs.mode == 'expert_bid_audit' || inputs.mode == 'dds_test' || inputs.mode == 'ppo_smoke' }}
       STATE: ${{ (inputs.mode == 'ppo_team_errors' || inputs.mode == 'ppo_atout_diag' || inputs.mode == 'ppo_camp_diag' || inputs.mode == 'expert_bid_audit' || inputs.mode == 'dds_test' || inputs.mode == 'ppo_smoke') && 'ppo' || (inputs.mode == 'jokers_small' || inputs.mode == 'jokers_eval' || inputs.mode == 'jokers_defence' || inputs.mode == 'jokers_test' || inputs.mode == 'jokers_duel' || inputs.mode == 'jokers_misere' || inputs.mode == 'jokers_pairs' || inputs.mode == 'jokers_diag' || inputs.mode == 'jokers_profit') && 'jokers' || inputs.mode || 'ppo' }}
       INIT: ${{ inputs.init || false }}
+      FREE_MINUTES: ${{ inputs.minutes }}
       GH_TOKEN: ${{ github.token }}
       STATE_KEY: ${{ secrets.STATE_KEY }}
     defaults:
@@ -62,7 +67,15 @@ jobs:
       - id: restore
         name: Restore state
         run: |
-          gh release download checkpoint-latest -p "state-$STATE.tar.gz.enc" -D .
+          # L'IA libre lit la championne et l'encherisseur de l'etat ppo, sans jamais l'ecrire.
+          if [ "$STATE" = ppo_free ]; then
+            gh release download checkpoint-latest -p state-ppo.tar.gz.enc -D .
+            openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass env:STATE_KEY               -in state-ppo.tar.gz.enc | tar xz
+            rm state-ppo.tar.gz.enc
+            gh release download checkpoint-latest -p state-ppo_free.tar.gz.enc -D . || exit 0
+          else
+            gh release download checkpoint-latest -p "state-$STATE.tar.gz.enc" -D .
+          fi
           openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass env:STATE_KEY \
             -in "state-$STATE.tar.gz.enc" | tar xz
           rm "state-$STATE.tar.gz.enc"
@@ -90,4 +103,7 @@ jobs:
 
       - name: Chain next run
         if: success() && vars.TRAINING_ENABLED == 'true' && env.MEASURE != 'true' && env.MODE != 'jokers_small'
-        run: gh workflow run train.yml -f mode="$MODE" -f init=false
+        run: |
+          # L'IA libre ne s'enchaine que si ci/ppo_free_chain existe (runs courts d'abord).
+          if [ "$MODE" = ppo_free ] && [ ! -f ci/ppo_free_chain ]; then exit 0; fi
+          gh workflow run train.yml -f mode="$MODE" -f init=false
