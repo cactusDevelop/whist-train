@@ -30,12 +30,14 @@ import random
 
 from engine.cards import NUM_PLAYERS, legal_plays, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "61efeb6bec4fc521"
+JOKER_SPEC_HASH = "7c9833d46f38a48a"
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
 # texte ou de cablage seulement) : un reseau entraine sous l'une d'elles est
 # reexporte tel quel avec JOKER_SPEC_HASH. Une regle qui change -> vider la
 # liste (sauf le hash courant) et reentrainer.
 RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH}
+# 7c98 (whist-4-it 31a19be) : config "pose" (runs neuves, Duel, Belle) : un passif du joueur agit une fois pose
+# (0 energie, jamais paye), plus des la pioche ; bots inchanges -> regle changee.
 # 61ef (whist-4-it f25a277, Synergies 08-09) : decks de combos des boss (runs a Chaleur), JokerComboBot hors reseau,
 # defausses des bots, 6 jokers jamais lances par les bots (CASTABLE/ACTION_DIM inchanges), Faux Depart 2 interdit
 # avant la premiere carte du bouche-trou -> regle changee.
@@ -1850,6 +1852,7 @@ class MatchState:
         self.dry_hand = False  # donne du joueur sous « sans allumettes » : sa defausse ne rapporte rien
         self.run_energy = 0  # Synergies 04a : faveurs du run, siege 0
         self.run_draws = 0
+        self.pose = False  # 7c98 : un passif du joueur agit une fois pose, celui d'un bot des la pioche
         self.heat = False  # Synergies 04b : paliers de Chaleur (jamais au Duel)
         self.carried = [0] * NUM_PLAYERS  # 6483 : ⚡ reportes (Boite d'Allumettes)
         self.debts = [0] * NUM_PLAYERS  # 6483 : ⚡ dus (L'Ardoise)
@@ -1943,8 +1946,27 @@ class MatchState:
             jid = self.draw_pile[seat].pop()
             self.joker_hand[seat].append(jid)
             # 65a7 : un passif agit depuis une case libre ; les deux prises, il dort dans la main
-            if jtype(jid) == "passif" and self.rules is not None and self.rules.free_case(seat) >= 0:
+            if jtype(jid) == "passif" and self.rules is not None and self.arms_on_draw(seat) and self.rules.free_case(seat) >= 0:
                 self.rules.play(seat, jid)
+
+    def arms_on_draw(self, seat):
+        return not (self.pose and seat == PLAYER)
+
+    def pose_error(self, seat, jid):
+        if jid not in self.joker_hand[seat]:
+            return "not_in_hand"
+        if self.arms_on_draw(seat) or jtype(jid) != "passif":
+            return "passive"
+        return "discard" if self.to_discard[seat] > 0 else ""
+
+    def pose_passives(self):
+        """RogueAutopilot._pose_passives : chaque passif qui trouve une case
+        libre, gratuit, jamais compte comme joker paye (combo, Chope Vide)."""
+        for jid in list(self.joker_hand[PLAYER]):
+            if self.pose_error(PLAYER, jid) == "" and self.rules.free_case(PLAYER) >= 0:
+                if not self.rules.play(PLAYER, jid).get("error"):
+                    self.joker_hand[PLAYER].remove(jid)
+                    self.discard[PLAYER].append(jid)
 
     def must_discard(self, seat, n):
         """`seat` doit defausser `n` jokers de sa main ; un bot paie aussitot
@@ -1982,7 +2004,7 @@ class MatchState:
             return extra
         if make_effect(jid, seat).discard_energy() > 0:
             return extra
-        if self.rules is not None and jtype(jid) == "passif" and self.rules.armed(seat, jid):
+        if self.rules is not None and self.arms_on_draw(seat) and jtype(jid) == "passif" and self.rules.armed(seat, jid):
             return extra
         return DISCARD_GAIN + extra
 
@@ -1996,7 +2018,7 @@ class MatchState:
         """Due d'abord (Main Lourde), sinon payee DISCARD_GAIN ; -> energie gagnee."""
         gain = self.discard_gain(seat, jid)
         self.joker_hand[seat].remove(jid)
-        if self.rules is not None and jtype(jid) == "passif":
+        if self.rules is not None and self.arms_on_draw(seat) and jtype(jid) == "passif":
             self.rules.disarm(seat, jid)
         if self.to_return[seat] > 0:
             self.to_return[seat] -= 1

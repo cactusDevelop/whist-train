@@ -95,6 +95,7 @@ class Match:
         self.state.run_energy = config.get("run_energy", 0)  # RogueMatch : config du match (04a, 04b), jamais le Duel
         self.state.run_draws = config.get("run_draws", 0)
         self.state.heat = config.get("heat", False)
+        self.state.pose = config.get("pose", False)  # 7c98 : runs neuves, Duel, Belle
         self.rules = JokerRules(self.state, random.Random(self.rng.random()))
         self.rules.set_spammers(spammers)  # 65a7 : 3 cases d'effet de donne
         boss = config.get("boss", "")
@@ -119,6 +120,7 @@ class Match:
             self.state.end_hand()
             self.rules.new_hand(None, None)
             self.state.start_hand()
+            self.state.pose_passives()  # 7c98 : le joueur simule pose des qu'il peut
             if self.deals is not None:
                 hands, dealer, whisted = self.deals.pop(0)
                 hands = [list(h) for h in hands]
@@ -576,7 +578,7 @@ def random_config(rng):
             style = name
             break
         x -= p
-    cfg.update({"heat": True, "priority": True,  # une run neuve (RogueRun.match_config)
+    cfg.update({"heat": True, "priority": True, "pose": True,  # une run neuve (RogueRun.match_config)
                 "deck": player_deck(cfg["act"], rng), "suspicion": rng.randint(0, 7),
                 "style": style, "cast_prob": round(rng.uniform(0.15, 0.6), 3),
                 "mise": rng.randrange(J.MISE_COUNT)})  # Mises 0..3 (79ac)
@@ -702,6 +704,7 @@ class Player:
     def trick_turn(self, hand, once=False):
         """Avant la carte du joueur ; True si une carte de joker a ete posee
         a sa place."""
+        hand.state.pose_passives()  # 7c98 : une pioche pendant la donne (La Peche, Verre de Trop)
         if self.force_trick is not None:
             jid, self.force_trick = self.force_trick, None
             tgt = None

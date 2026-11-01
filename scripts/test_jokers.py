@@ -920,6 +920,18 @@ def combo_tests():
     state, rules, game = setup()
     game.turn = 1
     oks.append(check("faux depart 2 : entame deplacee", (rules.play(0, "faux_depart2", 3), game.turn), ({}, 3)))
+    # 7c98 : un passif du joueur agit une fois pose, celui d'un bot des la pioche
+    pose = J.MatchState([["consigne", "zero"], ["consigne"], [], []], random.Random(1))
+    pose.pose = True
+    pose.rules = J.JokerRules(pose, random.Random(2))
+    pose.start_hand()
+    oks.append(check("pose : passif du joueur inactif en main, bot arme", (pose.rules.armed(0, "consigne"), pose.rules.armed(1, "consigne")), (False, True)))
+    energy = pose.energy[0]
+    oks.append(check("pose : en main, sa defausse paie comme tout joker", pose.discard_gain(0, "cendrier" if "cendrier" in pose.joker_hand[0] else "zero"), 1))
+    played = pose.played_this_hand[0]
+    pose.pose_passives()
+    oks.append(check("pose : gratuit, hors main, arme, jamais compte", (pose.rules.armed(0, "consigne"), "consigne" in pose.joker_hand[0], "consigne" in pose.discard[0], pose.energy[0] - energy, pose.played_this_hand[0] - played), (True, False, True, 0, 0)))
+    oks.append(check("pose : un bot ne pose pas", pose.arms_on_draw(1), True))
     # 61ef (Synergies 08-09)
     state, rules, game = setup()
     effect = J.make_effect("vieille_habitude", 0)
