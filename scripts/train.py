@@ -677,14 +677,19 @@ class PendingTarget:
     PPO. Meme resultat qu'en synchrone : si le dds ne donne pas de cible,
     la decision recoit `fallback` (imitation de l'ExpertBot ou garde-fou
     enseigne) et compte dans les stats d'imitation."""
-    __slots__ = ("finish", "legal", "margin", "scale", "fallback", "teacher_card", "action")
+    __slots__ = ("finish", "legal", "margin", "scale", "fallback", "teacher_card", "action", "trick")
 
-    def __init__(self, finish, legal, margin, scale):
-        self.finish, self.legal, self.margin, self.scale = finish, legal, margin, scale
+    def __init__(self, finish, legal, margin, scale, trick):
+        self.finish, self.legal, self.margin, self.scale, self.trick = finish, legal, margin, scale, trick
         self.fallback = self.teacher_card = self.action = None
 
     def resolve(self, rollout, teacher):
-        q = self.finish()
+        q, cpu = self.finish()
+        # temps des workers par pli (decisions, secondes, sans cible faute de mondes)
+        row = rollout.setdefault("by_trick", {}).setdefault(min(self.trick, 3), [0, 0.0, 0])
+        row[0] += 1
+        row[1] += cpu
+        row[2] += q is None
         target = None
         if q is not None:
             target = rollouts.best_set_target(self.legal, q, self.margin, self.scale)
@@ -762,7 +767,8 @@ def play_out(game, nets, rollout=None, teacher=None, visitors=None, rng=None):
                 else:
                     margin, scale = rollout["margin"], credit.return_scale(role)
                 pending = PendingTarget(rollouts.dds_values_async(
-                    game, seat, legal, rollout["score_fn"], rollout["rng"], samples), legal, margin, scale)
+                    game, seat, legal, rollout["score_fn"], rollout["rng"], samples), legal, margin, scale,
+                    len(game.play_log) // 4)
             rollout["seconds"] += time.time() - t0
         elif samples:
             t0 = time.time()
@@ -1879,6 +1885,11 @@ def main():
                           rollout["corrective"],
                           rollout["seconds"]),
                       flush=True)
+                by_trick = rollout.pop("by_trick", None)
+                if by_trick:
+                    print("  rollouts dds, temps des workers par pli : %s" % ", ".join(
+                        "pli %s : %d decisions %.0fs cpu (%d sans cible)" % ("%d+" % (k + 1) if k == 3 else str(k + 1), n, s, lost)
+                        for k, (n, s, lost) in sorted(by_trick.items())), flush=True)
             if teacher is not None:
                 print("  imitation ExpertBot : poids %.3f, %d decisions ciblees, accord IA/bot %.1f%% "
                       "(%d donnes d'imitation au total)" % (

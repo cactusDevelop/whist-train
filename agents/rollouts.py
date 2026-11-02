@@ -202,14 +202,16 @@ def action_values(game, seat, nets, score_fn, rng, samples, policy="nets"):
 DDS_WORLD_NODES = 15_000_000  # budget d'un monde (~1.5 s) : au-dela il est ecarte
 
 
-def _dds_world(args):
+def _dds_world(args, carry=None):
     """Un monde : plis restants du camp declarant apres chaque carte legale
     (None si la carte termine la donne), ou None si le monde depasse son
-    budget de noeuds. Picklable (pool de processus)."""
+    budget de noeuds. Picklable (pool de processus). `carry` (dict) : atout
+    du dernier solve, pour garder la table de transposition d'un monde a
+    l'autre de la meme decision (memes camps ; exact tant que l'atout est le meme)."""
     from engine import dds
     game, seat, legal, hands = args
     out = []
-    last_trump = object()
+    last_trump = carry["trump"] if carry is not None else object()
     left = DDS_WORLD_NODES
     for card in legal:
         g = clone_with_hands(game, hands)
@@ -225,6 +227,8 @@ def _dds_world(args):
             return None
         out.append(r)
         last_trump = g.trump_suit
+        if carry is not None:
+            carry["trump"] = last_trump
     return out
 
 
@@ -250,18 +254,39 @@ def dds_values_async(game, seat, legal, score_fn, rng, samples):
     par pickle au moment de la decision, la vraie donne peut continuer."""
     import pickle
     worlds = [(game, seat, legal, determinize(game, seat, rng)) for _ in range(samples)]
-    frozen = [pickle.dumps(w, protocol=pickle.HIGHEST_PROTOCOL) for w in worlds]
-    handle = _POOL.map_async(_dds_world_frozen, frozen)
+    frozen = pickle.dumps(worlds, protocol=pickle.HIGHEST_PROTOCOL)
+    handle = _POOL.apply_async(_dds_decision, (frozen,))
 
     def finish():
-        snap = [pickle.loads(f) for f in frozen]
-        return _dds_q(snap[0][0], seat, legal, score_fn, samples, snap, handle.get())
+        """-> (Q ou None, secondes de calcul du worker pour cette decision)"""
+        results, cpu = handle.get()
+        snap = pickle.loads(frozen)
+        return _dds_q(snap[0][0], seat, legal, score_fn, samples, snap, results), cpu
     return finish
 
 
-def _dds_world_frozen(frozen):
+def _dds_decision(frozen):
+    """Tous les mondes d'UNE decision dans un worker (2026-11-02, vitesse ;
+    le parallelisme vient des decisions en vol) : la table de transposition
+    sert d'un monde a l'autre, et on s'arrete des que plus de la moitie des
+    mondes sont hors budget -- _dds_q ne donnerait de toute facon pas de
+    cible (resultat identique)."""
     import pickle
-    return _dds_world(pickle.loads(frozen))
+    import time
+    t0 = time.process_time()
+    worlds = pickle.loads(frozen)
+    carry = {"trump": object()}
+    results, lost = [], 0
+    for w in worlds:
+        r = _dds_world(w, carry)
+        results.append(r)
+        if r is None:
+            lost += 1
+            carry["trump"] = object()  # arret en cours de solve : table invalidee par dds_solve
+            if lost * 2 > len(worlds):
+                results += [None] * (len(worlds) - len(results))
+                break
+    return results, time.process_time() - t0
 
 
 def async_ready():
