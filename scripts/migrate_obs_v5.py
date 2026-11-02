@@ -21,7 +21,7 @@ sys.path.insert(0, ".")
 from agents.network import PolicyValueNet
 from agents.specialists import PLAY_ACTION_DIM, PLAY_ROLES
 from agents.checkpoint_io import safe_save
-from engine.observation import OBS_DIM, OBS_DIM_V4
+from engine.observation import OBS_DIM_V4, OBS_DIM_V5 as OBS_DIM  # cible historique de cette migration : v5
 
 FIRST = "trunk.0.weight"
 

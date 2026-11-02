@@ -41,7 +41,7 @@ sys.path.insert(0, ".")
 
 from agents import bid_ppo as bid_ppo_mod
 from agents import evolution, ppo, specialists
-from agents.network import PolicyValueNet
+from agents.network import PolicyValueNet, widen_adam_state
 from agents.play_guards import ai_play_mask
 from agents.specialists import PLAY_ROLES, safe_save
 from engine.bidding import Bidding
@@ -183,6 +183,7 @@ def train_member(args):
     if member["opts"] is not None:
         for role, state in member["opts"].items():
             opts[role].load_state_dict(state)
+            widen_adam_state(opts[role])
             for group in opts[role].param_groups:
                 group["lr"] = member["hp"]["lr"]
     peer_nets = load_nets(torch.load(member_path(peer), map_location="cpu", weights_only=False)["nets"]) if peer else None

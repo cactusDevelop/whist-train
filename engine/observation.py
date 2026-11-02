@@ -53,6 +53,14 @@ Blocs, dans l'ordre :
      alors que l'ExpertBot s'en sert partout
      (may_hold / may_ruff). Ajoute A LA FIN
      (scripts/migrate_obs_v5.py).                  4 x 4
+  P  (v6, 2026-11-02, demande du user) mes allies,
+     par siege relatif r = 1, 2, 3 : 1 si ce siege
+     est dans mon camp d'apres le contrat PUBLIC
+     (teammates()). Le joueur le voit a la table ;
+     avant la v6 le reseau devait le deduire de son
+     role + bloc I. Ajoute A LA FIN : les reseaux
+     existants recoivent des colonnes nulles au
+     chargement (agents/network.py, obs_widen).    3
 """
 
 from engine.bid_summary import MAX_RANK
@@ -63,6 +71,7 @@ CONTRACT_TYPES = ["emballage", "trou", "solo", "misere"]
 MIN_LEVEL, MAX_LEVEL = 6, 13
 MAX_TRICKS = 13
 BID_SEAT_DIM = NUM_SUITS + NUM_SUITS + (MAX_RANK + 1) + 4
+ALLY_DIM = NUM_PLAYERS - 1
 
 OBS_DIM = (
     NUM_CARDS                                   # A
@@ -80,8 +89,10 @@ OBS_DIM = (
     + 1                                         # M
     + 4 + 1 + NUM_CARDS                         # N
     + NUM_PLAYERS * NUM_SUITS                   # O
+    + ALLY_DIM                                  # P
 )
-OBS_DIM_V4 = OBS_DIM - NUM_PLAYERS * NUM_SUITS
+OBS_DIM_V5 = OBS_DIM - ALLY_DIM
+OBS_DIM_V4 = OBS_DIM_V5 - NUM_PLAYERS * NUM_SUITS
 OBS_DIM_V3 = OBS_DIM_V4 - (4 + 1 + NUM_CARDS)
 
 
@@ -124,6 +135,15 @@ def void_features(seat, play_log):
         for s, c in chunk[1:]:
             if suit_of(c) != led:
                 f[((s - seat) % NUM_PLAYERS) * NUM_SUITS + led] = 1.0
+    return f
+
+
+def ally_features(contract, seat):
+    """Bloc P -> 3 flottants : [r - 1] = 1 si le siege relatif r (1..3) est
+    mon allie d'apres le contrat public."""
+    f = [0.0] * ALLY_DIM
+    for s in teammates(contract, seat):
+        f[(s - seat) % NUM_PLAYERS - 1] = 1.0
     return f
 
 
@@ -223,6 +243,7 @@ def build(seat, hand, play_log, dealer, contract, bid_summary=None,
     f += [1.0 if whisted else 0.0]                                      # M
     f += current_trick_features(seat, hand, current, contract, trump)   # N
     f += void_features(seat, play_log)                                  # O
+    f += ally_features(contract, seat)                                  # P
     assert len(f) == OBS_DIM, (len(f), OBS_DIM)
     return f
 
@@ -240,7 +261,7 @@ def _offsets():
              ("Ht", len(CONTRACT_TYPES)), ("Hk", len(MISERE_ORDER)), ("Hl", MAX_LEVEL - MIN_LEVEL + 1),
              ("Hu", 1), ("Htr", NUM_SUITS), ("Hr", 1), ("Id", 4), ("Ip", 4), ("J", 4 * (MAX_TRICKS + 1)),
              ("Kt", MAX_TRICKS), ("Kp", 4), ("Kd", 4), ("L", 1), ("Ls", 4 * BID_SEAT_DIM), ("M", 1),
-             ("N", 4 + 1 + NUM_CARDS), ("O", NUM_PLAYERS * NUM_SUITS)]
+             ("N", 4 + 1 + NUM_CARDS), ("O", NUM_PLAYERS * NUM_SUITS), ("P", ALLY_DIM)]
     out, pos = {}, 0
     for name, n in sizes:
         out[name] = pos
@@ -341,3 +362,6 @@ def build_fast_into(out, game, seat):
     for i, v in enumerate(void_features(seat, play_log)):
         if v:
             out[o["O"] + i] = 1.0
+    for i, v in enumerate(ally_features(contract, seat)):
+        if v:
+            out[o["P"] + i] = 1.0

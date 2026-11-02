@@ -27,6 +27,7 @@ import torch
 import torch.nn as nn
 
 from agents.checkpoint_io import safe_save
+from agents.network import obs_widen, widen_adam_state
 from engine.cards import NUM_CARDS, NUM_PLAYERS
 from engine.observation import OBS_DIM
 
@@ -46,6 +47,10 @@ class OracleCritic(nn.Module):
             nn.Linear(HIDDEN, HIDDEN), nn.ReLU(),
             nn.Linear(HIDDEN, 1),
         )
+
+    def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
+        obs_widen(state_dict, prefix + "body.0.weight", self.body[0].in_features)
+        super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
 
     def forward(self, x):
         return self.body(x).squeeze(-1)
@@ -74,6 +79,7 @@ def load_or_create(checkpoint_dir, role):
         ckpt = torch.load(p, map_location="cpu")
         critic.load_state_dict(ckpt["net"])
         optimizer.load_state_dict(ckpt["optimizer"])
+        widen_adam_state(optimizer)
     return critic, optimizer
 
 

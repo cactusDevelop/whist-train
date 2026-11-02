@@ -30,7 +30,7 @@ import os
 import torch
 
 from agents.checkpoint_io import safe_save
-from agents.network import PolicyValueNet
+from agents.network import PolicyValueNet, widen_adam_state
 from engine.cards import NUM_CARDS
 from engine.observation import OBS_DIM as PLAY_OBS_DIM
 
@@ -107,6 +107,7 @@ def load_or_create(role):
         ckpt = torch.load(path, map_location="cpu")
         net.load_state_dict(ckpt["net"])
         optimizer.load_state_dict(ckpt["optimizer"])
+        widen_adam_state(optimizer)
     elif role in WARM_START_FROM:
         source_role = WARM_START_FROM[role]
         source_path = checkpoint_path(source_role)
