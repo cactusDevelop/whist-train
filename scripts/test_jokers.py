@@ -292,9 +292,9 @@ def v2_tests():
     rules.bind(game, c)
     game.trump_suit = S
     fer = J.make_effect("main_de_fer", 0)
-    oks.append(check("main de fer (7567) : sort de 2 sur un contrat adverse",
+    oks.append(check("main de fer (8261) : sort de 3 sur un contrat adverse",
                      (J.jtype("main_de_fer"), J.jcost("main_de_fer"), J.jsuspicion("main_de_fer"), fer.pointless(rules)),
-                     ("sort", 2, 2, False)))
+                     ("sort", 3, 2, False)))
     oks.append(check("main de fer : sans couleur ou la meme, refuse", (rules.play(0, "main_de_fer"), rules.play(0, "main_de_fer", S)),
                      ({"error": "target"}, {"error": "target"})))
     oks.append(check("main de fer : atout change", (rules.play(0, "main_de_fer", H), c["suit"], game.trump_suit), ({}, H, H)))

@@ -30,12 +30,14 @@ import random
 
 from engine.cards import NUM_PLAYERS, legal_plays, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "7c9833d46f38a48a"
+JOKER_SPEC_HASH = "82618eba4b8f4bf1"
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
 # texte ou de cablage seulement) : un reseau entraine sous l'une d'elles est
 # reexporte tel quel avec JOKER_SPEC_HASH. Une regle qui change -> vider la
 # liste (sauf le hash courant) et reentrainer.
 RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH}
+# 8261 (whist-4-it abd18ee, 02/11, decision user sur la mesure 7c98) : Main de Fer coute 3 ⚡ (2 avant) ;
+# jamais lance par les bots (CASTABLE inchange) mais le joueur simule le paie -> regle changee.
 # 7c98 (whist-4-it 31a19be) : config "pose" (runs neuves, Duel, Belle) : un passif du joueur agit une fois pose
 # (0 energie, jamais paye), plus des la pioche ; bots inchanges -> regle changee.
 # 61ef (whist-4-it f25a277, Synergies 08-09) : decks de combos des boss (runs a Chaleur), JokerComboBot hors reseau,
@@ -158,7 +160,7 @@ CATALOG = {
     "cartes_sur_table": ("enchere", "comptoir", 0, False),
     "bluff": ("enchere", "salle", 1, False),
     "rachat": ("enchere", "salle", 2, False),
-    "main_de_fer": ("sort", "arriere_salle", 2, False),
+    "main_de_fer": ("sort", "arriere_salle", 3, False),
     "pot_de_vin": ("enchere", "arriere_salle", 1, False),
     "fossoyeur_de_plis": ("passif", "salle", 0, False),
     "brimborion_dore": ("passif", "arriere_salle", 0, False),
