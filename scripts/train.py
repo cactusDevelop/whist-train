@@ -755,6 +755,8 @@ def play_out(game, nets, rollout=None, teacher=None, visitors=None, rng=None):
                 rollout["atouts"] += 1
             elif rollout["prob"] > 0 and rollout["rng"].random() < rollout["prob"]:
                 samples = rollout["samples"]
+        if samples and rollout.get("first_trick_samples") is not None and len(game.play_log) < 4:
+            samples = min(samples, rollout["first_trick_samples"])
         if samples and rollout.get("policy") == "dds" and not dds_supported(game):
             samples = 0
         pending = None
@@ -1481,6 +1483,9 @@ def main():
     parser.add_argument("--rollout-coupe-samples", type=int, default=ROLLOUT_COUPE_SAMPLES_DEFAULT,
                         help="mondes par renonce non coupee possible (coequipier entame dans notre renonce, "
                              "un atout prendrait) ; 0 pour desactiver")
+    parser.add_argument("--rollout-first-trick-samples", type=int, default=None,
+                        help="plafond de mondes pour toute decision analysee au 1er pli (defaut : pas de plafond) -- "
+                             "~6 %% des decisions mais ~55 %% du calcul dds (mesure 02/11, accord user : 4)")
     parser.add_argument("--rollout-atout-samples", type=int, default=ROLLOUT_ATOUT_SAMPLES_DEFAULT,
                         help="mondes par entame du camp declarant quand un adversaire a encore de l'atout ; "
                              "0 pour desactiver")
@@ -1695,7 +1700,7 @@ def main():
             or args.rollout_atout_samples > 0):
         rollout = {"coupe_samples": args.rollout_coupe_samples, "coupes": 0,
                    "atout_samples": args.rollout_atout_samples, "atouts": 0, "prob": args.rollout_per_deal / DECISIONS_PER_DEAL, "samples": args.rollout_samples,
-                   "surcoupe_samples": args.rollout_surcoupe_samples,
+                   "surcoupe_samples": args.rollout_surcoupe_samples, "first_trick_samples": args.rollout_first_trick_samples,
                    "margin": args.rollout_margin, "margin_tricks": args.rollout_margin_tricks, "rng": random.Random(rng.random()),
                    "score_fn": None, "policy": args.rollout_policy, "count": 0, "corrective": 0, "surcoupes": 0, "seconds": 0.0}
         print("Rollouts : chaque occasion de surcoupe hors misere (%d mondes) + ~%.1f decision(s)/donne au "
