@@ -19,9 +19,17 @@ memes donnes, et dans chaque niche le dernier est remplace par une copie du
 premier, reglages perturbes (lr, entropie), seulement si l'ecart depasse le
 bruit. L'encherisseur est fixe (greedy) : on ne juge que la carte.
 
-La porte est celle de scripts/champion_play.py (par camp, 3 parties par donne),
-sauf que le membre joue sans garde-fous et la championne avec les siens, comme
-en jeu. Le meilleur est garde dans checkpoints_free/best/.
+REFERENCE (correctif 2026-11-02) : la mesure du 02/11 a montre que 30 cycles
+de portes "acceptees" contre l'ancienne championne ppo n'avaient rien apporte
+(best vs ExpertBot -2.7 aux cycles 23, 41 et 53). Desormais :
+  - la reference est best.pt (la meilleure IA libre), pas la championne ppo :
+    selection et porte mesurent contre elle, cartes legales des deux cotes ;
+  - la porte se joue sur des donnes NEUVES a chaque cycle (la selection sur
+    des donnes fixes gonflait les gains), z = 2 par camp ; acceptee -> le
+    membre devient best.pt, la barre monte a chaque acceptation ;
+  - adversaires d'entrainement hors miroir : ExpertBot, best ou un pair ;
+  - fin de bloc : BILAN best vs ExpertBot sur des donnes fixes (celles de
+    free_match), le vrai indicateur de progres, ajoute a free_gate.jsonl.
 
 Usage (cloud seulement) : ci/run_ppo_free.sh, mode ppo_free de train.yml.
 """
@@ -40,6 +48,7 @@ import torch
 sys.path.insert(0, ".")
 
 from agents import bid_ppo as bid_ppo_mod
+from agents import expert_bot
 from agents import evolution, ppo, specialists
 from agents.network import PolicyValueNet, widen_adam_state
 from agents.play_guards import ai_play_mask
@@ -59,7 +68,10 @@ MIN_DECISIONS = 256  # un role rare attend d'en avoir assez
 RETURN_SCALE = 20.0  # les valeurs du reseau sont en points / 20
 GAE_LAMBDA = 0.95
 SELF_PLAY_PROB = 0.5
-CHAMPION_OPP_PROB = 0.4  # le reste des donnes hors miroir : un pair de la niche
+OPPONENTS = ("expert", "best", "peer")  # hors miroir, tirage uniforme (peer -> best sans pair)
+BEST_PATH = os.path.join(ROOT, "best.pt")
+GATE_SEED = 91_000_000  # + 1000 * cycle : donnes neuves a chaque porte
+BILAN_SEED = 20261101  # = free_match.SEED : bilans comparables d'un bloc a l'autre
 START_HP = {"chaude": {"lr": 1e-4, "entropy": 0.02}, "zero": {"lr": 3e-4, "entropy": 0.03}}
 SELECTION_Z = 2.0
 
@@ -100,6 +112,13 @@ def load_bidder():
     return evolution.policy_of(evolution.best_per_lineage(population)[evolution.EXPORTED_LINEAGES[0]])
 
 
+def load_reference():
+    """best.pt (meilleure IA libre) ; a defaut, la championne ppo."""
+    if os.path.exists(BEST_PATH):
+        return load_nets(torch.load(BEST_PATH, map_location="cpu", weights_only=False))
+    return CHAMPION
+
+
 def init_worker():
     torch.set_num_threads(1)
 
@@ -133,6 +152,9 @@ def play_training_deal(chain, rng, seat_nets, learners, buffers):
         while not game.done:
             seat = game.turn
             who = game.role_of(seat)
+            if seat_nets[seat] == "expert":
+                game.step(seat, expert_bot.choose_card(game, seat))
+                continue
             obs = torch.tensor(game.observation(seat), dtype=torch.float32)
             mask = torch.tensor(game.legal_action_mask(seat), dtype=torch.bool)
             action, logp, value = seat_nets[seat][who].act(obs, mask)
@@ -187,6 +209,7 @@ def train_member(args):
             for group in opts[role].param_groups:
                 group["lr"] = member["hp"]["lr"]
     peer_nets = load_nets(torch.load(member_path(peer), map_location="cpu", weights_only=False)["nets"]) if peer else None
+    best_nets = load_reference()
     chain = DeckChain(WHISTED_RATIO_DEFAULT, rng)
     buffers = new_buffer()
     t0 = time.time()
@@ -196,7 +219,8 @@ def train_member(args):
             if rng.random() < SELF_PLAY_PROB:
                 seat_nets, learners = [nets] * 4, {0, 1, 2, 3}
             else:
-                opp = CHAMPION if peer_nets is None or rng.random() < CHAMPION_OPP_PROB else peer_nets
+                pick = rng.choice(OPPONENTS)
+                opp = "expert" if pick == "expert" else (peer_nets if pick == "peer" and peer_nets else best_nets)
                 first = rng.randrange(2)  # un camp apprend : 0-2 ou 1-3, les enchainements de sieges tournent
                 learners = {first, first + 2}
                 seat_nets = [nets if s in learners else opp for s in range(4)]
@@ -218,8 +242,10 @@ def eval_chunk(args):
     """Comme champion_play.camp_rows : base championne, membre au camp
     declarant, membre en defense. Membre = cartes legales ; championne = avec
     ses garde-fous, comme l'IA exportee."""
-    source, deals, seed = args
-    free = load_nets(torch.load(source, map_location="cpu", weights_only=False)["nets"])
+    source, deals, seed, base_name = args
+    state = torch.load(source, map_location="cpu", weights_only=False)
+    free = load_nets(state["nets"] if "nets" in state else state)
+    base_nets = load_reference() if base_name == "best" else None
     rng = random.Random(seed)
     chain = DeckChain(MEASURE_WHISTED_RATIO, rng)
     rows = {}
@@ -228,11 +254,16 @@ def eval_chunk(args):
         game = dispatch_play_phase2(contract, [list(h) for h in hands], dealer, bidding.bid_summary, whisted)
         while not game.done:
             seat = game.turn
+            if seat not in free_seats and base_name == "expert":
+                game.step(seat, expert_bot.choose_card(game, seat))
+                continue
             obs = torch.tensor(game.observation(seat), dtype=torch.float32)
             if seat in free_seats:
                 mask, net = game.legal_action_mask(seat), free[game.role_of(seat)]
-            else:
+            elif base_nets is CHAMPION:
                 mask, net = ai_play_mask(game, seat), CHAMPION[game.role_of(seat)]
+            else:
+                mask, net = game.legal_action_mask(seat), base_nets[game.role_of(seat)]
             game.step(seat, net.act_greedy(obs, torch.tensor(mask, dtype=torch.bool)))
         return real_points_by_seat(role, game, contract)
 
@@ -259,9 +290,10 @@ def eval_chunk(args):
     return rows
 
 
-def measure(pool, source, deals, seed, procs):
-    """-> mesure combinee sur `procs` paquets de donnes (memes graines = memes donnes)."""
-    parts = pool.map(eval_chunk, [(source, deals // procs, seed + i) for i in range(procs)])
+def measure(pool, source, deals, seed, procs, base="best"):
+    """-> mesure combinee sur `procs` paquets de donnes (memes graines = memes donnes).
+    base : "best" (best.pt, a defaut la championne ppo) ou "expert" (ExpertBot)."""
+    parts = pool.map(eval_chunk, [(source, deals // procs, seed + 10 * i, base) for i in range(procs)])
     rows = {}
     for part in parts:
         for role, r in part.items():
@@ -334,7 +366,7 @@ def main():
     while True:
         # dernier cycle : garder de quoi mesurer avant l'heure d'arret
         left = until - time.time()
-        seconds = min(args.cycle_seconds, left - gate_seconds * 1.5)
+        seconds = min(args.cycle_seconds, left - gate_seconds * 2.5)  # mesures du cycle + bilan final
         if seconds < min(60, args.cycle_seconds):
             break
         state["cycle"] += 1
@@ -352,30 +384,36 @@ def main():
         scores = {}
         for name, niche in names:
             scores[name] = measure(pool, member_path(name), args.select_deals, 77_000 * state["cycle"], args.workers)
-            print("  %-9s vs championne : %s" % (name, show(scores[name])), flush=True)
+            print("  %-9s vs best : %s" % (name, show(scores[name])), flush=True)
         for niche in START_HP:
             note = select([(n, scores[n]) for n, k in names if k == niche], rng)
             if note:
                 print("  selection %s : %s" % (niche, note), flush=True)
 
-        # porte par camp sur le meilleur de toute la population
+        # porte par camp sur le meilleur de toute la population, contre best, donnes neuves
         top = max(scores, key=lambda n: scores[n]["gain"])
-        r = measure(pool, member_path(top), args.gate_deals, champion_play.CHAMPION_SEED, args.workers)
+        r = measure(pool, member_path(top), args.gate_deals, GATE_SEED + 1000 * state["cycle"], args.workers)
         z = champion_play.GATE_Z
         accepted = (r["gain"] - z * r["se"] > 0 and r["decl"] + z * r["decl_se"] >= 0 and r["def"] + z * r["def_se"] >= 0)
-        better = state["best_gain"] is None or r["gain"] > state["best_gain"]
-        print("=== Porte %s vs championne, cycle %d : %s -> %s ===" % (
-            top, state["cycle"], show(r), "ACCEPTEE" if accepted else "refusee"), flush=True)
-        if accepted and better:
-            state["best_gain"] = r["gain"]
-            safe_save(torch.load(member_path(top), map_location="cpu", weights_only=False)["nets"],
-                      os.path.join(ROOT, "best.pt"))
+        print("=== Porte %s vs best, cycle %d (donnes neuves) : %s -> %s ===" % (
+            top, state["cycle"], show(r), "ACCEPTEE, nouveau best" if accepted else "refusee"), flush=True)
+        if accepted:
+            safe_save(torch.load(member_path(top), map_location="cpu", weights_only=False)["nets"], BEST_PATH)
+            state["best_cycle"] = state["cycle"]
         with open(GATE_FILE, "a", encoding="utf-8") as f:
             f.write(json.dumps({"cycle": state["cycle"], "top": top, "accepted": accepted, "gate": r,
                                 "scores": scores, "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S")}) + "\n")
         with open(state_path, "w", encoding="utf-8") as f:
             json.dump(state, f)
         gate_seconds = time.time() - t0
+    # bilan du bloc : best contre ExpertBot, toujours sur les memes donnes
+    if os.path.exists(BEST_PATH):
+        b = measure(pool, BEST_PATH, args.gate_deals, BILAN_SEED, args.workers, base="expert")
+        print("=== BILAN best (cycle %s) a la place d'ExpertBot : %s ===" % (state.get("best_cycle", "?"), show(b)),
+              flush=True)
+        with open(GATE_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"cycle": state["cycle"], "bilan_vs_expert": b, "best_cycle": state.get("best_cycle"),
+                                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S")}) + "\n")
     pool.close()
     pool.join()
     print("Arret propre apres %d cycle(s), %.0f s." % (state["cycle"], time.time() - t_start), flush=True)

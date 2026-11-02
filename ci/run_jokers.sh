@@ -10,6 +10,8 @@ if [ -f ci/jokers_stop_at ] && [ -z "${JOKER_MINUTES:-}" ]; then
   if [[ "$(date -u +%Y-%m-%dT%H:%M)" > "$STOP" ]]; then echo "chainage jokers fini : $STOP"; exit 1; fi
   if [[ "$UNTIL" > "$STOP" ]]; then UNTIL=$STOP; fi
 fi
+# 02/11 : --lr 3e-4 --epochs 2 (avant 1e-3 x 6 sur 3 iterations rejouees = 18 passes) : la perte baissait
+# pendant que le candidat s'eloignait du champion (iter 4..7 : -2.6 -> -19.6), surapprentissage des cibles bruitees.
 # Rules changed since jokers.pt (spec hash not rule-equivalent): warm start from
 # that champion, kept apart once as archive_<old hash>_champion.pt.
 OLD=$(python - <<'PY'
@@ -25,7 +27,7 @@ if [ -n "$OLD" ] || [ "${INIT:-false}" = "true" ]; then
   [ -f "$BEST" ] || cp checkpoints_jokers/jokers.pt "$BEST"
   rm -f checkpoints_jokers/jokers_last.pt
   echo "demarrage a chaud depuis $BEST"
-  python -u scripts/train_jokers.py --init "$BEST" --workers 4 --until "$UNTIL"
+  python -u scripts/train_jokers.py --init "$BEST" --workers 4 --lr 3e-4 --epochs 2 --until "$UNTIL"
 else
-  python -u scripts/train_jokers.py --resume --workers 4 --until "$UNTIL"
+  python -u scripts/train_jokers.py --resume --workers 4 --lr 3e-4 --epochs 2 --until "$UNTIL"
 fi
