@@ -218,7 +218,8 @@ def _dds_world(args):
             out.append(None)
             continue
         n0 = dds.nodes()
-        r = dds.solve(g, new_gen=g.trump_suit != last_trump, node_limit=left)
+        same = g.trump_suit == last_trump
+        r = dds.solve(g, new_gen=not same, node_limit=left, guess=out[-1] if same and out and out[-1] is not None else None)
         left -= dds.nodes() - n0
         if r is None or left <= 0:
             return None
@@ -233,12 +234,42 @@ def dds_values(game, seat, legal, score_fn, rng, samples):
     -- un professeur plus fort que n'importe quel bot a regles (2026-10-23).
     Contrats a atout seulement (dds.supported). Les mondes se repartissent
     sur le pool de processus (set_pool) s'il existe."""
-    from engine import dds
     worlds = [(game, seat, legal, determinize(game, seat, rng)) for _ in range(samples)]
     if _POOL is not None and _POOL_SIZE > 1 and samples > 1:
         results = _POOL.map(_dds_world, worlds)
     else:
         results = [_dds_world(w) for w in worlds]
+    return _dds_q(game, seat, legal, score_fn, samples, worlds, results)
+
+
+def dds_values_async(game, seat, legal, score_fn, rng, samples):
+    """Comme dds_values, sans attendre (2026-11-02, vitesse) : les mondes
+    partent au pool tout de suite, l'appelant continue la donne. -> fonction
+    sans argument qui attend les mondes et rend le Q (ou None). Le tirage des
+    mondes se fait ICI (meme rng, meme ordre qu'avant) ; la donne est figee
+    par pickle au moment de la decision, la vraie donne peut continuer."""
+    import pickle
+    worlds = [(game, seat, legal, determinize(game, seat, rng)) for _ in range(samples)]
+    frozen = [pickle.dumps(w, protocol=pickle.HIGHEST_PROTOCOL) for w in worlds]
+    handle = _POOL.map_async(_dds_world_frozen, frozen)
+
+    def finish():
+        snap = [pickle.loads(f) for f in frozen]
+        return _dds_q(snap[0][0], seat, legal, score_fn, samples, snap, handle.get())
+    return finish
+
+
+def _dds_world_frozen(frozen):
+    import pickle
+    return _dds_world(pickle.loads(frozen))
+
+
+def async_ready():
+    return _POOL is not None and _POOL_SIZE > 1
+
+
+def _dds_q(game, seat, legal, score_fn, samples, worlds, results):
+    from engine import dds
     kept = [(w[3], more) for w, more in zip(worlds, results) if more is not None]
     if len(kept) * 2 < samples:
         return None  # trop de mondes hors budget : pas de cible

@@ -101,6 +101,7 @@ import signal
 import sys
 import time
 
+import numpy as np
 import torch
 
 sys.path.insert(0, ".")
@@ -116,7 +117,7 @@ from engine.bidding import legal_action_ids_with_hand as bid_legal_action_ids_wi
 from engine.bidding import legal_action_mask_with_hand as bid_legal_action_mask_with_hand
 from engine.bidding import observation as bid_observation
 from engine.cards import NUM_CARDS, deal
-from engine.observation import split_tricks
+from engine.observation import OBS_DIM, build_fast_into, split_tricks
 from engine.emballage import new_emballage_deal
 from engine.emballage import final_scores as emballage_final_scores
 from engine.misere import DECLARER_ROLE_BY_KIND, new_misere_deal
@@ -639,6 +640,14 @@ def pick_visitor_style(rng):
     return rng.choices(list(VISITOR_STYLES), weights=list(VISITOR_STYLES.values()))[0]
 
 
+def fast_obs(game, seat):
+    """== torch.tensor(game.observation(seat)) au bit pres (cloud : scripts/check_obs_v6.py),
+    sans passer par une liste Python (2026-11-02, vitesse)."""
+    out = np.zeros(OBS_DIM, dtype=np.float32)
+    build_fast_into(out, game, seat)
+    return torch.from_numpy(out)
+
+
 def visitor_card(style, game, seat, nets, rng):
     """Coup d'un joueur visiteur (voir VISITOR_STYLES) -- jamais appris."""
     legal = [c for c, ok in enumerate(game.legal_action_mask(seat)) if ok]
@@ -648,7 +657,7 @@ def visitor_card(style, game, seat, nets, rng):
         return rng.choice(legal)
     if style == "debutant":  # joue toujours sa plus forte carte, meme en misere
         return expert_bot._highest(legal)
-    obs = torch.tensor(game.observation(seat), dtype=torch.float32)
+    obs = fast_obs(game, seat)
     mask = torch.tensor(game.legal_action_mask(seat), dtype=torch.bool)
     with torch.no_grad():
         logits, _value = nets[game.role_of(seat)].forward(obs.unsqueeze(0))
@@ -659,6 +668,46 @@ def visitor_card(style, game, seat, nets, rng):
 def dds_supported(game):
     from engine import dds
     return dds.supported(game)
+
+
+class PendingTarget:
+    """Cible de rollouts dds pas encore calculee (rollouts.dds_values_async,
+    2026-11-02, vitesse) : les mondes tournent dans le pool pendant que les
+    donnes continuent ; resolve_targets() les recupere avant la mise a jour
+    PPO. Meme resultat qu'en synchrone : si le dds ne donne pas de cible,
+    la decision recoit `fallback` (imitation de l'ExpertBot ou garde-fou
+    enseigne) et compte dans les stats d'imitation."""
+    __slots__ = ("finish", "legal", "margin", "scale", "fallback", "teacher_card", "action")
+
+    def __init__(self, finish, legal, margin, scale):
+        self.finish, self.legal, self.margin, self.scale = finish, legal, margin, scale
+        self.fallback = self.teacher_card = self.action = None
+
+    def resolve(self, rollout, teacher):
+        q = self.finish()
+        target = None
+        if q is not None:
+            target = rollouts.best_set_target(self.legal, q, self.margin, self.scale)
+            rollout["count"] += 1
+            rollout["corrective"] += target is not None
+        if target is not None:
+            return target
+        if self.teacher_card is not None:
+            teacher["count"] += 1
+            teacher["agree"] += self.action == self.teacher_card
+        return self.fallback
+
+
+def resolve_targets(buffers, rollout, teacher):
+    """Remplace les PendingTarget des buffers par leur cible (attend le pool)."""
+    t0 = time.time()
+    for buf in buffers.values():
+        targets = buf.get("target") or []
+        for i, t in enumerate(targets):
+            if isinstance(t, PendingTarget):
+                targets[i] = t.resolve(rollout, teacher)
+    if rollout is not None:
+        rollout["seconds"] += time.time() - t0
 
 
 def play_out(game, nets, rollout=None, teacher=None, visitors=None, rng=None):
@@ -703,7 +752,19 @@ def play_out(game, nets, rollout=None, teacher=None, visitors=None, rng=None):
                 samples = rollout["samples"]
         if samples and rollout.get("policy") == "dds" and not dds_supported(game):
             samples = 0
-        if samples:
+        pending = None
+        if samples and rollout.get("policy") == "dds" and rollouts.async_ready():
+            t0 = time.time()
+            legal = [c for c, ok in enumerate(game.legal_action_mask(seat)) if ok]
+            if len(legal) >= 2:
+                if rollout.get("margin_tricks"):
+                    margin, scale = rollout["margin_tricks"] * rollout["trick_unit"][seat], 1.0
+                else:
+                    margin, scale = rollout["margin"], credit.return_scale(role)
+                pending = PendingTarget(rollouts.dds_values_async(
+                    game, seat, legal, rollout["score_fn"], rollout["rng"], samples), legal, margin, scale)
+            rollout["seconds"] += time.time() - t0
+        elif samples:
             t0 = time.time()
             q = rollouts.action_values(game, seat, nets, rollout["score_fn"], rollout["rng"], samples,
                                        rollout.get("policy", "nets"))
@@ -718,7 +779,7 @@ def play_out(game, nets, rollout=None, teacher=None, visitors=None, rng=None):
         teacher_card = None
         if teacher is not None and target is None and (teacher.get("roles") is None or role in teacher["roles"]):
             target, teacher_card = teacher_target(game, seat)
-        obs = torch.tensor(game.observation(seat), dtype=torch.float32)
+        obs = fast_obs(game, seat)
         mask, taught = train_play_mask(game, seat)
         mask = torch.tensor(mask, dtype=torch.bool)
         if taught is not None and target is None:
@@ -727,6 +788,10 @@ def play_out(game, nets, rollout=None, teacher=None, visitors=None, rng=None):
         with torch.no_grad():
             action, logp, value = net.act(obs, mask)
         value = value.item() * credit.return_scale(role)
+        if pending is not None:
+            # cible dds en cours : `target` actuel (imitation / garde-fou) ne sert que si le dds n'en donne pas
+            pending.fallback, pending.teacher_card, pending.action = target, teacher_card, action
+            target, teacher_card = pending, None
         oracle_x = None
         if ORACLE is not None:
             oracle_x = torch.cat([obs, oracle_critic.oracle_features(game, seat)])
@@ -1635,6 +1700,10 @@ def main():
             import multiprocessing
             rollouts.set_pool(multiprocessing.Pool(args.rollout_workers), args.rollout_workers)
             print("  rollouts (%s) repartis sur %d processus." % (args.rollout_policy, args.rollout_workers), flush=True)
+            if args.rollout_policy == "dds":
+                # rollouts asynchrones : les workers tournent PENDANT les donnes ; torch multi-thread
+                # dans ce processus se battrait avec eux pour les coeurs (2026-11-02)
+                torch.set_num_threads(1)
     teacher = None
     teacher_deals = load_teacher_deals()
     if teacher_coef_at(teacher_deals, args.teacher_coef, args.teacher_decay_deals) > 0:
@@ -1737,6 +1806,7 @@ def main():
                 if _stop_requested():
                     break
 
+            resolve_targets(buffers, rollout, teacher)
             distill_coef = args.distill_coef
             if teacher is not None:
                 distill_coef = max(teacher_floor, teacher_coef_at(teacher_deals, teacher_coef, teacher_decay))

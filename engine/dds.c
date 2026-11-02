@@ -38,6 +38,7 @@ static int tcard[4], tseat[4], nt, leader_s;
 static long long nodes;
 static long long node_stop = 0;  /* 0 = sans limite ; sinon arret quand nodes depasse */
 static int aborted = 0;
+static int guess = -1;          /* valeur probable du prochain solve (-1 = aucune) */
 
 static inline int suit_of(int c) { return c / 13; }
 static inline int popc(u64 x) { return __builtin_popcountll(x); }
@@ -280,6 +281,12 @@ long long dds_nodes(void) { return nodes; }
  * renvoie -2 (position trop longue, a ecarter). */
 void dds_set_limit(long long limit) { node_stop = limit; }
 
+/* Valeur probable du prochain dds_solve (2026-11-02, vitesse) : la premiere
+ * sonde se fait a cette valeur, la deuxieme juste a cote (comme MTD(f)), puis
+ * dichotomie. Resultat identique, ~2 sondes au lieu de ~4 si elle est juste
+ * (les cartes legales d'une meme position ont des valeurs proches). */
+void dds_set_guess(int g) { guess = g; }
+
 int dds_solve(const u64 *hands, int trump_, int side_a, int leader, int n_trick, const int *trick_cards,
               const int *trick_seats, int new_gen) {
     if (tt == NULL) {
@@ -303,9 +310,15 @@ int dds_solve(const u64 *hands, int trump_, int side_a, int leader, int n_trick,
     int turn = (leader + n_trick) & 3;
     int hi = popc(H[turn]);
     int lo = 0;
+    int g0 = guess, probes = 0, last_up = 0;
+    guess = -1;
     if (hi == 0) return 0;
-    while (lo < hi) {  /* dichotomie par sondes a fenetre nulle */
-        int mid = (lo + hi + 1) / 2;
+    while (lo < hi) {  /* dichotomie par sondes a fenetre nulle (premieres sondes a la valeur probable) */
+        int mid;
+        if (g0 >= 0 && probes == 0) mid = g0 < lo + 1 ? lo + 1 : g0 > hi ? hi : g0;
+        else if (g0 >= 0 && probes == 1) mid = last_up ? lo + 1 : hi;
+        else mid = (lo + hi + 1) / 2;
+        probes++;
         nt = n_trick;
         leader_s = leader;
         for (int i = 0; i < n_trick; i++) {
@@ -313,6 +326,7 @@ int dds_solve(const u64 *hands, int trump_, int side_a, int leader, int n_trick,
             tseat[i] = trick_seats[i];
         }
         int v = search(mid - 1, mid);
+        last_up = v >= mid;
         if (v >= mid) {  /* fail-soft : valeur >= v */
             lo = v < hi ? v : hi;
         } else {         /* valeur <= v */

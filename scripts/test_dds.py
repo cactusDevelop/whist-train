@@ -78,6 +78,9 @@ def test_exact(rng, positions):
         leader = trick[0][0] if trick else g.turn
         want = brute([list(h) for h in g.hands], g.trump_suit, side, leader, trick)
         got = dds.solve(g)
+        guessed = dds.solve(g, guess=rng.randrange(0, 14))  # premiere sonde quelconque : meme valeur
+        if guessed != got:
+            got = ("guess", guessed, got)
         if got != want:
             bad += 1
             if bad <= 5:

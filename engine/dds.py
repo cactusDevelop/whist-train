@@ -23,19 +23,21 @@ from engine.cards import NUM_PLAYERS
 _SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dds.c")
 _LIB = None
 SUPPORTED = ("emballage", "trou", "solo")
+# -march=native : le .so est compile sur la machine qui l'execute (popcount materiel)
+_CFLAGS = ["-O3", "-march=native", "-shared", "-fPIC"]
 
 
 def _lib():
     global _LIB
     if _LIB is None:
         with open(_SRC, "rb") as f:
-            tag = hashlib.sha1(f.read()).hexdigest()[:12]
+            tag = hashlib.sha1(f.read() + " ".join(_CFLAGS).encode()).hexdigest()[:12]
         out_dir = os.environ.get("WHIST_DDS_DIR") or os.path.join(tempfile.gettempdir(), "whist_dds")
         os.makedirs(out_dir, exist_ok=True)
         so = os.path.join(out_dir, "dds_%s.so" % tag)
         if not os.path.exists(so):
             tmp = "%s.%d.tmp" % (so, os.getpid())
-            subprocess.check_call([os.environ.get("CC", "cc"), "-O3", "-shared", "-fPIC", "-o", tmp, _SRC])
+            subprocess.check_call([os.environ.get("CC", "cc")] + _CFLAGS + ["-o", tmp, _SRC])
             os.replace(tmp, so)
         lib = ctypes.CDLL(so)
         lib.dds_solve.restype = ctypes.c_int
@@ -44,6 +46,7 @@ def _lib():
                                   ctypes.c_int]
         lib.dds_nodes.restype = ctypes.c_longlong
         lib.dds_set_limit.argtypes = [ctypes.c_longlong]
+        lib.dds_set_guess.argtypes = [ctypes.c_int]
         _LIB = lib
     return _LIB
 
@@ -59,11 +62,12 @@ def side_seats(game):
     return tuple(game.declarers)
 
 
-def solve(game, new_gen=True, node_limit=0):
+def solve(game, new_gen=True, node_limit=0, guess=None):
     """Plis restants (pli en cours compris) du camp declarant, jeu parfait a
     cartes ouvertes, depuis l'etat de `game` (ses mains). `new_gen=False`
     garde la table de transposition (meme atout, memes camps). `node_limit`
-    > 0 : None si la recherche depasse ce nombre de noeuds."""
+    > 0 : None si la recherche depasse ce nombre de noeuds. `guess` : valeur
+    probable (premiere sonde), n'accelere que si elle est proche."""
     if game.trump_suit is None and getattr(game, "trou_pending", lambda: False)():
         raise ValueError("Trou pas encore fixe : jouer l'entame d'abord")
     lib = _lib()
@@ -75,6 +79,7 @@ def solve(game, new_gen=True, node_limit=0):
     mask = sum(1 << s for s in set(side_seats(game)))
     trump = -1 if game.trump_suit is None else game.trump_suit
     lib.dds_set_limit(node_limit)
+    lib.dds_set_guess(-1 if guess is None else int(guess))
     r = lib.dds_solve(hands, trump, mask, leader, len(trick), cards, seats, 1 if new_gen else 0)
     if r == -2:
         return None
