@@ -46,15 +46,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Pause (ci/<mode>_paused) : le run se termine en SUCCES sans rien faire (pas de mail "run failed").
+      - id: pause
+        name: Pause check
+        run: |
+          if [ -f "ci/${MODE}_paused" ]; then
+            echo "$MODE en pause : $(cat "ci/${MODE}_paused")"
+            echo "paused=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/setup-python@v5
+        if: steps.pause.outputs.paused != 'true'
         with:
           python-version: "3.12"
           cache: pip
 
       - run: pip install -r requirements.txt
+        if: steps.pause.outputs.paused != 'true'
 
       - id: restore
         name: Restore state
+        if: steps.pause.outputs.paused != 'true'
         run: |
           # L'IA libre lit la championne et l'encherisseur de l'etat ppo, sans jamais l'ecrire.
           if [ "$STATE" = ppo_free ]; then
@@ -71,11 +83,12 @@ jobs:
 
       - id: train
         name: Train
+        if: steps.pause.outputs.paused != 'true'
         run: bash "ci/run_$MODE.sh" 2>&1 | tee "train_log_$MODE.txt"
 
       # Only after a successful restore: an empty state must never overwrite the release.
       - name: Upload eval log
-        if: always() && env.MEASURE == 'true'
+        if: always() && steps.pause.outputs.paused != 'true' && env.MEASURE == 'true'
         run: |
           cp "train_log_$MODE.txt" "log-$MODE.txt" 2>/dev/null || echo "pas de log (Train non lance)" > "log-$MODE.txt"
           gh release upload checkpoint-latest "log-$MODE.txt" --clobber
@@ -91,7 +104,7 @@ jobs:
           gh release upload checkpoint-latest "log-$MODE.txt" --clobber
 
       - name: Chain next run
-        if: success() && vars.TRAINING_ENABLED == 'true' && env.MEASURE != 'true' && env.MODE != 'jokers_small'
+        if: success() && steps.pause.outputs.paused != 'true' && vars.TRAINING_ENABLED == 'true' && env.MEASURE != 'true' && env.MODE != 'jokers_small'
         run: |
           # L'IA libre ne s'enchaine que si ci/ppo_free_chain existe (runs courts d'abord).
           if [ "$MODE" = ppo_free ] && [ ! -f ci/ppo_free_chain ]; then exit 0; fi
