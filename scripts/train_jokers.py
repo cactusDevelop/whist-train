@@ -87,6 +87,21 @@ def hybrid_policy(weights):
     return policy
 
 
+def forced_policy(weights, force):
+    """hybrid_policy avec les cas de `force` ("joker:cas" -> oui/non) imposes,
+    poses a chaque decision (FORCE est global au processus)."""
+    from agents import joker_expert as X
+    base = hybrid_policy(weights)
+
+    def policy(hand, seat):
+        X.FORCE = force
+        try:
+            return base(hand, seat)
+        finally:
+            X.FORCE = {}
+    return policy
+
+
 # "hybrid" (2026-10-16, defaut) : agents/joker_expert + reseau ; "net" : reseau seul
 # (iteration 0 sans reseau = heuristique bot_wants) ; "rules" : regles seules ;
 # "heuristic" : bot_wants.
@@ -94,6 +109,8 @@ POLICY_MODE = "hybrid"
 
 
 def make_policy(weights, mode=None):
+    if isinstance(mode, dict):  # cas forces (agents/joker_expert.FORCE), regles + reseau
+        return forced_policy(weights, mode)
     mode = mode or POLICY_MODE
     if mode == "heuristic" or (mode == "net" and weights is None):
         return J.heuristic_action
@@ -181,7 +198,8 @@ def policies_worker(args):
     """Duplicate : chaque politique (weights, mode) de la liste, puis bot_wants
     et « jamais », sur les memes matchs -> (graine, config, [(r, p0), ...])
     dans cet ordre."""
-    seeds, specs = args
+    seeds, specs = args[0], args[1]
+    baselines = args[2] if len(args) > 2 else True  # + bot_wants et « jamais »
     out = []
     for seed in seeds:
         res = []
@@ -199,7 +217,8 @@ def policies_worker(args):
             hands, dealer, whisted = rec.chain.deal(rec.rng)
             rec.recorded.append(([list(h) for h in hands], dealer, whisted))
             rec.chain.finish_unplayed(hands, dealer)
-        for policy in [make_policy(w, m) for w, m in specs] + [J.heuristic_action, J.never_action]:
+        extra = [J.heuristic_action, J.never_action] if baselines else []
+        for policy in [make_policy(w, m) for w, m in specs] + extra:
             match = jm.Match(cfg, mseed, deals=rec.recorded)
             r = p0 = 0.0
             casts = {}

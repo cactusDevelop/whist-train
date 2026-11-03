@@ -189,6 +189,9 @@ def contract_made(v):
 # Cas fermes (OUI/NON) des bots rendus OUVERTS (le reseau decide) : diagnostic
 # (scripts/audit_joker_*.py) ; vide en production.
 SOFTEN = set()
+# Cas forces (scripts/search_joker_rules.py, recherche sur le score de match) :
+# "joker:cas" -> YES ou NO, remplace le verdict de la regle ; vide en production.
+FORCE = {}
 
 
 def rule(v, jid):
@@ -197,6 +200,8 @@ def rule(v, jid):
         return NO, J.base_id(jid) + ":sans_regle"
     verdict, case = r(v)
     rid = "%s:%s" % (J.base_id(jid), case)
+    if rid in FORCE:
+        return FORCE[rid], rid
     if verdict in (YES, NO) and (rid in SOFTEN or "*" in SOFTEN):
         verdict = OPEN_YES if verdict == YES else OPEN_NO
     return verdict, rid
