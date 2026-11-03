@@ -120,6 +120,9 @@ def raw_state(hand, seat):
         # v4 (03/11) : masque sous la fenetre avant le pli (JokerRules.priority) -- turn_error lit
         # game.turn (le meneur, pas forcement `seat`), priority_from et passed (priority_seat).
         "priority": rules.priority, "turn": g.turn, "priority_from": rules.priority_from, "passed": list(rules.passed),
+        # v5 (03/11) : regles de boss actives (boss + second_rule(mise, boss) en Mise Doree) --
+        # rules.bosses bloque pli/aura (Moine) dans legal_casts ; demande whist-4-it-c2.
+        "bosses": list(rules.bosses),
     }
 
 

@@ -30,12 +30,15 @@ import random
 
 from engine.cards import NUM_PLAYERS, legal_plays, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "82618eba4b8f4bf1"
+JOKER_SPEC_HASH = "8664466e6a6ce1b0"
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
 # texte ou de cablage seulement) : un reseau entraine sous l'une d'elles est
 # reexporte tel quel avec JOKER_SPEC_HASH. Une regle qui change -> vider la
 # liste (sauf le hash courant) et reentrainer.
-RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH}
+RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH, "82618eba4b8f4bf1"}
+# 8664 (whist-4-it 6b05a37, 03/11) : JokerAI recoit config + RogueMatch.bosses() ; le Moine (2e regle en Mise
+# Doree contre la Baronne) retire pli/aura du masque bot et du combo-bot meme sans priority (avant : seulement
+# via turn_error sous priority). Masque des bots seulement, aucune regle de jeu -> 8261 equivalent, reexport seul.
 # 8261 (whist-4-it abd18ee, 02/11, decision user sur la mesure 7c98) : Main de Fer coute 3 ⚡ (2 avant) ;
 # jamais lance par les bots (CASTABLE inchange) mais le joueur simule le paie -> regle changee.
 # 7c98 (whist-4-it 31a19be) : config "pose" (runs neuves, Duel, Belle) : un passif du joueur agit une fois pose
@@ -2583,6 +2586,7 @@ class JokerHand:
             return mask
         for i, jid in enumerate(CASTABLE):
             if (self.state.play_error(seat, jid) == "" and not self.rules.blocked(jid, seat)
+                    and not self.rules.boss_blocks(jid)  # 8664 : JokerAI.legal_actions(bosses), meme sans priority
                     and not (self.rules.priority and self.rules.turn_error(jid, seat))
                     and not evicts_silence(seat, jid, self.rules)):
                 mask[i + 1] = True
@@ -2591,8 +2595,8 @@ class JokerHand:
     def combo_turn(self, seat):
         """RogueMatch._bot_turn (61ef) : JokerComboBot avant le reseau ; True = lance."""
         rules, st = self.rules, self.state
-        jid = combo_pick(seat, rules, st, lambda j: st.play_error(seat, j) == "" and not (
-            rules.priority and rules.turn_error(j, seat)))
+        jid = combo_pick(seat, rules, st, lambda j: st.play_error(seat, j) == "" and not rules.boss_blocks(j) and not (
+            rules.priority and rules.turn_error(j, seat)))  # 8664 : _boss_blocks meme sans priority
         if jid == "":
             return False
         played = rules.play(seat, jid)
