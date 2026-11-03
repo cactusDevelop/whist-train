@@ -29,7 +29,7 @@ from engine.cards import NUM_PLAYERS, suit_of, rank_of, legal_plays
 from engine import jokers as J
 from engine.misere import MISERE_MAX_TRICKS
 
-JOKER_EXPERT_VERSION = 3  # 3 (177e) : regles relues pour la fenetre avant le pli ; 2 : 2 (30/10) : garde-fou Oeil, Pot-de-Vin reserve aux mains de misere hors piccolo
+JOKER_EXPERT_VERSION = 4  # 4 (03/11) : 3 cas tranches par search_joker_rules (run 41585901856) ; 3 (177e) : regles relues pour la fenetre avant le pli ; 2 : 2 (30/10) : garde-fou Oeil, Pot-de-Vin reserve aux mains de misere hors piccolo
 
 YES, NO, OPEN_YES, OPEN_NO = "oui", "non", "ouvert_oui", "ouvert_non"
 OPEN = (OPEN_YES, OPEN_NO)
@@ -245,8 +245,8 @@ def _kermesse(v):
         return NO, "tard"  # audit : -3.70
     if faces(v) >= 4:
         return OPEN_YES, "figures_en_main"
-    # veto mesure a -16 pts/match contre le reseau seul (2026-10-16) : le reseau sait l'utiliser ici
-    return OPEN_NO, "peu_de_figures"
+    # 03/11 search_joker_rules (run 41585901856) : OUI force +1.47 +- 0.70 pts/match (NON force : -54)
+    return YES, "peu_de_figures"
 
 
 def _inversion(v):
@@ -260,14 +260,14 @@ def _inversion(v):
         return OPEN_YES, "gros_contrat_adverse"
     if honours(v) <= 1:
         return OPEN_YES, "main_basse"
-    return OPEN_NO, "defense_ordinaire"
+    return NO, "defense_ordinaire"  # 03/11 search_joker_rules : NON force +2.24 +- 0.70 pts/match
 
 
 def _coup_du_chapeau(v):
     if v["remaining"] < 4:
         return OPEN_NO, "tard"
     if v["misere"]:
-        return OPEN_YES, "misere"  # audit : +1.24 +- 0.13
+        return YES, "misere"  # audit : +1.24 +- 0.13 ; 03/11 search_joker_rules : OUI force +0.05 +- 0.03
     return OPEN_NO, "main"  # audit : negatif quelle que soit la main, le reseau choisit
 
 
