@@ -117,6 +117,9 @@ def raw_state(hand, seat):
         # v3
         "suspicion": state.suspicion, "eye_threshold": state.eye_threshold, "eye": getattr(hand, "eye", ""),
         "joker_hand_sizes": [len(h) for h in state.joker_hand],
+        # v4 (03/11) : masque sous la fenetre avant le pli (JokerRules.priority) -- turn_error lit
+        # game.turn (le meneur, pas forcement `seat`), priority_from et passed (priority_seat).
+        "priority": rules.priority, "turn": g.turn, "priority_from": rules.priority_from, "passed": list(rules.passed),
     }
 
 
