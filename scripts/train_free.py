@@ -31,6 +31,15 @@ de portes "acceptees" contre l'ancienne championne ppo n'avaient rien apporte
   - fin de bloc : BILAN best vs ExpertBot sur des donnes fixes (celles de
     free_match), le vrai indicateur de progres, ajoute a free_gate.jsonl.
 
+DEFENSE CIBLEE (2026-11-05, accord user) : le BILAN vs ExpertBot plafonne
+(-0.57, defense -0.97 = le gros du retard). Option --defense-rollout-prob :
+une decision de DEFENSE d'un siege qui apprend, contrat a atout (dds), hors
+1er pli, recoit avec cette probabilite une cible de politique = cartes a
+--defense-rollout-margin plis pres de la meilleure, Q = vrais points moyens
+sur --defense-rollout-samples mondes joues parfaitement (agents/rollouts.py,
+comme train.py). Budget : jamais plus de --defense-rollout-share du temps du
+membre en dds (sinon la decision passe sans cible). Mesure inchangee.
+
 Usage (cloud seulement) : ci/run_ppo_free.sh, mode ppo_free de train.yml.
 """
 
@@ -49,7 +58,7 @@ sys.path.insert(0, ".")
 
 from agents import bid_ppo as bid_ppo_mod
 from agents import expert_bot
-from agents import evolution, ppo, specialists
+from agents import evolution, ppo, rollouts, specialists
 from agents.network import PolicyValueNet, widen_adam_state
 from agents.play_guards import ai_play_mask
 from agents.specialists import PLAY_ROLES, safe_save
@@ -58,8 +67,8 @@ from engine.trou import detect_trou
 from engine.whisted import DeckChain
 from scripts import champion_play
 from scripts.duel_expert import _bid
-from scripts.train import (MEASURE_WHISTED_RATIO, WHISTED_RATIO_DEFAULT, declarer_role_and_seats,
-                           dispatch_play_phase2, real_points_by_seat)
+from scripts.train import (MEASURE_WHISTED_RATIO, POINTS_PER_TRICK, WHISTED_RATIO_DEFAULT, compute_scores_real,
+                           declarer_role_and_seats, dispatch_play_phase2, dds_supported, real_points_by_seat)
 
 ROOT = "checkpoints_free"
 GATE_FILE = os.path.join(ROOT, "free_gate.jsonl")
@@ -74,6 +83,8 @@ GATE_SEED = 91_000_000  # + 1000 * cycle : donnes neuves a chaque porte
 BILAN_SEED = 20261101  # = free_match.SEED : bilans comparables d'un bloc a l'autre
 START_HP = {"chaude": {"lr": 1e-4, "entropy": 0.02}, "zero": {"lr": 3e-4, "entropy": 0.03}}
 SELECTION_Z = 2.0
+
+DEFENSE = {"prob": 0.0, "samples": 8, "margin_tricks": 0.5, "share": 0.5}  # --defense-rollout-*, herite par fork
 
 BIDDER = None  # herite par fork ; voir load_bidder
 CHAMPION = None
@@ -139,13 +150,37 @@ def next_contract(chain, rng):
 
 
 def new_buffer():
-    return {role: {"obs": [], "mask": [], "action": [], "logp": [], "ret": [], "adv": []} for role in PLAY_ROLES}
+    return {role: {"obs": [], "mask": [], "action": [], "logp": [], "ret": [], "adv": [], "target": []}
+            for role in PLAY_ROLES}
 
 
-def play_training_deal(chain, rng, seat_nets, learners, buffers):
+def defense_target(game, seat, score_fn, rng, stats, t_start):
+    """Cible dds d'une decision de defense (voir DEFENSE CIBLEE) ou None."""
+    if (DEFENSE["prob"] <= 0 or len(game.play_log) < 4 or not dds_supported(game)
+            or rng.random() >= DEFENSE["prob"]):
+        return None
+    if stats["seconds"] > DEFENSE["share"] * (time.time() - t_start):
+        stats["skipped"] += 1
+        return None
+    legal = [c for c, ok in enumerate(game.legal_action_mask(seat)) if ok]
+    if len(legal) < 2:
+        return None
+    t0 = time.time()
+    q = rollouts.dds_values(game, seat, legal, score_fn, rng, DEFENSE["samples"])
+    stats["seconds"] += time.time() - t0
+    stats["count"] += 1
+    if q is None:
+        return None
+    target = rollouts.best_set_target(legal, q, DEFENSE["margin_tricks"] * POINTS_PER_TRICK)
+    stats["corrective"] += target is not None
+    return target
+
+
+def play_training_deal(chain, rng, seat_nets, learners, buffers, stats=None, t_start=None):
     hands, dealer, whisted, bidding = next_contract(chain, rng)
     contract = bidding.locked_contract
-    role, _decl = declarer_role_and_seats(contract)
+    role, decl = declarer_role_and_seats(contract)
+    score_fn = lambda g: compute_scores_real(role, g, decl, contract)
     game = dispatch_play_phase2(contract, [list(h) for h in hands], dealer, bidding.bid_summary, whisted)
     steps = {s: [] for s in learners}
     with torch.no_grad():
@@ -159,13 +194,16 @@ def play_training_deal(chain, rng, seat_nets, learners, buffers):
             mask = torch.tensor(game.legal_action_mask(seat), dtype=torch.bool)
             action, logp, value = seat_nets[seat][who].act(obs, mask)
             if seat in steps:
-                steps[seat].append((who, obs, mask, action, logp, value.item() * RETURN_SCALE))
+                target = None
+                if stats is not None and seat not in decl:
+                    target = defense_target(game, seat, score_fn, rng, stats, t_start)
+                steps[seat].append((who, obs, mask, action, logp, value.item() * RETURN_SCALE, target))
             game.step(seat, action)
     points = real_points_by_seat(role, game, contract)
     chain.finish_played(game, dealer, contract["type"])
     for seat, seq in steps.items():
         gae, next_value = 0.0, None
-        for who, obs, mask, action, logp, value in reversed(seq):
+        for who, obs, mask, action, logp, value, target in reversed(seq):
             # recompense unique en fin de donne : les vrais points du siege
             delta = (points[seat] if next_value is None else next_value) - value
             gae = delta + GAE_LAMBDA * gae
@@ -177,6 +215,7 @@ def play_training_deal(chain, rng, seat_nets, learners, buffers):
             buf["logp"].append(logp)
             buf["ret"].append(gae + value)
             buf["adv"].append(gae)
+            buf["target"].append(target)
     return points
 
 
@@ -186,8 +225,9 @@ def learn(nets, opts, buffers, entropy):
         buf = buffers[role]
         if len(buf["obs"]) < MIN_DECISIONS:
             continue
+        targets = buf["target"] if any(t is not None for t in buf["target"]) else None
         s = ppo.update(nets[role], opts[role], buf["obs"], buf["mask"], buf["action"], buf["logp"], buf["ret"],
-                       buf["adv"], return_scale=RETURN_SCALE, entropy_coef=entropy)
+                       buf["adv"], return_scale=RETURN_SCALE, entropy_coef=entropy, targets=targets)
         report[role] = (s["entropy"], s["value_loss"])
         for key in buf:
             buf[key] = []
@@ -214,6 +254,7 @@ def train_member(args):
     buffers = new_buffer()
     t0 = time.time()
     deals, updates = 0, {}
+    stats = {"count": 0, "corrective": 0, "skipped": 0, "seconds": 0.0}
     while time.time() - t0 < seconds:
         for _ in range(LOT_DEALS):
             if rng.random() < SELF_PLAY_PROB:
@@ -224,7 +265,7 @@ def train_member(args):
                 first = rng.randrange(2)  # un camp apprend : 0-2 ou 1-3, les enchainements de sieges tournent
                 learners = {first, first + 2}
                 seat_nets = [nets if s in learners else opp for s in range(4)]
-            play_training_deal(chain, rng, seat_nets, learners, buffers)
+            play_training_deal(chain, rng, seat_nets, learners, buffers, stats, t0)
             deals += 1
         for net in nets.values():
             net.train()
@@ -235,7 +276,7 @@ def train_member(args):
     member["opts"] = {r: o.state_dict() for r, o in opts.items()}
     member["deals"] += deals
     safe_save(member, member_path(name))
-    return name, deals, time.time() - t0, updates
+    return name, deals, time.time() - t0, updates, stats
 
 
 def eval_chunk(args):
@@ -341,7 +382,13 @@ def main():
     parser.add_argument("--per-niche", type=int, default=2)
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--seed", type=int, default=None)
+    parser.add_argument("--defense-rollout-prob", type=float, default=0.0, help="voir DEFENSE CIBLEE")
+    parser.add_argument("--defense-rollout-samples", type=int, default=8)
+    parser.add_argument("--defense-rollout-margin", type=float, default=0.5, help="marge en plis")
+    parser.add_argument("--defense-rollout-share", type=float, default=0.5, help="part max du temps en dds")
     args = parser.parse_args()
+    DEFENSE.update(prob=args.defense_rollout_prob, samples=args.defense_rollout_samples,
+                   margin_tricks=args.defense_rollout_margin, share=args.defense_rollout_share)
     until = datetime.strptime(args.until, "%Y-%m-%dT%H:%M").replace(tzinfo=timezone.utc).timestamp()
     os.makedirs(ROOT, exist_ok=True)
 
@@ -375,10 +422,13 @@ def main():
             peers = [n for n, k in names if k == niche and n != name]
             tasks.append((name, rng.choice(peers) if peers else None, seconds, rng.randrange(1 << 30)))
         t0 = time.time()
-        for name, deals, took, updates in pool.map(train_member, tasks, chunksize=1):
+        for name, deals, took, updates, rs in pool.map(train_member, tasks, chunksize=1):
             ent = sum(e for e, _v in updates.values()) / max(1, len(updates))
             print("[cycle %d] %-9s %6d donnes en %4.0fs (%.1f/s) entropie moy. %.3f" % (
                 state["cycle"], name, deals, took, deals / max(took, 1e-9), ent), flush=True)
+            if DEFENSE["prob"] > 0:
+                print("    defense dds : %d decisions, %d corrigees, %d sautees (budget), %.0f s" % (
+                    rs["count"], rs["corrective"], rs["skipped"], rs["seconds"]), flush=True)
 
         t0 = time.time()
         scores = {}
