@@ -593,7 +593,7 @@ def _verre_de_trop(v):
 
 def _refrain(v):
     spell = v["last_spell"]
-    if not spell or J.jsuspicion(spell) > 0:
+    if not spell or J.jsuspicion(spell) > 0 or J.base_id(spell) == "complice2":  # pas de boucle Refrain <-> Complice2
         return NO, "pas_de_sort_ou_suspect"
     return (YES, "relance_utile") if rule(v, spell)[0] in (YES, OPEN_YES) else (NO, "relance_inutile")
 
@@ -623,7 +623,7 @@ def _complice2(v):
         return NO, "deja_arme"
     left = _energy_after(v, "complice2")
     for j in v["joker_hand"]:
-        if J.jtype(j) != "sort" or J.base_id(j) == "complice2" or J.make_effect(j, v["me"]).scope == J.HAND:
+        if J.jtype(j) != "sort" or J.base_id(j) in ("complice2", "refrain") or J.make_effect(j, v["me"]).scope == J.HAND:
             continue
         if J.jcost(j) <= left and rule(v, j)[0] in (YES, OPEN_YES):
             return YES, "double_un_sort_utile"
