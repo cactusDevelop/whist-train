@@ -84,7 +84,7 @@ BILAN_SEED = 20261101  # = free_match.SEED : bilans comparables d'un bloc a l'au
 START_HP = {"chaude": {"lr": 1e-4, "entropy": 0.02}, "zero": {"lr": 3e-4, "entropy": 0.03}}
 SELECTION_Z = 2.0
 
-DEFENSE = {"prob": 0.0, "samples": 8, "margin_tricks": 0.5, "share": 0.5}  # --defense-rollout-*, herite par fork
+DEFENSE = {"prob": 0.0, "samples": 8, "margin_tricks": 0.5, "share": 0.5, "roles": None}  # roles None = tous  # --defense-rollout-*, herite par fork
 
 BIDDER = None  # herite par fork ; voir load_bidder
 CHAMPION = None
@@ -154,8 +154,11 @@ def new_buffer():
             for role in PLAY_ROLES}
 
 
-def defense_target(game, seat, score_fn, rng, stats, t_start):
-    """Cible dds d'une decision de defense (voir DEFENSE CIBLEE) ou None."""
+def defense_target(game, seat, score_fn, rng, stats, t_start, role=None):
+    """Cible dds d'une decision de defense (voir DEFENSE CIBLEE) ou None.
+    --defense-rollout-roles (06/11) : limite aux contrats listes (role de declarer_role_and_seats)."""
+    if DEFENSE["roles"] is not None and role not in DEFENSE["roles"]:
+        return None
     if (DEFENSE["prob"] <= 0 or len(game.play_log) < 4 or not dds_supported(game)
             or rng.random() >= DEFENSE["prob"]):
         return None
@@ -196,7 +199,7 @@ def play_training_deal(chain, rng, seat_nets, learners, buffers, stats=None, t_s
             if seat in steps:
                 target = None
                 if stats is not None and seat not in decl:
-                    target = defense_target(game, seat, score_fn, rng, stats, t_start)
+                    target = defense_target(game, seat, score_fn, rng, stats, t_start, role)
                 steps[seat].append((who, obs, mask, action, logp, value.item() * RETURN_SCALE, target))
             game.step(seat, action)
     points = real_points_by_seat(role, game, contract)
@@ -386,9 +389,11 @@ def main():
     parser.add_argument("--defense-rollout-samples", type=int, default=8)
     parser.add_argument("--defense-rollout-margin", type=float, default=0.5, help="marge en plis")
     parser.add_argument("--defense-rollout-share", type=float, default=0.5, help="part max du temps en dds")
+    parser.add_argument("--defense-rollout-roles", default="", help="contrats cibles, ex. emballage,solitaire (vide = tous)")
     args = parser.parse_args()
     DEFENSE.update(prob=args.defense_rollout_prob, samples=args.defense_rollout_samples,
-                   margin_tricks=args.defense_rollout_margin, share=args.defense_rollout_share)
+                   margin_tricks=args.defense_rollout_margin, share=args.defense_rollout_share,
+                   roles=set(args.defense_rollout_roles.split(",")) if args.defense_rollout_roles else None)
     until = datetime.strptime(args.until, "%Y-%m-%dT%H:%M").replace(tzinfo=timezone.utc).timestamp()
     os.makedirs(ROOT, exist_ok=True)
 
