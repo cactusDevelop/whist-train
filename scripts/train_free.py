@@ -40,6 +40,14 @@ sur --defense-rollout-samples mondes joues parfaitement (agents/rollouts.py,
 comme train.py). Budget : jamais plus de --defense-rollout-share du temps du
 membre en dds (sinon la decision passe sans cible). Mesure inchangee.
 
+FOCUS (2026-11-06, accord user, diag scripts/emballage_free_diag.py) : en
+emballage, best perdait ses points (defense -3.0) en prenant le pli avec une
+carte trop haute et sur ses entames ; le declarant n'y tirait pas atout. Pour
+les contrats de --rollout-focus-roles, la cible dds ne vise QUE les entames et
+les prises a plusieurs cartes gagnantes, des DEUX camps, avec la probabilite
+--rollout-focus-prob. Aucune contrainte de jeu : cartes legales, la cible
+montre seulement la meilleure carte au dds.
+
 Usage (cloud seulement) : ci/run_ppo_free.sh, mode ppo_free de train.yml.
 """
 
@@ -63,6 +71,7 @@ from agents.network import PolicyValueNet, widen_adam_state
 from agents.play_guards import ai_play_mask
 from agents.specialists import PLAY_ROLES, safe_save
 from engine.bidding import Bidding
+from engine.cards import trick_winner
 from engine.trou import detect_trou
 from engine.whisted import DeckChain
 from scripts import champion_play
@@ -84,7 +93,7 @@ BILAN_SEED = 20261101  # = free_match.SEED : bilans comparables d'un bloc a l'au
 START_HP = {"chaude": {"lr": 1e-4, "entropy": 0.02}, "zero": {"lr": 3e-4, "entropy": 0.03}}
 SELECTION_Z = 2.0
 
-DEFENSE = {"prob": 0.0, "samples": 8, "margin_tricks": 0.5, "share": 0.5, "roles": None}  # roles None = tous  # --defense-rollout-*, herite par fork
+DEFENSE = {"prob": 0.0, "samples": 8, "margin_tricks": 0.5, "share": 0.5, "roles": None, "focus": set(), "focus_prob": 0.0}  # roles None = tous  # --defense-rollout-*, herite par fork
 
 BIDDER = None  # herite par fork ; voir load_bidder
 CHAMPION = None
@@ -154,13 +163,26 @@ def new_buffer():
             for role in PLAY_ROLES}
 
 
-def defense_target(game, seat, score_fn, rng, stats, t_start, role=None):
+def focus_decision(game, seat):
+    """Entame, ou prise avec au moins deux cartes legales gagnantes (voir FOCUS)."""
+    trick = game.current_trick
+    if not trick:
+        return True
+    legal = [c for c, ok in enumerate(game.legal_action_mask(seat)) if ok]
+    return sum(trick_winner(trick + [(seat, c)], game.trump_suit) == seat for c in legal) >= 2
+
+
+def defense_target(game, seat, score_fn, rng, stats, t_start, role=None, declarer=False):
     """Cible dds d'une decision de defense (voir DEFENSE CIBLEE) ou None.
-    --defense-rollout-roles (06/11) : limite aux contrats listes (role de declarer_role_and_seats)."""
-    if DEFENSE["roles"] is not None and role not in DEFENSE["roles"]:
+    --defense-rollout-roles (06/11) : limite aux contrats listes (role de declarer_role_and_seats).
+    Contrats de --rollout-focus-roles : voir FOCUS (les deux camps)."""
+    focus = role in DEFENSE["focus"]
+    if not focus and (declarer or (DEFENSE["roles"] is not None and role not in DEFENSE["roles"])):
         return None
-    if (DEFENSE["prob"] <= 0 or len(game.play_log) < 4 or not dds_supported(game)
-            or rng.random() >= DEFENSE["prob"]):
+    prob = DEFENSE["focus_prob"] if focus else DEFENSE["prob"]
+    if prob <= 0 or len(game.play_log) < 4 or not dds_supported(game) or rng.random() >= prob:
+        return None
+    if focus and not focus_decision(game, seat):
         return None
     if stats["seconds"] > DEFENSE["share"] * (time.time() - t_start):
         stats["skipped"] += 1
@@ -176,6 +198,7 @@ def defense_target(game, seat, score_fn, rng, stats, t_start, role=None):
         return None
     target = rollouts.best_set_target(legal, q, DEFENSE["margin_tricks"] * POINTS_PER_TRICK)
     stats["corrective"] += target is not None
+    stats["focus"] = stats.get("focus", 0) + focus
     return target
 
 
@@ -198,8 +221,8 @@ def play_training_deal(chain, rng, seat_nets, learners, buffers, stats=None, t_s
             action, logp, value = seat_nets[seat][who].act(obs, mask)
             if seat in steps:
                 target = None
-                if stats is not None and seat not in decl:
-                    target = defense_target(game, seat, score_fn, rng, stats, t_start, role)
+                if stats is not None and (seat not in decl or role in DEFENSE["focus"]):
+                    target = defense_target(game, seat, score_fn, rng, stats, t_start, role, seat in decl)
                 steps[seat].append((who, obs, mask, action, logp, value.item() * RETURN_SCALE, target))
             game.step(seat, action)
     points = real_points_by_seat(role, game, contract)
@@ -257,7 +280,7 @@ def train_member(args):
     buffers = new_buffer()
     t0 = time.time()
     deals, updates = 0, {}
-    stats = {"count": 0, "corrective": 0, "skipped": 0, "seconds": 0.0}
+    stats = {"count": 0, "corrective": 0, "skipped": 0, "seconds": 0.0, "focus": 0}
     while time.time() - t0 < seconds:
         for _ in range(LOT_DEALS):
             if rng.random() < SELF_PLAY_PROB:
@@ -390,10 +413,14 @@ def main():
     parser.add_argument("--defense-rollout-margin", type=float, default=0.5, help="marge en plis")
     parser.add_argument("--defense-rollout-share", type=float, default=0.5, help="part max du temps en dds")
     parser.add_argument("--defense-rollout-roles", default="", help="contrats cibles, ex. emballage,solitaire (vide = tous)")
+    parser.add_argument("--rollout-focus-roles", default="", help="voir FOCUS, ex. emballage")
+    parser.add_argument("--rollout-focus-prob", type=float, default=0.0)
     args = parser.parse_args()
     DEFENSE.update(prob=args.defense_rollout_prob, samples=args.defense_rollout_samples,
                    margin_tricks=args.defense_rollout_margin, share=args.defense_rollout_share,
-                   roles=set(args.defense_rollout_roles.split(",")) if args.defense_rollout_roles else None)
+                   roles=set(args.defense_rollout_roles.split(",")) if args.defense_rollout_roles else None,
+                   focus=set(args.rollout_focus_roles.split(",")) if args.rollout_focus_roles else set(),
+                   focus_prob=args.rollout_focus_prob)
     until = datetime.strptime(args.until, "%Y-%m-%dT%H:%M").replace(tzinfo=timezone.utc).timestamp()
     os.makedirs(ROOT, exist_ok=True)
 
@@ -431,9 +458,9 @@ def main():
             ent = sum(e for e, _v in updates.values()) / max(1, len(updates))
             print("[cycle %d] %-9s %6d donnes en %4.0fs (%.1f/s) entropie moy. %.3f" % (
                 state["cycle"], name, deals, took, deals / max(took, 1e-9), ent), flush=True)
-            if DEFENSE["prob"] > 0:
-                print("    defense dds : %d decisions, %d corrigees, %d sautees (budget), %.0f s" % (
-                    rs["count"], rs["corrective"], rs["skipped"], rs["seconds"]), flush=True)
+            if DEFENSE["prob"] > 0 or DEFENSE["focus_prob"] > 0:
+                print("    defense dds : %d decisions (dont %d focus), %d corrigees, %d sautees (budget), %.0f s" % (
+                    rs["count"], rs["focus"], rs["corrective"], rs["skipped"], rs["seconds"]), flush=True)
 
         t0 = time.time()
         scores = {}
