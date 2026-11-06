@@ -30,7 +30,7 @@ import random
 
 from engine.cards import NUM_PLAYERS, legal_plays, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "ee3ab110cd32992a"  # ee3a : bot_spares d'un siege joueur (whist-4-it 06/11)
+JOKER_SPEC_HASH = "515d48bdd6b489d0"  # 515d : pas de remelange en cours de donne (dominion) ; ee3a : bot_spares joueur
 # a76f (whist-4-it, 06/11) : 12 jokers recycles « a la Dominion » (DOMINION_REPLACED), choix en attente
 # (MatchState.choices / bot_picks), sort gratuit (cast_free), Complice2 rejoue le sort -> regles changees.
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
@@ -1831,8 +1831,7 @@ class DeckEngine(Effect):
         return not self.pointless(rules)
 
     def _can_draw(self, rules):
-        st = rules.state
-        return bool(st.draw_pile[self.owner] or st.discard[self.owner])
+        return rules.state.can_draw(self.owner)
 
 
 class Ardoise2(DeckEngine):
@@ -2137,6 +2136,10 @@ class MatchState:
         # faits aussitot (bot_picks). Joueur simule = RogueAutopilot : bot_picks juste apres le paiement.
         self.choices = [{} for _ in range(NUM_PLAYERS)]
         self.players = [PLAYER]
+        # 515d (choix utilisateur 06/11, boucle Chope Vide3 / Addition2) : sous `dominion`, une pioche
+        # vide ne reprend la defausse qu'au tirage d'ouverture de la donne (runs neuves, Duel).
+        self.dominion = False
+        self.recycled = []  # MatchState.recycled : les joueurs qui ont deja recycle cette donne
         for pile in self.draw_pile:
             self.rng.shuffle(pile)
 
@@ -2167,7 +2170,7 @@ class MatchState:
             n = SPAMMER_DRAWS if seat in self.spammers else DRAW_PER_HAND
             if seat == PLAYER:
                 n += self.run_draws + self.heat_draws()
-            self.draw_jokers(seat, n + self.next_hand_draws[seat] + (self.rules.draw_bonus(seat) if self.rules else 0))
+            self.draw_jokers(seat, n + self.next_hand_draws[seat] + (self.rules.draw_bonus(seat) if self.rules else 0), opening=True)
         self.dry_hand = self.next_hand_malus >= NO_ENERGY
         self.next_hand_malus = 0
         self.next_hand_draws = [0] * NUM_PLAYERS
@@ -2179,6 +2182,7 @@ class MatchState:
         self.kept = [""] * NUM_PLAYERS
         self.last_spell = [""] * NUM_PLAYERS
         self.choices = [{} for _ in range(NUM_PLAYERS)]
+        self.recycled = []
         self._owe_returns()
 
     def _owe_returns(self):
@@ -2216,10 +2220,11 @@ class MatchState:
             self.discard[seat].extend(going)
             self.joker_hand[seat] = staying
 
-    def draw_jokers(self, seat, n):
+    def draw_jokers(self, seat, n, opening=False):
+        """`opening` : le tirage du debut de donne, le seul qui remelange sous `dominion`."""
         for _ in range(n):
             if not self.draw_pile[seat]:
-                if not self.discard[seat]:
+                if not self.discard[seat] or (self.dominion and not opening):
                     return
                 self.draw_pile[seat] = self.discard[seat]
                 self.discard[seat] = []
@@ -2405,11 +2410,44 @@ class MatchState:
         if jtype(jid) == "passif" and self.rules is not None and self.arms_on_draw(seat) and self.rules.free_case(seat) >= 0:
             self.rules.play(seat, jid)
 
+    RECYCLE_COST = 1
+
+    def recycle_error(self, jid, seat=PLAYER):
+        """MatchState.recycle_error : "" si le joueur `seat` peut recycler `jid` maintenant."""
+        if seat not in self.players or jid not in self.joker_hand[seat]:
+            return "not_in_hand"
+        if self.to_discard[seat] > 0:
+            return "discard"
+        if self.choices[seat]:
+            return "choice"
+        if seat in self.recycled:
+            return "recycled"
+        if self.energy[seat] < self.RECYCLE_COST:
+            return "energy"
+        if not self.can_draw(seat):
+            return "pile"
+        return ""
+
+    def recycle(self, jid, seat=PLAYER):
+        """MatchState.recycle (+ RogueMatch.recycle_joker : un passif arme est desarme) : 1 energie,
+        le joker part, un autre est pioche avant qu'il n'atteigne la defausse."""
+        if self.rules is not None and self.arms_on_draw(seat) and jtype(jid) == "passif":
+            self.rules.disarm(seat, jid)
+        self.energy[seat] += self._discard_extra(seat, jid) - self.RECYCLE_COST
+        self.joker_hand[seat].remove(jid)
+        self.recycled.append(seat)
+        self.draw_jokers(seat, 1)
+        self.discard[seat].append(jid)
+
+    def can_draw(self, seat):
+        """515d : pioche non vide, ou (hors dominion) une defausse a remelanger."""
+        return bool(self.draw_pile[seat]) or (not self.dominion and bool(self.discard[seat]))
+
     def reveal(self, seat):
         """Feu de Paille2 : le dessus de la pioche (remelangee depuis la defausse s'il le
         faut) sur la defausse ; "" quand les deux sont vides."""
         if not self.draw_pile[seat]:
-            if not self.discard[seat]:
+            if not self.can_draw(seat):
                 return ""
             self.draw_pile[seat] = self.discard[seat]
             self.discard[seat] = []

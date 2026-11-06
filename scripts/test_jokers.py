@@ -491,6 +491,30 @@ def dominion_tests():
     s = st(["feu_de_paille2"])
     oks.append(check("feu de paille2 : rien a reveler", s.play_error(0, "feu_de_paille2"), "pile"))
 
+    # 515d : pas de remelange en cours de donne sous dominion (boucle Chope Vide3 / Addition2)
+    s = st(["chope_vide3", "addition2"])
+    s.dominion = True
+    s.discard[0] = ["zero", "miroir"]
+    oks.append(check("dominion : pioche vide, la defausse attend la donne suivante",
+                     [s.can_draw(0), J.make_effect("ardoise2", 0).pointless(s.rules)], [False, True]))
+    cast(s, "chope_vide3")
+    oks.append(check("dominion : chope vide3 ne pioche rien, garde son energie", [s.joker_hand[0], s.energy[0]], [["addition2"], 4]))
+    s.draw_jokers(0, 2, opening=True)
+    oks.append(check("dominion : le tirage d'ouverture remelange", len(s.joker_hand[0]), 3))
+    s = st(["feu_de_paille2"])
+    s.dominion = True
+    s.discard[0] = ["chope_vide3"]
+    oks.append(check("dominion : feu de paille2 sans pioche", s.play_error(0, "feu_de_paille2"), "pile"))
+
+    s = st(["kermesse", "zero"], ["miroir"])
+    oks.append(check("recycler : 1 energie, une nouvelle pioche, une fois par donne",
+                     [s.recycle_error("kermesse"), s.recycle("kermesse"), s.joker_hand[0], s.discard[0], s.energy[0],
+                      s.recycle_error("zero")], ["", None, ["zero", "miroir"], ["kermesse"], 2, "recycled"]))
+    s = st(["kermesse"])
+    s.dominion = True
+    s.discard[0] = ["zero"]
+    oks.append(check("recycler : sans pioche sous dominion", s.recycle_error("kermesse"), "pile"))
+
     new = sorted(J.DOMINION_REPLACED.values())
     oks.append(check("ids : les 12 au catalogue, hors REPLACED ; les anciens dedans",
                      [all(i in J.CATALOG and i not in J.REPLACED for i in new), all(o in J.REPLACED for o in J.DOMINION_REPLACED)], [True, True]))

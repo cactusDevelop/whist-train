@@ -7,15 +7,17 @@ Arretee, Double Valet, Pot-de-Vin, Collet...).
 Methode, a chaque OCCASION (le joker est en main ET lancable a cette decision, pli ou
 enchere) : la meme situation (copie exacte, memes donnes de la suite, memes graines) est
 rejouee jusqu'a la FIN DU MATCH de trois facons :
-  A jouer   : le joker est lance maintenant, puis la regle du joueur continue ;
-  B garder  : il est interdit a cette decision seulement, la regle peut le lancer plus tard ;
-  C recycler: il est defausse pour l'energie, puis la regle continue.
+  jouer     : le joker est lance maintenant, puis la regle du joueur continue ;
+  garder    : il est interdit a cette decision seulement, la regle peut le lancer plus tard ;
+  recycler  : le Recycler du jeu (1 energie, une nouvelle pioche, une fois par donne), quand il
+              est permis a cette decision ;
+  defausser : defausse pour l'energie (+1), puis la regle continue.
 Horizon exact (whist-4-it) : la main de jokers part a la defausse en fin de donne, la pioche
 et la defausse durent le match, rien ne passe au match suivant.
 
 Bruit / biais de selection : 2K rejouees par branche (graines des jokers et des donnes
-suivantes communes aux trois branches d'une rejouee). Les K premieres DECIDENT : utile si
-A > max(B, C) ; alt = la meilleure de B/C. Les K suivantes MESURENT : gain = A - alt.
+suivantes communes aux trois branches d'une rejouee). Les K premieres DECIDENT : alt = la meilleure
+des autres branches, utile si jouer > alt. Les K suivantes MESURENT : gain = jouer - alt.
   force       = gain moyen sur les occasions utiles (points du joueur, fin de match) ;
   polyvalence = part des donnes (joker en main et lancable au moins une fois) avec au
                 moins une occasion utile ;
@@ -58,7 +60,8 @@ VALUE_PROB = 0.25  # donnes ou l'on mesure aussi la valeur d'un ⚡ / d'une pioc
 MIN_N = 30
 BATCH = 40
 UPLOAD_EVERY_S = 900
-BRANCHES = ("jouer", "garder", "recycler")
+BRANCHES = ("jouer", "garder", "recycler", "defausser")
+ALTS = BRANCHES[1:]
 PLAYER = jm.PLAYER
 
 
@@ -105,21 +108,29 @@ def _setups(jid):
     def keep(p, _s):
         p.ban = {jid}
 
-    def recycle(p, _s):
+    def swap(p, _s):
         p.forced_ok = None
-        p.recycle = jid
-    return play, keep, recycle
+        p.swap = jid
+        p.ban = {jid}
+
+    def drop(p, _s):
+        p.forced_ok = None
+        p.drop = jid
+    return {"jouer": play, "garder": keep, "recycler": swap, "defausser": drop}
 
 
-def _occasion(match, hand, jid, policy, hands_left, base_seed, k, lead_deals=()):
-    """-> dict (A/B/C par rejouee) ou None si le joker est refuse a la copie."""
+def _occasion(match, hand, jid, policy, hands_left, base_seed, k, lead_deals=(), can_recycle=True):
+    """-> {branche: [points par rejouee]} ou None si le joker est refuse a la copie. Recycler
+    (MatchState.recycle_error) seulement quand le joueur le peut a cette decision."""
     deals_seed = random.Random(base_seed)
-    runs = {b: [] for b in BRANCHES}
+    setups = _setups(jid)
+    branches = [b for b in BRANCHES if b != "recycler" or can_recycle]
+    runs = {b: [] for b in branches}
     for r in range(2 * k):
         seed = base_seed * 31 + r
         deals = jm.spare_deals(match, deals_seed.randrange(1 << 30))
-        for b, setup in zip(BRANCHES, _setups(jid)):
-            pts, ok = _rollout(match, hand, setup, policy, hands_left, deals, seed, lead_deals)
+        for b in branches:
+            pts, ok = _rollout(match, hand, setups[b], policy, hands_left, deals, seed, lead_deals)
             if b != "garder" and ok is False:
                 return None  # la copie refuse (cas limite) : occasion ignoree
             runs[b].append(pts)
@@ -128,9 +139,9 @@ def _occasion(match, hand, jid, policy, hands_left, base_seed, k, lead_deals=())
 
 def _judge(runs, k):
     mean = lambda xs: sum(xs) / len(xs)
-    a1, b1, c1 = (mean(runs[b][:k]) for b in BRANCHES)
-    alt = "garder" if b1 >= c1 else "recycler"
-    useful = a1 > max(b1, c1)
+    first = {b: mean(xs[:k]) for b, xs in runs.items()}
+    alt = max((b for b in ALTS if b in runs), key=lambda b: first[b])
+    useful = first["jouer"] > first[alt]
     gain = mean(runs["jouer"][k:]) - mean(runs[alt][k:])
     return useful, gain, alt
 
@@ -152,7 +163,7 @@ def _merge_cell(d, s):
 
 def _entry():
     return {"occasions": 0, "useful": 0, "rule_cast": 0, "rule_cast_useful": 0, "hands": 0, "hands_useful": 0,
-            "force": _cell(), "tout": _cell(), "alt": {"garder": 0, "recycler": 0}, "by_contract": {}}
+            "force": _cell(), "tout": _cell(), "alt": {b: 0 for b in ALTS}, "by_contract": {}}
 
 
 def worker(args):
@@ -206,7 +217,8 @@ def worker(args):
                 cands = [j for j in dict.fromkeys(cands) if _measurable(j)]
                 if cands and rng.random() < 0.5:
                     focus = rng.choice(cands)
-                    runs = _occasion(match, None, focus, policy, hands_left, occ_seed, k, lead_deals)
+                    runs = _occasion(match, None, focus, policy, hands_left, occ_seed, k, lead_deals,
+                                     probe_h.state.recycle_error(focus, PLAYER) == "")
                     if runs is not None:
                         cards = probe.rules.deal_hands[PLAYER] if probe.rules.deal_hands else []
                         bv = X.bid_view(cards, probe_h.state) if cards else None
@@ -250,7 +262,8 @@ def worker(args):
                 if focus not in cands:
                     return
                 n_occ[0] += 1
-                runs = _occasion(match, h_now, focus, policy, hands_left, occ_seed + n_occ[0], k)
+                runs = _occasion(match, h_now, focus, policy, hands_left, occ_seed + n_occ[0], k,
+                                 can_recycle=h_now.state.recycle_error(focus, PLAYER) == "")
                 if runs is None:
                     return
                 cast = X.player_wants(h_now, focus)[0]
@@ -279,8 +292,8 @@ def merge(dst, src):
             d[key] += e[key]
         for key in ("force", "tout"):
             _merge_cell(d[key], e[key])
-        for key in ("garder", "recycler"):
-            d["alt"][key] += e["alt"][key]
+        for key in ALTS:
+            d["alt"][key] += e["alt"].get(key, 0)
         for c, bc in e["by_contract"].items():
             db = d["by_contract"].setdefault(c, {"occasions": 0, "useful": 0, "force": _cell()})
             db["occasions"] += bc["occasions"]
@@ -309,7 +322,7 @@ def table(agg):
                      "bien_vu": round(e["rule_cast_useful"] / e["useful"], 3) if e["useful"] else None,
                      "rule_cast_rate": round(e["rule_cast"] / e["occasions"], 3) if e["occasions"] else None,
                      "gain_tout": None if g is None else round(g, 3), "gain_tout_se": None if gse is None else round(gse, 3),
-                     "alt_recycler": round(e["alt"]["recycler"] / e["occasions"], 3) if e["occasions"] else None,
+                     "alt": {b: round(e["alt"].get(b, 0) / e["occasions"], 3) for b in ALTS} if e["occasions"] else None,
                      "fiable": e["useful"] >= MIN_N,
                      "by_contract": {c: {"occasions": bc["occasions"], "useful": bc["useful"],
                                          "force": None if stat(bc["force"])[0] is None else round(stat(bc["force"])[0], 2)}
