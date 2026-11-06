@@ -604,6 +604,12 @@ class Player:
         self.force_trick = None
         self.forced_ok = None
         self.bid_probe = None
+        # Moments (scripts/joker_moments.py) : a la prochaine decision (enchere ou pli), `lead` est
+        # lance d'abord puis la regle continue ; `ban` y est interdit ; `recycle` est defausse pour
+        # l'energie, puis la regle continue. Consommes par cette decision.
+        self.lead = None
+        self.ban = set()
+        self.recycle = None
 
     def _target(self, rules, jid=None):
         if jid is not None and J.make_effect(jid, PLAYER).target_kind() == "suit":  # 6c54 : sa plus longue couleur
@@ -669,6 +675,17 @@ class Player:
         J.watch_eye(state, rules, eye, jid)
         return played
 
+    def _take_moment(self, state):
+        """-> (lead, tried) de la decision ; applique `recycle`."""
+        lead, tried, rec = self.lead, set(self.ban), self.recycle
+        self.lead, self.ban, self.recycle = None, set(), None
+        if rec is not None:
+            ok = rec in state.joker_hand[PLAYER] and not state.choices[PLAYER]
+            if ok:
+                state.discard_joker(PLAYER, rec)
+            self.forced_ok = ok
+        return lead, tried
+
     def _forced(self, state, rules, eye, jid, target=None):
         # _cast -> None si refuse ; un joker accepte peut renvoyer {} (Coup de Vent, Bluff...)
         played = self._cast(state, rules, eye, jid, target) if jid else None
@@ -686,8 +703,15 @@ class Player:
                 tgt = X.bid_target(jid)
             self._forced(state, rules, eye, jid, tgt)
             return
-        tried = set()
+        lead, tried = self._take_moment(state)
         cards = rules.deal_hands[PLAYER] if rules.deal_hands else []
+        if lead is not None:
+            tgt = None
+            if self.style == "expert":
+                from agents import joker_expert as X
+                tgt = X.bid_target(lead)
+            self._forced(state, rules, eye, lead, tgt)
+            tried.add(lead)
         for _ in range(self.MAX_CASTS):
             got = self._pick(state, rules, boss, True, tried, cards=cards)
             if got is None:
@@ -717,7 +741,19 @@ class Player:
                 hand.step_joker_card(PLAYER, played["card"], jid)
                 return True
             return False
-        tried = set()
+        lead, tried = self._take_moment(hand.state)
+        if lead is not None:
+            tgt = None
+            if self.style == "expert":
+                from agents import joker_expert as X
+                tgt = X.target(X.view(hand, PLAYER), lead)
+            played = self._forced(hand.state, hand.rules, hand.eye, lead, tgt)
+            tried.add(lead)
+            if played is not None and played.get("card") is not None:
+                hand.step_joker_card(PLAYER, played["card"], lead)
+                return True
+            if once and played is not None:
+                return False
         for _ in range(self.MAX_CASTS):
             got = self._pick(hand.state, hand.rules, hand.boss, False, tried, hand=hand)
             if got is None:

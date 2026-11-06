@@ -464,11 +464,11 @@ def dominion_tests():
     s.choose(0, [2, 0])
     oks.append(check("poche interieure2 : gardes dans l'ordre choisi, l'autre jete",
                      [s.draw_pile[0], s.discard[0]], [["zero", "kermesse", "miroir"], ["poche_interieure2", "embuscade"]]))
-    s = st(["poche_interieure2"], ["zero", "coup_de_vent", "miroir"])
+    s = st(["poche_interieure2"], ["zero", "bluff", "miroir"])
     cast(s, "poche_interieure2")
     s.end_hand()
-    oks.append(check("fin de donne : le choix se regle comme un bot, ce qu'il lance garde",
-                     [s.choices[0], s.draw_pile[0], "miroir" in s.discard[0]], [{}, ["coup_de_vent"], True]))
+    oks.append(check("fin de donne : un joueur garde ses jokers de pli, une enchere est passee",
+                     [s.choices[0], s.draw_pile[0], "bluff" in s.discard[0]], [{}, ["zero", "miroir"], True]))
     s = st(["cendrier2"], ["zero"])
     s.players = []
     s.discard[0] = ["miroir", "kermesse"]

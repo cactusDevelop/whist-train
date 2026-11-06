@@ -30,7 +30,7 @@ import random
 
 from engine.cards import NUM_PLAYERS, legal_plays, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "a76fb47e299856df"
+JOKER_SPEC_HASH = "ee3ab110cd32992a"  # ee3a : bot_spares d'un siege joueur (whist-4-it 06/11)
 # a76f (whist-4-it, 06/11) : 12 jokers recycles « a la Dominion » (DOMINION_REPLACED), choix en attente
 # (MatchState.choices / bot_picks), sort gratuit (cast_free), Complice2 rejoue le sort -> regles changees.
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
@@ -2437,7 +2437,12 @@ class MatchState:
         return played
 
     def bot_spares(self, seat, jid):
-        """Un bot jette `jid` pour rien qui lui manquerait (La Consigne2)."""
+        """Un bot jette `jid` pour rien qui lui manquerait (La Consigne2). ee3a : un joueur (pilote
+        auto) lance aussi ses jokers de pli et d'enchere -> seulement ce qui ne peut plus servir,
+        en phase de jeu (une enchere passee, un joker pointless maintenant)."""
+        if seat in self.players:
+            playing = self.rules is not None and self.rules.game is not None
+            return playing and (jtype(jid) == "enchere" or make_effect(jid, seat).pointless(self.rules))
         if base_id(jid) in COMBO_CAST:
             return False
         return jtype(jid) not in BOT_TYPES or not make_effect(jid, seat).bot_casts()
