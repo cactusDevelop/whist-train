@@ -360,6 +360,160 @@ def v2_tests():
     J.watch_eye(state, rules, "points", "regard_furtif")
     oks.append(check("oeil : sanction points et jauge videe", (rules.score_bonus[0], state.suspicion), (-20, 0)))
     oks += review_20261014_tests()
+    oks += dominion_tests()
+    return oks
+
+
+def dominion_tests():
+    """a76f : les 12 jokers recycles a la Dominion, memes cas et memes attendus que
+    whist-4-it/tests/dominion_jokers_runner.gd (lots A et B, Complice, Feu de Paille, ids)."""
+    from agents import joker_expert as X
+    oks = []
+
+    def st(jokers, pile=()):
+        state, rules, game = setup()
+        state.draw_pile[0] = list(pile)
+        state.energy = [3, 3, 3, 3]
+        state.joker_hand[0] = list(jokers)
+        return state
+
+    def cast(state, jid, target=-1, seat=0):
+        err = state.play_error(seat, jid)
+        if err:
+            return {"error": err}
+        played = state.rules.play(seat, jid, target)
+        if not played.get("error"):
+            state.spend(seat, jid)
+        return played
+
+    s = st(["ardoise2"], ["zero", "miroir", "embuscade"])
+    cast(s, "ardoise2")
+    oks.append(check("ardoise2 : 2 pioches, 1 du", [s.joker_hand[0], s.debts[0], s.energy[0]], [["embuscade", "miroir"], 1, 3]))
+    s = st(["tournee_generale2"], ["zero", "miroir", "embuscade", "kermesse"])
+    for seat in (1, 2, 3):
+        s.draw_pile[seat] = ["zero", "miroir"]
+    cast(s, "tournee_generale2")
+    oks.append(check("tournee generale2 : 3 pour lui, 1 par adversaire, rien au partenaire",
+                     [len(h) for h in s.joker_hand] + [s.energy[0]], [3, 1, 0, 1, 2]))
+    s = st(["valet_de_chambre2"], ["cameleon", "zero", "valet_de_chambre2", "miroir"])
+    cast(s, "valet_de_chambre2")
+    oks.append(check("valet de chambre2 : le prochain Valet, jamais un autre Valet de Chambre",
+                     [s.joker_hand[0], s.draw_pile[0]], [["cameleon"], ["zero", "valet_de_chambre2", "miroir"]]))
+    s = st(["valet_de_chambre2"], ["zero", "miroir"])
+    oks.append(check("valet de chambre2 : sans Valet", s.play_error(0, "valet_de_chambre2"), "no_valet"))
+    s = st(["addition2"], ["zero", "miroir"])
+    cast(s, "addition2")
+    oks.append(check("addition2 : +1 pour 1, un joker, un sou", [s.energy[0], s.joker_hand[0], s.sous_won], [3, ["miroir"], 1]))
+    s = st(["vieille_habitude2", "zero"], ["miroir"] * 5)
+    cast(s, "vieille_habitude2")
+    oks.append(check("vieille habitude2 : jusqu'a 4 en main", len(s.joker_hand[0]), 4))
+    s = st(["vieille_habitude2", "zero", "zero", "miroir", "miroir"], ["kermesse"])
+    oks.append(check("vieille habitude2 : deja 4", s.play_error(0, "vieille_habitude2"), "full"))
+    s = st(["chope_vide3"], ["zero"])
+    cast(s, "chope_vide3")
+    oks.append(check("chope vide3 : un joker et +2 pour 1", [s.joker_hand[0], s.energy[0]], [["zero"], 4]))
+    s = st(["mauvais_perdant2"])
+    s.joker_hand[1], s.joker_hand[2], s.joker_hand[3] = ["zero", "kermesse"], ["embuscade"], ["miroir"]
+    cast(s, "mauvais_perdant2")
+    oks.append(check("mauvais perdant2 : chaque adversaire bot en jette un, pas le partenaire",
+                     [s.joker_hand[1], s.joker_hand[2], s.joker_hand[3], s.discard[1]], [["kermesse"], ["embuscade"], [], ["zero"]]))
+    s = st(["mauvais_perdant2"])
+    oks.append(check("mauvais perdant2 : personne n'a de joker", s.play_error(0, "mauvais_perdant2"), "no_joker"))
+
+    s = st(["complice2", "kermesse", "chope_vide3"], ["zero", "miroir", "embuscade"])
+    s.energy[0] = 4
+    cast(s, "complice2")
+    cast(s, "kermesse")
+    oks.append(check("complice2 : une aura n'est pas un sort, il attend", any(isinstance(e, J.Complice2) for e in s.rules.effects), True))
+    played = cast(s, "chope_vide3")
+    oks.append(check("complice2 : le sort suivant agit deux fois", [played.get("twice", False), len(s.joker_hand[0]), s.energy[0]], [True, 2, 4]))
+    oks.append(check("complice2 : puis il part", any(isinstance(e, J.Complice2) for e in s.rules.effects), False))
+    s = st(["complice2", "main_lourde"], ["zero", "miroir", "embuscade", "kermesse"])
+    cast(s, "complice2")
+    played = cast(s, "main_lourde")
+    oks.append(check("complice2 : Main Lourde deux fois, 4 pioches, 2 dues", [len(s.joker_hand[0]), played.get("discard", 0)], [4, 2]))
+    oks.append(check("complice2 : jamais un sort qui dure la donne", J.Complice2("complice2", 0).doubles(0, "horloge_arretee"), False))
+
+    s = st(["consigne2", "zero", "miroir", "embuscade"], ["kermesse", "coup_de_vent"])
+    cast(s, "consigne2")
+    oks.append(check("consigne2 : les autres jokers proposes", [s.choices[0].get("kind"), s.choices[0].get("options")], ["consigne", ["zero", "miroir", "embuscade"]]))
+    oks.append(check("consigne2 : la main attend le choix", s.play_error(0, "zero"), "choice"))
+    oks.append(check("consigne2 : choix hors bornes refuses", [s.choose(0, [5]), s.choose(0, [0, 0])], ["picks", "picks"]))
+    oks.append(check("consigne2 : deux jetes, deux pioches, sans energie",
+                     [s.choose(0, [0, 2]), s.joker_hand[0], s.discard[0], s.energy[0], s.choices[0]],
+                     ["", ["miroir", "coup_de_vent", "kermesse"], ["consigne2", "zero", "embuscade"], 3, {}]))
+    s = st(["consigne2", "zero"])
+    cast(s, "consigne2")
+    oks.append(check("consigne2 : n'en jeter aucun est un choix", [s.choose(0, []), s.joker_hand[0]], ["", ["zero"]]))
+    s = st(["consigne2"])
+    oks.append(check("consigne2 : seule en main", s.play_error(0, "consigne2"), "empty_hand"))
+
+    s = st(["cendrier2"], ["zero"])
+    s.discard[0] = ["kermesse", "miroir"]
+    cast(s, "cendrier2")
+    oks.append(check("cendrier2 : pioche, puis la defausse proposee (sans lui)",
+                     [s.joker_hand[0], s.choices[0].get("options"), s.choices[0].get("min")], [["zero"], ["kermesse", "miroir"], 1]))
+    oks.append(check("cendrier2 : un a choisir", s.choose(0, []), "picks"))
+    s.choose(0, [0])
+    oks.append(check("cendrier2 : sur le dessus de la pioche", [s.draw_pile[0], s.discard[0]], [["kermesse"], ["miroir", "cendrier2"]]))
+
+    s = st(["poche_interieure2"], ["zero", "miroir", "embuscade", "kermesse"])
+    cast(s, "poche_interieure2")
+    oks.append(check("poche interieure2 : les 3 prochains, le dessus d'abord",
+                     [s.choices[0].get("options"), s.choices[0].get("ordered")], [["kermesse", "embuscade", "miroir"], True]))
+    s.choose(0, [2, 0])
+    oks.append(check("poche interieure2 : gardes dans l'ordre choisi, l'autre jete",
+                     [s.draw_pile[0], s.discard[0]], [["zero", "kermesse", "miroir"], ["poche_interieure2", "embuscade"]]))
+    s = st(["poche_interieure2"], ["zero", "coup_de_vent", "miroir"])
+    cast(s, "poche_interieure2")
+    s.end_hand()
+    oks.append(check("fin de donne : le choix se regle comme un bot, ce qu'il lance garde",
+                     [s.choices[0], s.draw_pile[0], "miroir" in s.discard[0]], [{}, ["coup_de_vent"], True]))
+    s = st(["cendrier2"], ["zero"])
+    s.players = []
+    s.discard[0] = ["miroir", "kermesse"]
+    cast(s, "cendrier2")
+    oks.append(check("cendrier2 d'un bot : choisit aussitot le sort qu'il lance", [s.choices[0], s.draw_pile[0]], [{}, ["kermesse"]]))
+
+    s = st(["feu_de_paille2"], ["zero", "chope_vide3"])
+    cast(s, "feu_de_paille2")
+    oks.append(check("feu de paille2 : un sort au dessus est lance gratuitement",
+                     [s.energy[0], s.joker_hand[0], s.discard[0]], [5, ["zero"], ["chope_vide3", "feu_de_paille2"]]))
+    s = st(["feu_de_paille2"], ["zero", "kermesse"])
+    cast(s, "feu_de_paille2")
+    oks.append(check("feu de paille2 : le reste est seulement jete", [s.discard[0], len(s.rules.effects)], [["kermesse", "feu_de_paille2"], 0]))
+    s = st(["feu_de_paille2"], ["zero", "remonte_pli"])
+    cast(s, "feu_de_paille2")
+    oks.append(check("feu de paille2 : un sort a cible en demande une, adversaires d'abord",
+                     [s.choices[0].get("kind"), s.choices[0].get("options", [None])[0], s.choices[0].get("joker")], ["target", 1, "remonte_pli"]))
+    s.choose(0, [0])
+    oks.append(check("feu de paille2 : puis il la vise (gratuit)", ["remonte_pli" in s.cast_ids[0], s.energy[0]], [True, 3]))
+    s = st(["feu_de_paille2"])
+    oks.append(check("feu de paille2 : rien a reveler", s.play_error(0, "feu_de_paille2"), "pile"))
+
+    new = sorted(J.DOMINION_REPLACED.values())
+    oks.append(check("ids : les 12 au catalogue, hors REPLACED ; les anciens dedans",
+                     [all(i in J.CATALOG and i not in J.REPLACED for i in new), all(o in J.REPLACED for o in J.DOMINION_REPLACED)], [True, True]))
+    oks.append(check("ids : CASTABLE du reseau inchange (7 actions)", J.CASTABLE,
+                     ["coup_de_vent", "coup_du_chapeau", "embuscade", "faux_pas", "inversion", "kermesse", "main_lourde"]))
+    oks.append(check("regles du joueur simule : les 12", [j for j in new if j not in X.RULES], []))
+    # matchs complets : le joueur simule (style expert) lance les 12, rien ne casse
+    import engine.joker_match as jm
+    casts = {}
+    rng = random.Random(11)
+    for _ in range(16):
+        cfg = jm.random_config(rng)
+        cfg["style"] = "expert"
+        cfg["deck"] = cfg["deck"] + new
+        m = jm.Match(cfg, rng.randrange(1 << 30))
+        for _h in range(jm.HANDS_PER_MATCH):
+            hand = m.next_hand()
+            jm.play_out(hand, J.heuristic_action)
+            m.finish(hand)
+            for j in hand.state.cast_ids[0]:
+                casts[J.base_id(j)] = casts.get(J.base_id(j), 0) + 1
+    print("dominion, lances par le joueur simule :", sorted((k, v) for k, v in casts.items() if k in new))
+    oks.append(check("dominion : le joueur simule lance les 12", sorted(j for j in new if not casts.get(j)), []))
     return oks
 
 
