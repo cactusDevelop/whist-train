@@ -1997,8 +1997,9 @@ class LaPeche2(DeckEngine):
 
     def on_play(self, rules, target=-1):
         st = rules.state
-        st.offer_choice(self.owner, {"kind": "la_peche", "joker": self.id, "options": list(st.discard[self.owner]),
-                                     "min": 1, "max": 1})
+        if st.discard[self.owner]:  # lancee par Feu de Paille2 depuis une defausse ou elle etait seule : rien a reprendre
+            st.offer_choice(self.owner, {"kind": "la_peche", "joker": self.id, "options": list(st.discard[self.owner]),
+                                         "min": 1, "max": 1})
         return {}
 
 
