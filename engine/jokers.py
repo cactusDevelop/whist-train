@@ -30,7 +30,7 @@ import random
 
 from engine.cards import NUM_PLAYERS, legal_plays, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "22d80ee5c2c17d2e"  # 22d8 : 2 ⚡ par donne sous dominion (3 hors dominion) ; 8ebd : grille G2 raretes/couts (mesure des moments utiles 515d) ; fc90 : defausse due d'un sort de Feu de Paille2 payee apres lui (bots compris) ; 515d : pas de remelange en cours de donne (dominion) ; ee3a : bot_spares joueur
+JOKER_SPEC_HASH = "473e418c736d5419"  # 473e : grille revue sur la mesure 22d8 (whist-4-it bbb9a97) ; 22d8 : 2 ⚡ par donne sous dominion (3 hors dominion) ; 8ebd : grille G2 raretes/couts (mesure des moments utiles 515d) ; fc90 : defausse due d'un sort de Feu de Paille2 payee apres lui (bots compris) ; 515d : pas de remelange en cours de donne (dominion) ; ee3a : bot_spares joueur
 # a76f (whist-4-it, 06/11) : 12 jokers recycles « a la Dominion » (DOMINION_REPLACED), choix en attente
 # (MatchState.choices / bot_picks), sort gratuit (cast_free), Complice2 rejoue le sort -> regles changees.
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
@@ -130,21 +130,21 @@ OBS_VERSION = 3  # 2 = enemy_traps rempli ; 3 = cartes exactes, Soupcon/Oeil, jo
 
 # id -> (type, rarete, cout, bot_casts) -- joker_catalog.gd / joker_effects.gd
 CATALOG = {
-    "cameleon": ("pli", "comptoir", 1, False),
+    "cameleon": ("pli", "salle", 1, False),
     "zero": ("pli", "salle", 1, False),
     "traitre": ("pli", "salle", 2, False),
     "coup_de_vent": ("sort", "salle", 1, True),
     "main_lourde": ("sort", "comptoir", 0, True),
-    "embuscade": ("piege", "arriere_salle", 1, True),
+    "embuscade": ("piege", "salle", 1, True),
     "kermesse": ("aura", "salle", 2, True),
     "coup_d_oeil": ("enchere", "comptoir", 1, False),
     "regard_furtif": ("sort", "arriere_salle", 1, False),
     "voeu_de_pauvrete": ("passif", "salle", 0, False),
-    "miroir": ("pli", "arriere_salle", 1, False),
+    "miroir": ("pli", "salle", 2, False),
     "borgne": ("pli", "arriere_salle", 2, False),
     "carte_fantome": ("pli", "salle", 2, False),
-    "double_valet": ("pli", "comptoir", 1, False),
-    "atout_errant": ("pli", "salle", 1, False),
+    "double_valet": ("pli", "salle", 1, False),
+    "atout_errant": ("pli", "salle", 2, False),
     "courant_d_air": ("sort", "comptoir", 0, False),
     "tournee_generale": ("sort", "comptoir", 1, False),
     "gueule_de_bois": ("sort", "salle", 2, False),
@@ -153,13 +153,13 @@ CATALOG = {
     "faux_depart": ("sort", "salle", 1, False),
     "inversion": ("aura", "cave", 3, True),
     "fausse_piste": ("piege", "comptoir", 2, False),
-    "collet": ("piege", "arriere_salle", 2, False),
+    "collet": ("piege", "arriere_salle", 1, False),
     "contre_espionnage": ("piege", "comptoir", 1, False),
     "croupier_endormi": ("piege", "comptoir", 1, False),
     "dette_de_jeu": ("piege", "salle", 1, False),
     "fumee_de_pipe": ("aura", "comptoir", 1, False),
     "silence_du_cercle": ("aura", "cave", 3, False),
-    "lune_noire": ("aura", "salle", 2, False),
+    "lune_noire": ("aura", "arriere_salle", 2, False),
     "coeur_de_zinneke": ("aura", "comptoir", 1, False),
     "brouillard_de_la_senne": ("aura", "cave", 2, False),
     "cartes_sur_table": ("enchere", "comptoir", 0, False),
@@ -169,14 +169,14 @@ CATALOG = {
     "pot_de_vin": ("enchere", "arriere_salle", 1, False),
     "fossoyeur_de_plis": ("passif", "salle", 0, False),
     "brimborion_dore": ("passif", "arriere_salle", 0, False),
-    "manche_truquee": ("sort", "arriere_salle", 2, False),
-    "coup_du_chapeau": ("aura", "comptoir", 1, True),
+    "manche_truquee": ("sort", "salle", 1, False),
+    "coup_du_chapeau": ("aura", "arriere_salle", 1, True),
     "pourboire": ("sort", "comptoir", 1, False),
     "chope_vide": ("passif", "comptoir", 0, False),
     "faux_pas": ("sort", "comptoir", 1, True),
     "pli_refile": ("sort", "salle", 1, False),
     "valet_borgne": ("sort", "cave", 3, False),
-    "horloge_arretee": ("sort", "salle", 1, False),
+    "horloge_arretee": ("sort", "salle", 2, False),
     "treizieme_carte": ("aura", "salle", 1, False),
     "livre_de_comptes": ("sort", "cave", 1, False),
     # 65a7 (whist-4-it f31712b) : jokers de misere, jamais lances par les bots
