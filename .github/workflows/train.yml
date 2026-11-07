@@ -108,4 +108,4 @@ jobs:
         run: |
           # L'IA libre ne s'enchaine que si ci/ppo_free_chain existe (runs courts d'abord).
           if [ "$MODE" = ppo_free ] && [ ! -f ci/ppo_free_chain ]; then exit 0; fi
-          gh workflow run train.yml -f mode="$MODE" -f init=false
+          gh workflow run train.yml --ref "$GITHUB_REF_NAME" -f mode="$MODE" -f init=false
