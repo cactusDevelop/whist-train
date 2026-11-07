@@ -54,6 +54,8 @@ from engine import jokers as J
 
 OUT_JSON = "joker_moments.json"
 OUT_MD = "joker_moments_summary.md"
+# 8ebd : --value-only = seulement la valeur d'un ⚡ / d'une pioche (toutes les donnes, aucun rejeu par joker)
+VALUE_JSON, VALUE_MD = "joker_values.json", "joker_values_summary.md"
 SEED = 95000000
 INJECT = 2
 VALUE_PROB = 0.25  # donnes ou l'on mesure aussi la valeur d'un ⚡ / d'une pioche
@@ -167,7 +169,7 @@ def _entry():
 
 
 def worker(args):
-    seeds, weights, k = args
+    seeds, weights, k, value_only = args
     from scripts.train_jokers import make_policy
     from agents import joker_expert as X
     from agents.joker_expert import contract_key
@@ -208,7 +210,7 @@ def worker(args):
                 occ_seed = rng.randrange(1 << 30)
                 # 1er tour d'enchere : candidats du joueur (sonde sur une copie)
                 focus, bid_done = None, False
-                if cfg["kind"] == "elite":
+                if cfg["kind"] == "elite" and not value_only:
                     probe = copy.deepcopy(match)
                     probe.player.bid_probe = []
                     n_rec = len(probe.recorded)
@@ -233,11 +235,13 @@ def worker(args):
                         bid_done = True
                 hand = match.next_hand()
                 ckey = contract_key(hand.contract)
-                if not bid_done:
+                if value_only:
+                    focus = None
+                elif not bid_done:
                     held = [j for j in dict.fromkeys(hand.state.joker_hand[PLAYER]) if _measurable(j) and J.jtype(j) != "enchere"]
                     focus = rng.choice(held) if held else None
                 # valeur d'un ⚡ / d'une pioche, debut de la donne
-                if rng.random() < VALUE_PROB:
+                if value_only or rng.random() < VALUE_PROB:
                     deals = jm.spare_deals(match, rng.randrange(1 << 30))
                     vs = rng.randrange(1 << 30)
 
@@ -387,14 +391,18 @@ def main():
     parser.add_argument("--k", type=int, default=2, help="rejouees par moitie (decision / mesure)")
     parser.add_argument("--seed", type=int, default=SEED)
     parser.add_argument("--matches", type=int, default=0, help="arret apres ce nombre de matchs (0 = au temps)")
+    parser.add_argument("--value-only", action="store_true", help="8ebd : seulement la valeur du ⚡ / de la pioche")
     args = parser.parse_args()
+    global OUT_JSON, OUT_MD
+    if args.value_only:
+        OUT_JSON, OUT_MD = VALUE_JSON, VALUE_MD
     ckpt = torch.load(CHECKPOINT, map_location="cpu", weights_only=False)
     net = PolicyValueNet(O.OBS_DIM, J.ACTION_DIM)
     net.load_state_dict(ckpt["net"])
     net.eval()
     w = net_to_numpy(net)
     meta = {"spec_hash": J.JOKER_SPEC_HASH, "bots_net_spec_hash": ckpt.get("spec_hash"), "bots_net_iter": ckpt.get("iter"),
-            "k": args.k, "inject": INJECT}
+            "k": args.k, "inject": INJECT, "value_only": args.value_only}
     agg = {"jokers": {}, "value": {"energie": _cell(), "pioche": _cell()}, "value_by": {}, "matches": 0}
     start = time.time()
     end, next_upload, done = start + args.minutes * 60, start + UPLOAD_EVERY_S, 0
@@ -403,7 +411,7 @@ def main():
             n = BATCH if args.matches == 0 else min(BATCH, args.matches - done)
             seeds = list(range(args.seed + done, args.seed + done + n))
             t0 = time.time()
-            for data in pool.map(worker, [(seeds[i::args.workers], w, args.k) for i in range(args.workers)]):
+            for data in pool.map(worker, [(seeds[i::args.workers], w, args.k, args.value_only) for i in range(args.workers)]):
                 merge(agg, data)
             done += n
             meta["generated"] = time.strftime("%Y-%m-%dT%H:%M:%S")

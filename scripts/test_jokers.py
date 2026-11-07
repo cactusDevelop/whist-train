@@ -326,7 +326,7 @@ def v2_tests():
     oks.append(check("valet borgne (8f41) : ses points perdus deviennent gagnes", rules.adjust_deltas([-7, 3, -3, 1], {}), [7, 3, -3, 1]))
     oks.append(check("6c54 : zinneke +3, treizieme 4 plis, couts inversion / chapeau",
                      (J.CoeurDeZinneke.BONUS, J.TreiziemeCarte.LAST, J.jcost("inversion"), J.jcost("coup_du_chapeau")),
-                     (3, 4, 2, 1)))
+                     (3, 4, 3, 1)))  # 8ebd : Inversion 3
     # Main Lourde (6c54) : pioche 2, puis defausse 1 (bot : un joker qu'il ne lance jamais d'abord).
     state = J.MatchState([[], [], [], []], random.Random(0))
     rules = J.JokerRules(state)
@@ -348,7 +348,7 @@ def v2_tests():
     rules.curses = [J.make_effect("pacte_du_tenancier", 0)]
     oks.append(check("pacte : -5 par contrat rate (043f)", rules.adjust_deltas([-7, 3, 3, 1], c), [-12, 3, 3, 1]))
     # Economie du joueur : amelioration, maudits, Soupcon, Oeil.
-    oks.append(check("amelioration : cout -1", (J.jcost("inversion+"), J.known("zero+")), (1, False)))
+    oks.append(check("amelioration : cout -1", (J.jcost("inversion+"), J.known("zero+")), (2, False)))  # 8ebd : Inversion 3
     state = J.MatchState([["cartes_marquees", "regard_furtif", "livre_de_comptes"], [], [], []], random.Random(2), 9)
     rules = J.JokerRules(state)
     state.arm_curses()
@@ -952,7 +952,7 @@ def combo_tests():
     """Synergies 04a-04c (empreinte 6483), contre joker_effects.gd / match_state.gd."""
     oks = []
     from agents import joker_expert as X
-    oks.append(check("04c : Double Valet a 2", J.jcost("double_valet"), 2))
+    oks.append(check("8ebd : Double Valet a 1", J.jcost("double_valet"), 1))
     oks.append(check("04c : CASTABLE inchange", len(J.CASTABLE), 7))
     # Bal des Valets : au-dessus de l'As, jamais d'un atout, faible sous inversion
     state, rules, game = combo_state()
@@ -994,7 +994,7 @@ def combo_tests():
     oks.append(check("valet de chambre : famille a 0", state.cost_of(0, "bal_des_valets"), 0))
     oks.append(check("valet de chambre : hors famille", state.cost_of(0, "kermesse"), 2))
     cast(state, rules, "bal_des_valets")
-    oks.append(check("valet de chambre : consomme", state.cost_of(0, "double_valet"), 2))
+    oks.append(check("valet de chambre : consomme", state.cost_of(0, "double_valet"), 1))  # 8ebd
     # Feu de Paille, Addition
     state, rules, game = combo_state(["feu_de_paille", "addition"])
     state.played_this_hand[0] = 2

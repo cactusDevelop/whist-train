@@ -752,10 +752,17 @@ def _coeur_de_zinneke(v):
 
 
 def _brouillard(v):
-    # 6c54 : ma plus longue couleur est l'atout des plis que j'entame
+    # 6c54 : la couleur choisie est l'atout des plis que j'entame. 8ebd : ma meilleure couleur hors
+    # atout (main_de_fer_suit, plis estimes expert_bot), seulement si elle vaut >= 1 pli de plus que
+    # l'atout du contrat (avant : ma plus longue couleur, meme faible ou deja atout)
     if v["misere"]:
         return NO, "misere"
-    return (YES, "atout_a_mon_entame") if v["remaining"] >= 6 else (NO, "tard")
+    if v["remaining"] < 6:
+        return NO, "tard"
+    from agents import expert_bot
+    best = main_de_fer_suit(v["hand"], v["trump"])
+    gain = expert_bot.estimate_tricks(v["hand"], best) - expert_bot.estimate_tricks(v["hand"], v["trump"])
+    return (YES, "meilleur_atout_a_mon_entame") if gain >= 1 else (NO, "atout_deja_bon")
 
 
 def _meche_courte(v):
@@ -835,7 +842,7 @@ def target(v, jid):
             return v["opponents"][0]
         return v["misere_opponents"][0] if v["misere"] else v["me"]
     if b == "brouillard_de_la_senne":
-        return J.longest_suit(v["hand"])  # couleur (6c54)
+        return main_de_fer_suit(v["hand"], v["trump"])  # 8ebd : meilleure couleur hors atout (avant : la plus longue)
     if b == "pli_refile":
         decl = [s for s in v["opponents"] if s in v["side"]]
         defs = [s for s in v["opponents"] if s not in v["side"]]
