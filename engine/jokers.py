@@ -30,7 +30,7 @@ import random
 
 from engine.cards import NUM_PLAYERS, legal_plays, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "515d48bdd6b489d0"  # 515d : pas de remelange en cours de donne (dominion) ; ee3a : bot_spares joueur
+JOKER_SPEC_HASH = "fc90dae9d9b21c27"  # fc90 : defausse due d'un sort de Feu de Paille2 payee apres lui (bots compris) ; 515d : pas de remelange en cours de donne (dominion) ; ee3a : bot_spares joueur
 # a76f (whist-4-it, 06/11) : 12 jokers recycles « a la Dominion » (DOMINION_REPLACED), choix en attente
 # (MatchState.choices / bot_picks), sort gratuit (cast_free), Complice2 rejoue le sort -> regles changees.
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
@@ -2017,7 +2017,8 @@ class FeuDePaille2(DeckEngine):
         if effect.pointless(rules) or rules.blocked(jid, self.owner):
             return {"revealed": jid}
         if not effect.needs_target():
-            return {"revealed": jid, "cast": st.cast_free(self.owner, jid, -1)}
+            cast = st.cast_free(self.owner, jid, -1, False)
+            return {"revealed": jid, "cast": cast, "discard": cast.get("discard", 0)}
         targets = targets_of(effect, self.owner, rules)
         if not targets:
             return {"revealed": jid}
@@ -2025,7 +2026,8 @@ class FeuDePaille2(DeckEngine):
             st.offer_choice(self.owner, {"kind": "target", "joker": jid, "options": targets, "min": 1, "max": 1,
                                          "target_kind": effect.target_kind()})
             return {"revealed": jid}
-        return {"revealed": jid, "cast": st.cast_free(self.owner, jid, targets[0])}
+        cast = st.cast_free(self.owner, jid, targets[0], False)
+        return {"revealed": jid, "cast": cast, "discard": cast.get("discard", 0)}
 
 
 class PocheInterieure2(DeckEngine):
@@ -2140,10 +2142,6 @@ class MatchState:
         # vide ne reprend la defausse qu'au tirage d'ouverture de la donne (runs neuves, Duel).
         self.dominion = False
         self.recycled = []  # MatchState.recycled : les joueurs qui ont deja recycle cette donne
-        # Defausse due par un sort lance gratuitement (Feu de Paille2 -> Main Lourde) pendant le
-        # on_play d'un joker du joueur : chez Godot elle attend (to_discard) ; ici payee apres le
-        # paiement du joker qui l'a lancee (pay_owed), jamais pendant (il est encore en main).
-        self.owed = [0] * NUM_PLAYERS
         for pile in self.draw_pile:
             self.rng.shuffle(pile)
 
@@ -2460,9 +2458,10 @@ class MatchState:
         self.discard[seat].append(jid)
         return jid
 
-    def cast_free(self, seat, jid, target):
+    def cast_free(self, seat, jid, target, owe=True):
         """Feu de Paille2 : le sort `jid`, sur la defausse, lance pour rien. -> ce que
-        JokerRules.play a rendu ; {"error"} et de retour sur la defausse s'il ne peut pas."""
+        JokerRules.play a rendu ; {"error"} et de retour sur la defausse s'il ne peut pas.
+        fc90 : `owe` False -> ses defausses dues sont rendues a l'appelant (payees apres lui)."""
         d = self.discard[seat]
         if jid not in d or self.rules is None:
             return {"error": "not_in_hand"}
@@ -2474,17 +2473,9 @@ class MatchState:
             self.discard[seat].append(jid)
             return played
         self.spend(seat, jid, free=True)
-        if played.get("discard", 0) > 0:
-            if seat in self.players:
-                self.owed[seat] += played["discard"]
-            else:
-                self.must_discard(seat, played["discard"])
+        if owe and played.get("discard", 0) > 0:
+            self.must_discard(seat, played["discard"])
         return played
-
-    def pay_owed(self, seat=PLAYER):
-        n, self.owed[seat] = self.owed[seat], 0
-        if n > 0:
-            self.must_discard(seat, n)
 
     def bot_spares(self, seat, jid):
         """Un bot jette `jid` pour rien qui lui manquerait (La Consigne2). ee3a : un joueur (pilote
@@ -2582,7 +2573,6 @@ class MatchState:
 
     def _settle_choices(self):
         """Fin de donne : un choix ouvert se regle comme un bot ; la cible d'un sort tombe."""
-        self.owed = [0] * NUM_PLAYERS
         for seat in range(NUM_PLAYERS):
             choice = self.choices[seat]
             self.choices[seat] = {}

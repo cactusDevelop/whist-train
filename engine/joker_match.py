@@ -673,7 +673,6 @@ class Player:
             return None
         J.spend(state, PLAYER, jid, played)
         state.settle_player_choice(PLAYER)  # a76f : RogueAutopilot._try_joker regle le choix par bot_picks
-        state.pay_owed(PLAYER)  # puis la defausse due d'un sort gratuit (Feu de Paille2 -> Main Lourde)
         if played.get("exhaust") and jid in state.discard[PLAYER]:
             state.discard[PLAYER].remove(jid)
         J.watch_eye(state, rules, eye, jid)
