@@ -195,93 +195,104 @@ def worker(args):
             hand_marks["useful"] = True
 
     for seed in seeds:
-        rng = random.Random(seed)
-        cfg = jm.random_config(rng)
-        cfg["style"] = "expert"
-        pool = sorted(i for i, (_t, r, _c, _b) in J.CATALOG.items()
-                      if r in J.RARITIES_BY_ACT[cfg["act"]] and i not in J.REPLACED and _measurable(i))
-        cfg["deck"] = list(cfg["deck"]) + [rng.choice(pool) for _ in range(INJECT)]
-        match = jm.Match(cfg, rng.randrange(1 << 30))
-        for hno in range(jm.HANDS_PER_MATCH):
-            hands_left = jm.HANDS_PER_MATCH - 1 - hno
-            occ_seed = rng.randrange(1 << 30)
-            # 1er tour d'enchere : candidats du joueur (sonde sur une copie)
-            focus, bid_done = None, False
-            if cfg["kind"] == "elite":
-                probe = copy.deepcopy(match)
-                probe.player.bid_probe = []
-                n_rec = len(probe.recorded)
-                probe_h = probe.next_hand()
-                lead_deals = probe.recorded[n_rec:]
-                cands = probe.player.bid_probe[0] if probe.player.bid_probe else []
-                cands = [j for j in dict.fromkeys(cands) if _measurable(j)]
-                if cands and rng.random() < 0.5:
-                    focus = rng.choice(cands)
-                    runs = _occasion(match, None, focus, policy, hands_left, occ_seed, k, lead_deals,
-                                     probe_h.state.recycle_error(focus, PLAYER) == "")
-                    if runs is not None:
-                        cards = probe.rules.deal_hands[PLAYER] if probe.rules.deal_hands else []
-                        bv = X.bid_view(cards, probe_h.state) if cards else None
-                        verdict = X.bid_rule(bv, focus)[0] if bv else X.NO
-                        cast = verdict in (X.YES, X.OPEN_YES) and not X.eye_risk(probe_h.state, focus)
-                        marks = {"useful": False}
-                        record(focus, runs, cast, contract_key(probe_h.contract), marks)
-                        e = entry(focus)
-                        e["hands"] += 1
-                        e["hands_useful"] += marks["useful"]
-                    bid_done = True
-            hand = match.next_hand()
-            ckey = contract_key(hand.contract)
-            if not bid_done:
-                held = [j for j in dict.fromkeys(hand.state.joker_hand[PLAYER]) if _measurable(j) and J.jtype(j) != "enchere"]
-                focus = rng.choice(held) if held else None
-            # valeur d'un ⚡ / d'une pioche, debut de la donne
-            if rng.random() < VALUE_PROB:
-                deals = jm.spare_deals(match, rng.randrange(1 << 30))
-                vs = rng.randrange(1 << 30)
+        try:
+            rng = random.Random(seed)
+            cfg = jm.random_config(rng)
+            cfg["style"] = "expert"
+            pool = sorted(i for i, (_t, r, _c, _b) in J.CATALOG.items()
+                          if r in J.RARITIES_BY_ACT[cfg["act"]] and i not in J.REPLACED and _measurable(i))
+            cfg["deck"] = list(cfg["deck"]) + [rng.choice(pool) for _ in range(INJECT)]
+            match = jm.Match(cfg, rng.randrange(1 << 30))
+            for hno in range(jm.HANDS_PER_MATCH):
+                hands_left = jm.HANDS_PER_MATCH - 1 - hno
+                occ_seed = rng.randrange(1 << 30)
+                # 1er tour d'enchere : candidats du joueur (sonde sur une copie)
+                focus, bid_done = None, False
+                if cfg["kind"] == "elite":
+                    probe = copy.deepcopy(match)
+                    probe.player.bid_probe = []
+                    n_rec = len(probe.recorded)
+                    probe_h = probe.next_hand()
+                    lead_deals = probe.recorded[n_rec:]
+                    cands = probe.player.bid_probe[0] if probe.player.bid_probe else []
+                    cands = [j for j in dict.fromkeys(cands) if _measurable(j)]
+                    if cands and rng.random() < 0.5:
+                        focus = rng.choice(cands)
+                        runs = _occasion(match, None, focus, policy, hands_left, occ_seed, k, lead_deals,
+                                         probe_h.state.recycle_error(focus, PLAYER) == "")
+                        if runs is not None:
+                            cards = probe.rules.deal_hands[PLAYER] if probe.rules.deal_hands else []
+                            bv = X.bid_view(cards, probe_h.state) if cards else None
+                            verdict = X.bid_rule(bv, focus)[0] if bv else X.NO
+                            cast = verdict in (X.YES, X.OPEN_YES) and not X.eye_risk(probe_h.state, focus)
+                            marks = {"useful": False}
+                            record(focus, runs, cast, contract_key(probe_h.contract), marks)
+                            e = entry(focus)
+                            e["hands"] += 1
+                            e["hands_useful"] += marks["useful"]
+                        bid_done = True
+                hand = match.next_hand()
+                ckey = contract_key(hand.contract)
+                if not bid_done:
+                    held = [j for j in dict.fromkeys(hand.state.joker_hand[PLAYER]) if _measurable(j) and J.jtype(j) != "enchere"]
+                    focus = rng.choice(held) if held else None
+                # valeur d'un ⚡ / d'une pioche, debut de la donne
+                if rng.random() < VALUE_PROB:
+                    deals = jm.spare_deals(match, rng.randrange(1 << 30))
+                    vs = rng.randrange(1 << 30)
 
-                def plus_energy(_p, s):
-                    s.energy[PLAYER] += 1
+                    def plus_energy(_p, s):
+                        s.energy[PLAYER] += 1
 
-                def plus_draw(_p, s):
-                    s.draw_jokers(PLAYER, 1)
-                for _r in range(k):
-                    base = _rollout(match, hand, lambda p, s: None, policy, hands_left, deals, vs)[0]
-                    for name, fn in (("energie", plus_energy), ("pioche", plus_draw)):
-                        d = _rollout(match, hand, fn, policy, hands_left, deals, vs)[0] - base
-                        _add(data["value"][name], d)
-                        _add(data["value_by"].setdefault("%s|%s" % (name, ckey), _cell()), d)
-                    vs += 1
-            marks = {"useful": False, "seen": False}
-            n_occ = [0]
+                    def plus_draw(_p, s):
+                        s.draw_jokers(PLAYER, 1)
+                    for _r in range(k):
+                        base = _rollout(match, hand, lambda p, s: None, policy, hands_left, deals, vs)[0]
+                        for name, fn in (("energie", plus_energy), ("pioche", plus_draw)):
+                            d = _rollout(match, hand, fn, policy, hands_left, deals, vs)[0] - base
+                            _add(data["value"][name], d)
+                            _add(data["value_by"].setdefault("%s|%s" % (name, ckey), _cell()), d)
+                        vs += 1
+                marks = {"useful": False, "seen": False}
+                n_occ = [0]
 
-            def before_player(h_now):
-                if bid_done or focus is None or focus not in h_now.state.joker_hand[PLAYER]:
-                    return
-                cands = h_now.player._candidates(h_now.state, h_now.rules, h_now.boss, False)
-                if focus not in cands:
-                    return
-                n_occ[0] += 1
-                runs = _occasion(match, h_now, focus, policy, hands_left, occ_seed + n_occ[0], k,
-                                 can_recycle=h_now.state.recycle_error(focus, PLAYER) == "")
-                if runs is None:
-                    return
-                cast = X.player_wants(h_now, focus)[0]
-                marks["seen"] = True
-                record(focus, runs, cast, ckey, marks)
+                def before_player(h_now):
+                    if bid_done or focus is None or focus not in h_now.state.joker_hand[PLAYER]:
+                        return
+                    cands = h_now.player._candidates(h_now.state, h_now.rules, h_now.boss, False)
+                    if focus not in cands:
+                        return
+                    n_occ[0] += 1
+                    runs = _occasion(match, h_now, focus, policy, hands_left, occ_seed + n_occ[0], k,
+                                     can_recycle=h_now.state.recycle_error(focus, PLAYER) == "")
+                    if runs is None:
+                        return
+                    cast = X.player_wants(h_now, focus)[0]
+                    marks["seen"] = True
+                    record(focus, runs, cast, ckey, marks)
 
-            jm.play_out(hand, policy, before_player=before_player)
-            if marks["seen"]:
-                e = entry(focus)
-                e["hands"] += 1
-                e["hands_useful"] += marks["useful"]
-            match.finish(hand)
+                jm.play_out(hand, policy, before_player=before_player)
+                if marks["seen"]:
+                    e = entry(focus)
+                    e["hands"] += 1
+                    e["hands_useful"] += marks["useful"]
+                match.finish(hand)
+        except Exception as exc:  # un match en erreur est compte et journalise, la mesure continue
+            import traceback
+            data["errors"] = data.get("errors", 0) + 1
+            if "first_error" not in data:
+                data["first_error"] = "seed %d : %s" % (seed, traceback.format_exc()[-1500:])
+            continue
         data["matches"] += 1
     return data
 
 
 def merge(dst, src):
     dst["matches"] += src["matches"]
+    dst["errors"] = dst.get("errors", 0) + src.get("errors", 0)
+    if "first_error" in src and "first_error" not in dst:
+        dst["first_error"] = src["first_error"]
+        print("ERREUR de match (mesure continue) :", src["first_error"], flush=True)
     for name in ("energie", "pioche"):
         _merge_cell(dst["value"][name], src["value"][name])
     for key, c in src["value_by"].items():
@@ -334,7 +345,8 @@ def render(agg, meta):
     rows = table(agg)
     value = {name: stat(agg["value"][name]) for name in ("energie", "pioche")}
     value_by = {key: {"n": c["n"], "mean": round(stat(c)[0], 3)} for key, c in sorted(agg["value_by"].items()) if c["n"]}
-    out = dict(meta, matches=agg["matches"], k=meta["k"],
+    out = dict(meta, matches=agg["matches"], k=meta["k"], errors=agg.get("errors", 0),
+               first_error=agg.get("first_error"),
                value={n: {"n": agg["value"][n]["n"], "mean": None if m is None else round(m, 3),
                           "se": None if se is None else round(se, 3)} for n, (m, se) in value.items()},
                value_by=value_by, rows=rows)
@@ -397,8 +409,10 @@ def main():
             meta["generated"] = time.strftime("%Y-%m-%dT%H:%M:%S")
             meta["elapsed_min"] = round((time.time() - start) / 60, 1)
             render(agg, meta)
-            print("matchs %d (%.1f s/match/worker), %.0f min restantes" % (
-                done, (time.time() - t0) * args.workers / n, (end - time.time()) / 60), flush=True)
+            print("matchs %d (%.1f s/match/worker), %d en erreur, %.0f min restantes" % (
+                done, (time.time() - t0) * args.workers / n, agg.get("errors", 0), (end - time.time()) / 60), flush=True)
+            if agg.get("errors", 0) > max(20, done // 20):
+                raise SystemExit("trop de matchs en erreur (%d / %d)" % (agg["errors"], done))
             if time.time() >= next_upload:
                 next_upload = time.time() + UPLOAD_EVERY_S
                 upload()

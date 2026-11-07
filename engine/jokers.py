@@ -2140,6 +2140,10 @@ class MatchState:
         # vide ne reprend la defausse qu'au tirage d'ouverture de la donne (runs neuves, Duel).
         self.dominion = False
         self.recycled = []  # MatchState.recycled : les joueurs qui ont deja recycle cette donne
+        # Defausse due par un sort lance gratuitement (Feu de Paille2 -> Main Lourde) pendant le
+        # on_play d'un joker du joueur : chez Godot elle attend (to_discard) ; ici payee apres le
+        # paiement du joker qui l'a lancee (pay_owed), jamais pendant (il est encore en main).
+        self.owed = [0] * NUM_PLAYERS
         for pile in self.draw_pile:
             self.rng.shuffle(pile)
 
@@ -2471,8 +2475,16 @@ class MatchState:
             return played
         self.spend(seat, jid, free=True)
         if played.get("discard", 0) > 0:
-            self.must_discard(seat, played["discard"])
+            if seat in self.players:
+                self.owed[seat] += played["discard"]
+            else:
+                self.must_discard(seat, played["discard"])
         return played
+
+    def pay_owed(self, seat=PLAYER):
+        n, self.owed[seat] = self.owed[seat], 0
+        if n > 0:
+            self.must_discard(seat, n)
 
     def bot_spares(self, seat, jid):
         """Un bot jette `jid` pour rien qui lui manquerait (La Consigne2). ee3a : un joueur (pilote
@@ -2570,6 +2582,7 @@ class MatchState:
 
     def _settle_choices(self):
         """Fin de donne : un choix ouvert se regle comme un bot ; la cible d'un sort tombe."""
+        self.owed = [0] * NUM_PLAYERS
         for seat in range(NUM_PLAYERS):
             choice = self.choices[seat]
             self.choices[seat] = {}

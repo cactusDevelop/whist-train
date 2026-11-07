@@ -490,6 +490,12 @@ def dominion_tests():
     oks.append(check("feu de paille2 : puis il la vise (gratuit)", ["remonte_pli" in s.cast_ids[0], s.energy[0]], [True, 3]))
     s = st(["feu_de_paille2"])
     oks.append(check("feu de paille2 : rien a reveler", s.play_error(0, "feu_de_paille2"), "pile"))
+    s = st(["feu_de_paille2", "kermesse"], ["zero", "miroir", "embuscade", "main_lourde"])
+    cast(s, "feu_de_paille2")
+    oks.append(check("feu de paille2 -> main lourde : la defausse due attend le paiement",
+                     [s.owed[0], sorted(s.joker_hand[0])], [1, ["embuscade", "kermesse", "miroir"]]))
+    s.pay_owed(0)
+    oks.append(check("feu de paille2 -> main lourde : puis payee", [s.owed[0], len(s.joker_hand[0])], [0, 2]))
 
     # 515d : pas de remelange en cours de donne sous dominion (boucle Chope Vide3 / Addition2)
     s = st(["chope_vide3", "addition2"])
