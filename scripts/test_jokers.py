@@ -690,7 +690,7 @@ def spammer_tests():
         deck1 = len(m.state.draw_pile[1]) + len(m.state.discard[1]) + len(m.state.joker_hand[1])
         oks.append(check("spammer mise %d : allumettes elites / joueur" % mise,
                          (m.state.energy[1], m.state.energy[3], m.state.energy[0]),
-                         (6 + mise, 6 + mise, 3 - (1 if mise >= 1 else 0))))
+                         (5 + mise, 5 + mise, 2 - (1 if mise >= 1 else 0))))  # 22d8 : base 2 sous dominion
         oks.append(check("spammer mise %d : SPAMMER_DRAWS pioches (65a7)" % mise,
                          len(m.state.joker_hand[1]), min(J.SPAMMER_DRAWS, deck1)))
         oks.append(check("spammer mise %d : pacte dans le deck, seuil de l'Oeil" % mise,
@@ -705,7 +705,7 @@ def spammer_tests():
     m = Match({"kind": "boss", "boss": "moine", "act": 1, "eye": "points", "mise": 0}, 5)
     m.rules.new_hand(None, None)
     m.state.start_hand()
-    oks.append(check("boss mise 0 : 6 allumettes, joueur 3", (m.state.energy[2], m.state.energy[0]), (6, 3)))
+    oks.append(check("boss mise 0 : 5 allumettes, joueur 2 (22d8)", (m.state.energy[2], m.state.energy[0]), (5, 2)))
     return oks
 
 

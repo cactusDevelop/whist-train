@@ -30,7 +30,7 @@ import random
 
 from engine.cards import NUM_PLAYERS, legal_plays, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "8ebdd015d067b191"  # 8ebd : grille G2 raretes/couts (mesure des moments utiles 515d) ; fc90 : defausse due d'un sort de Feu de Paille2 payee apres lui (bots compris) ; 515d : pas de remelange en cours de donne (dominion) ; ee3a : bot_spares joueur
+JOKER_SPEC_HASH = "22d80ee5c2c17d2e"  # 22d8 : 2 ⚡ par donne sous dominion (3 hors dominion) ; 8ebd : grille G2 raretes/couts (mesure des moments utiles 515d) ; fc90 : defausse due d'un sort de Feu de Paille2 payee apres lui (bots compris) ; 515d : pas de remelange en cours de donne (dominion) ; ee3a : bot_spares joueur
 # a76f (whist-4-it, 06/11) : 12 jokers recycles « a la Dominion » (DOMINION_REPLACED), choix en attente
 # (MatchState.choices / bot_picks), sort gratuit (cast_free), Complice2 rejoue le sort -> regles changees.
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
@@ -271,7 +271,8 @@ SPAMMER_DRAWS = 5  # 65a7 (ff4b72a) : elites/boss/habitues piochent 5 jokers (to
 DISCARD_GAIN = 1  # 65a7 (48b2dc3) : un joker defausse de la main = +1 energie
 LASTING_CASES = 2  # 65a7 (d74be81) : effets de donne par siege (JokerRules.LASTING_CASES)
 SPAMMER_CASES = 3
-ENERGY_PER_HAND = 3
+ENERGY_PER_HAND = 2  # 22d8 (07/11, « Ok on passe a 2 ») : a 3 les ⚡ ne manquaient jamais (1 ⚡ = 0.1 pt)
+LEGACY_ENERGY_PER_HAND = 3  # runs d'avant (dominion faux)
 SUSPICION_MAX = 10
 HEAT_ENERGY_AT = 3  # Synergies 04b : paliers de Chaleur du siege 0 (MatchState)
 HEAT_DRAW_AT = 6
@@ -2151,8 +2152,15 @@ class MatchState:
             for jid in self.curses[seat]:
                 self.rules.curses.append(make_effect(jid, seat))
 
+    @staticmethod
+    def energy_for(dominion):
+        return ENERGY_PER_HAND if dominion else LEGACY_ENERGY_PER_HAND
+
+    def base_energy(self):
+        return self.energy_for(self.dominion)
+
     def energy_per_hand(self, seat):
-        n = ENERGY_PER_HAND + (self.spammer_energy if seat in self.spammers else 0)
+        n = self.base_energy() + (self.spammer_energy if seat in self.spammers else 0)
         if seat == PLAYER:
             n += self.run_energy + self.heat_energy()
         return n + (sum(e.energy_bonus() for e in self.rules.curses if e.owner == seat) if self.rules else 0)
