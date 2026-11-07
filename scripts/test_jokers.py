@@ -294,7 +294,7 @@ def v2_tests():
     fer = J.make_effect("main_de_fer", 0)
     oks.append(check("main de fer (8261) : sort de 3 sur un contrat adverse",
                      (J.jtype("main_de_fer"), J.jcost("main_de_fer"), J.jsuspicion("main_de_fer"), fer.pointless(rules)),
-                     ("sort", 3, 2, False)))
+                     ("sort", 3, 4, False)))  # 8ebd : Legendaire -> soupcon 4
     oks.append(check("main de fer : sans couleur ou la meme, refuse", (rules.play(0, "main_de_fer"), rules.play(0, "main_de_fer", S)),
                      ({"error": "target"}, {"error": "target"})))
     oks.append(check("main de fer : atout change", (rules.play(0, "main_de_fer", H), c["suit"], game.trump_suit), ({}, H, H)))
@@ -348,7 +348,7 @@ def v2_tests():
     rules.curses = [J.make_effect("pacte_du_tenancier", 0)]
     oks.append(check("pacte : -5 par contrat rate (043f)", rules.adjust_deltas([-7, 3, 3, 1], c), [-12, 3, 3, 1]))
     # Economie du joueur : amelioration, maudits, Soupcon, Oeil.
-    oks.append(check("amelioration : cout -1", (J.jcost("inversion+"), J.known("zero+")), (2, False)))  # 8ebd : Inversion 3
+    oks.append(check("amelioration : cout -1", (J.jcost("inversion+"), J.known("zero+")), (2, True)))  # 8ebd : Inversion 3, Zero coute 1 -> ameliorable
     state = J.MatchState([["cartes_marquees", "regard_furtif", "livre_de_comptes"], [], [], []], random.Random(2), 9)
     rules = J.JokerRules(state)
     state.arm_curses()
