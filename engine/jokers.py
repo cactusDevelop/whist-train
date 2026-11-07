@@ -30,7 +30,7 @@ import random
 
 from engine.cards import NUM_PLAYERS, legal_plays, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "473e418c736d5419"  # 473e : grille revue sur la mesure 22d8 (whist-4-it bbb9a97) ; 22d8 : 2 ⚡ par donne sous dominion (3 hors dominion) ; 8ebd : grille G2 raretes/couts (mesure des moments utiles 515d) ; fc90 : defausse due d'un sort de Feu de Paille2 payee apres lui (bots compris) ; 515d : pas de remelange en cours de donne (dominion) ; ee3a : bot_spares joueur
+JOKER_SPEC_HASH = "acb94ceab8f94e10"  # acb9 : La Peche au choix (la_peche2), un joker gratuit relance dans la donne coute 1 (whist-4-it 9f25355) ; 473e : grille revue sur la mesure 22d8 (whist-4-it bbb9a97) ; 22d8 : 2 ⚡ par donne sous dominion (3 hors dominion) ; 8ebd : grille G2 raretes/couts (mesure des moments utiles 515d) ; fc90 : defausse due d'un sort de Feu de Paille2 payee apres lui (bots compris) ; 515d : pas de remelange en cours de donne (dominion) ; ee3a : bot_spares joueur
 # a76f (whist-4-it, 06/11) : 12 jokers recycles « a la Dominion » (DOMINION_REPLACED), choix en attente
 # (MatchState.choices / bot_picks), sort gratuit (cast_free), Complice2 rejoue le sort -> regles changees.
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
@@ -75,7 +75,8 @@ RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH}  # a76f : regles changees (avant : 86
 # une autre carte legale ; aucun joker, cout ni observation ne change -> regles = 07ac.
 # Exportable sans equivalence de regles : champion du gate cloud MESURE sous les regles courantes
 # (run 40100438746, 07ac : iter 93 champion_vs_heuristic +26..+41, aucune iteration acceptee devant lui).
-MEASURED_CHAMPION_HASHES = {"1f49fc6fb6a25cae"}  # e1f4 : champion 1f49 (iter 93) mesure sous 8f41 (run 40783453624,
+MEASURED_CHAMPION_HASHES = {"1f49fc6fb6a25cae", "473e418c736d5419"}  # acb9 : champion 473e (iter 56) reexporte sans reentrainement
+# (demande whist-4-it 9f25355, reentrainement acb9 a decider) ; e1f4 : champion 1f49 (iter 93) mesure sous 8f41 (run 40783453624,
 # 19 portes, champion_vs_heuristic +12.9..+23.7, se ~3.4) ; 8f41 -> e1f4 ne change que la garde de Courant d'Air
 # 65a7 : regles changees, le champion 6c54 doit repasser la porte
 # 07ac (whist-4-it 9661351) : Dette de Jeu journalise {"event": "debt"} (aucune regle ne change) -> regles = c8f6.
@@ -238,6 +239,7 @@ CATALOG = {
     "mauvais_perdant2": ("sort", "comptoir", 1, True),
     "feu_de_paille2": ("sort", "salle", 0, True),
     "poche_interieure2": ("sort", "salle", 0, True),
+    "la_peche2": ("sort", "salle", 1, True),
 }
 # JokerCatalog.OPPONENT_ONLY : jamais proposes au joueur (chaise_vide, deck simule)
 OPPONENT_ONLY = ("regle_du_moine", "gant_de_la_baronne", "pelle_du_fossoyeur", "sceau_du_grand_maitre", "cavalier_seul")
@@ -251,7 +253,7 @@ DOMINION_REPLACED = {"ardoise": "ardoise2", "tournee_generale": "tournee_general
                      "addition": "addition2", "vieille_habitude": "vieille_habitude2", "chope_vide2": "chope_vide3",
                      "complice": "complice2", "consigne": "consigne2", "cendrier": "cendrier2",
                      "mauvais_perdant": "mauvais_perdant2", "feu_de_paille": "feu_de_paille2",
-                     "poche_interieure": "poche_interieure2"}
+                     "poche_interieure": "poche_interieure2", "la_peche": "la_peche2"}
 DOMINION_IDS = frozenset(DOMINION_REPLACED.values())
 REPLACED.update(DOMINION_REPLACED)
 ON_TURN_IDS = ("coup_de_vent", "faux_pas")  # JokerDef.ON_TURN_IDS : a son tour de pli, apres avoir vu une coupe
@@ -1982,6 +1984,24 @@ class Cendrier2(DeckEngine):
         return {}
 
 
+class LaPeche2(DeckEngine):
+    """acb9 : La Peche au choix -- un joker de la defausse, au choix, revient en main."""
+    def pointless(self, rules):
+        return not rules.state.discard[self.owner]
+
+    def pointless_reason(self):
+        return "empty_discard"
+
+    def bot_wants(self, rules):
+        return any(not rules.state.bot_spares(self.owner, j) for j in rules.state.discard[self.owner])
+
+    def on_play(self, rules, target=-1):
+        st = rules.state
+        st.offer_choice(self.owner, {"kind": "la_peche", "joker": self.id, "options": list(st.discard[self.owner]),
+                                     "min": 1, "max": 1})
+        return {}
+
+
 class MauvaisPerdant2(DeckEngine):
     """Milice : chaque victime choisit sa defausse (MatchState.must_discard)."""
     def _victims(self, rules):
@@ -2093,6 +2113,7 @@ EFFECTS = {
     "addition2": Addition2, "vieille_habitude2": VieilleHabitude2, "chope_vide3": ChopeVide3,
     "complice2": Complice2, "consigne2": Consigne2, "cendrier2": Cendrier2,
     "mauvais_perdant2": MauvaisPerdant2, "feu_de_paille2": FeuDePaille2, "poche_interieure2": PocheInterieure2,
+    "la_peche2": LaPeche2,
 }
 assert set(EFFECTS) == set(CATALOG)
 
@@ -2513,7 +2534,7 @@ class MatchState:
             return [i for i in range(len(options)) if self.bot_spares(seat, options[i])]
         if kind == "poche":
             return [i for i in range(len(options)) if not self.bot_spares(seat, options[i])]
-        if kind == "cendrier":
+        if kind in ("cendrier", "la_peche"):
             best = 0
             for i in range(len(options)):
                 better = jcost(options[i]) > jcost(options[best])
@@ -2561,6 +2582,12 @@ class MatchState:
             if jid in d:
                 del d[len(d) - 1 - d[::-1].index(jid)]
                 self.draw_pile[seat].append(jid)
+        elif kind == "la_peche":
+            jid = options[at[0]]
+            d = self.discard[seat]
+            if jid in d:
+                del d[len(d) - 1 - d[::-1].index(jid)]
+                self.joker_hand[seat].append(jid)
         elif kind == "poche":
             pile = self.draw_pile[seat]
             found = []
@@ -2986,6 +3013,10 @@ class JokerRules:
         for e in self.effects:
             if e.owner == seat:
                 cost = max(0, cost - e.discount(jid))
+        # acb9 : un joker gratuit relance dans la meme donne coute 1 (boucle Main Lourde + La Peche)
+        if (cost == 0 and jcost(jid) == 0 and self.state is not None and jid in self.state.cast_ids[seat]
+                and jid not in self.state.borrowed[seat]):
+            cost = 1
         return cost
 
     def joker_paid(self, seat, jid):

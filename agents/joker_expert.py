@@ -44,7 +44,7 @@ PLAYER_PRIORITY = [
     # a76f : moteur Dominion en tete -- energie (Village/Marche), puis le doubleur avant le sort qu'il double,
     # les pioches, enfin ce qui trie la pioche (n'agit que sur les pioches suivantes)
     "chope_vide3", "addition2", "complice2", "ardoise2", "tournee_generale2", "valet_de_chambre2", "cendrier2",
-    "feu_de_paille2", "consigne2", "vieille_habitude2", "mauvais_perdant2", "poche_interieure2",
+    "feu_de_paille2", "consigne2", "vieille_habitude2", "mauvais_perdant2", "poche_interieure2", "la_peche2",
     "complice", "valet_de_chambre", "ardoise", "verre_de_trop", "refrain",
     "main_de_fer", "horloge_arretee", "valet_borgne", "inversion", "brouillard_de_la_senne", "remonte_pli", "la_peche", "pli_refile2",
     "coup_de_vent",
@@ -97,6 +97,7 @@ def view(hand, me):
         "hand": my, "legal": legal, "energy": state.energy[me], "suspicion": state.suspicion,
         "joker_hand": list(state.joker_hand[me]), "piles": len(state.draw_pile[me]) + len(state.discard[me]),
         "discard_top": state.discard[me][-1] if state.discard[me] else "",
+        "discard_wanted": [j for j in state.discard[me] if not state.bot_spares(me, j)],
         "tricks_won": list(g.tricks_won), "declarer_tricks": sum(g.tricks_won[s] for s in side),
         "my_tricks": g.tricks_won[me],
         "opponents": [s for s in range(NUM_PLAYERS) if rules.is_opponent(me, s)],
@@ -653,6 +654,13 @@ def _feu_de_paille2(v):
     return (YES, "sort_gratuit_possible") if v["remaining"] >= 2 else (NO, "trop_tard")
 
 
+def _la_peche2(v):
+    # acb9 : reprendre au choix un joker utile de la defausse
+    if v["remaining"] < 2:
+        return NO, "trop_tard"
+    return (YES, "reprend_l_utile") if v["discard_wanted"] else (NO, "rien_a_reprendre")
+
+
 def _consigne2(v):
     if v["remaining"] < 3:
         return NO, "trop_tard"
@@ -814,7 +822,7 @@ RULES = {
     "chope_vide3": _chope_vide3, "addition2": _addition2, "complice2": _complice2, "ardoise2": _ardoise2,
     "tournee_generale2": _tournee_generale2, "valet_de_chambre2": _valet_de_chambre2, "cendrier2": _cendrier2,
     "feu_de_paille2": _feu_de_paille2, "consigne2": _consigne2, "vieille_habitude2": _vieille_habitude2,
-    "mauvais_perdant2": _mauvais_perdant2, "poche_interieure2": _poche_interieure2,
+    "mauvais_perdant2": _mauvais_perdant2, "poche_interieure2": _poche_interieure2, "la_peche2": _la_peche2,
 }
 
 
