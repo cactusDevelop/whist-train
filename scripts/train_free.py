@@ -31,6 +31,13 @@ de portes "acceptees" contre l'ancienne championne ppo n'avaient rien apporte
   - fin de bloc : BILAN best vs ExpertBot sur des donnes fixes (celles de
     free_match), le vrai indicateur de progres, ajoute a free_gate.jsonl.
 
+PORTE A DEUX TEMPS (2026-11-07, accord user) : 35 portes refusees de suite
+(cycles 219-253) alors que les candidats etaient souvent a +0.1..+0.25 :
+avec 10000 donnes il faut ~+0.46 pour passer, un vrai petit progres est
+invisible. --gate-extra-deals N : un candidat positif mais refuse est remesure
+sur N donnes neuves de plus, decision sur le cumul (meme z = 2). Deux regards
+au lieu d'un : risque d'accepter un faux progres ~3-4 % au lieu de ~2 %.
+
 DEFENSE CIBLEE (2026-11-05, accord user) : le BILAN vs ExpertBot plafonne
 (-0.57, defense -0.97 = le gros du retard). Option --defense-rollout-prob :
 une decision de DEFENSE d'un siege qui apprend, contrat a atout (dds), hors
@@ -378,6 +385,24 @@ def measure(pool, source, deals, seed, procs, base="best"):
             "def": m_def, "def_se": se_def, "by_role": by_role}
 
 
+def gate_ok(r):
+    z = champion_play.GATE_Z
+    return r["gain"] - z * r["se"] > 0 and r["decl"] + z * r["decl_se"] >= 0 and r["def"] + z * r["def_se"] >= 0
+
+
+def combine(a, b):
+    """Deux mesures sur des donnes differentes -> une seule (moyennes ponderees par le nombre de donnes)."""
+    na, nb = a["deals"], b["deals"]
+    n = na + nb
+    out = {"deals": n}
+    for m, se in (("gain", "se"), ("decl", "decl_se"), ("def", "def_se")):
+        out[m] = (na * a[m] + nb * b[m]) / n
+        out[se] = ((na * a[se]) ** 2 + (nb * b[se]) ** 2) ** 0.5 / n
+    roles = set(a["by_role"]) | set(b["by_role"])
+    out["by_role"] = {k: round((na * a["by_role"].get(k, 0.0) + nb * b["by_role"].get(k, 0.0)) / n, 2) for k in sorted(roles)}
+    return out
+
+
 def show(r):
     return "%+.2f +- %.2f (declarant %+.2f, defense %+.2f, %d donnes) %s" % (
         r["gain"], SELECTION_Z * r["se"], r["decl"], r["def"], r["deals"], r["by_role"])
@@ -405,6 +430,7 @@ def main():
     parser.add_argument("--cycle-seconds", type=int, default=900)
     parser.add_argument("--select-deals", type=int, default=2000)
     parser.add_argument("--gate-deals", type=int, default=10000)
+    parser.add_argument("--gate-extra-deals", type=int, default=0, help="voir PORTE A DEUX TEMPS (0 = desactive)")
     parser.add_argument("--per-niche", type=int, default=2)
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--seed", type=int, default=None)
@@ -475,8 +501,14 @@ def main():
         # porte par camp sur le meilleur de toute la population, contre best, donnes neuves
         top = max(scores, key=lambda n: scores[n]["gain"])
         r = measure(pool, member_path(top), args.gate_deals, GATE_SEED + 1000 * state["cycle"], args.workers)
-        z = champion_play.GATE_Z
-        accepted = (r["gain"] - z * r["se"] > 0 and r["decl"] + z * r["decl_se"] >= 0 and r["def"] + z * r["def_se"] >= 0)
+        accepted = gate_ok(r)
+        if not accepted and args.gate_extra_deals and r["gain"] > 0:
+            # 2e regard (voir PORTE A DEUX TEMPS) : positif mais sous le bruit -> plus de donnes neuves
+            print("    porte %s : %s -> positif sous le bruit, +%d donnes" % (top, show(r), args.gate_extra_deals), flush=True)
+            extra = measure(pool, member_path(top), args.gate_extra_deals, GATE_SEED + 1000 * state["cycle"] + 500,
+                            args.workers)
+            r = combine(r, extra)
+            accepted = gate_ok(r)
         print("=== Porte %s vs best, cycle %d (donnes neuves) : %s -> %s ===" % (
             top, state["cycle"], show(r), "ACCEPTEE, nouveau best" if accepted else "refusee"), flush=True)
         if accepted:
@@ -487,7 +519,7 @@ def main():
                                 "scores": scores, "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S")}) + "\n")
         with open(state_path, "w", encoding="utf-8") as f:
             json.dump(state, f)
-        gate_seconds = time.time() - t0
+        gate_seconds = max(gate_seconds, time.time() - t0)  # pire cas (2e regard) pour garder le bilan final
     # bilan du bloc : best contre ExpertBot, toujours sur les memes donnes
     if os.path.exists(BEST_PATH):
         b = measure(pool, BEST_PATH, args.gate_deals, BILAN_SEED, args.workers, base="expert")
