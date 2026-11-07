@@ -30,7 +30,7 @@ import random
 
 from engine.cards import NUM_PLAYERS, legal_plays, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "acb94ceab8f94e10"  # acb9 : La Peche au choix (la_peche2), un joker gratuit relance dans la donne coute 1 (whist-4-it 9f25355) ; 473e : grille revue sur la mesure 22d8 (whist-4-it bbb9a97) ; 22d8 : 2 ⚡ par donne sous dominion (3 hors dominion) ; 8ebd : grille G2 raretes/couts (mesure des moments utiles 515d) ; fc90 : defausse due d'un sort de Feu de Paille2 payee apres lui (bots compris) ; 515d : pas de remelange en cours de donne (dominion) ; ee3a : bot_spares joueur
+JOKER_SPEC_HASH = "f1654a462b62ee8d"  # f165 : garde defausse vide de La Peche2 (whist-4-it) ; acb9 : La Peche au choix (la_peche2), un joker gratuit relance dans la donne coute 1 (whist-4-it 9f25355) ; 473e : grille revue sur la mesure 22d8 (whist-4-it bbb9a97) ; 22d8 : 2 ⚡ par donne sous dominion (3 hors dominion) ; 8ebd : grille G2 raretes/couts (mesure des moments utiles 515d) ; fc90 : defausse due d'un sort de Feu de Paille2 payee apres lui (bots compris) ; 515d : pas de remelange en cours de donne (dominion) ; ee3a : bot_spares joueur
 # a76f (whist-4-it, 06/11) : 12 jokers recycles « a la Dominion » (DOMINION_REPLACED), choix en attente
 # (MatchState.choices / bot_picks), sort gratuit (cast_free), Complice2 rejoue le sort -> regles changees.
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
