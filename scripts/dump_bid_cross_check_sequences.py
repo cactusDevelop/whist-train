@@ -24,6 +24,7 @@ import sys
 
 sys.path.insert(0, ".")
 
+from engine.scoring import MISERE_ORDER
 from engine.bidding import EMBALLAGE_MAX_LEVEL, EMBALLAGE_MIN_LEVEL, Bidding, bid_action_to_dict
 from engine.cards import deal
 from engine.trou import detect_trou
@@ -67,6 +68,14 @@ def random_sequence(rng, seq_id, parole_bias=False):
             level = rng.choice(jumps)
             steps.append({"seat": seat, "action": {"action": "raise", "level": level}})
             assert b.apply_raise_to(seat, level), "saut juge legal puis refuse -- bug interne"
+            continue
+        # 87c39f4 : saut d'un negatif vers n'importe quel negatif au-dessus ("raise" + "kind",
+        # bot_player.gd:apply_bid_action -> raise_misere_to)
+        kinds = [k for k in MISERE_ORDER if b.can_raise_misere_to(seat, k)]
+        if kinds and rng.random() < 0.5:
+            kind = rng.choice(kinds)
+            steps.append({"seat": seat, "action": {"action": "raise", "kind": kind}})
+            assert b.apply_raise_misere_to(seat, kind), "saut de negatif juge legal puis refuse -- bug interne"
             continue
         action_id = rng.choice(legal)
         if parole_bias:

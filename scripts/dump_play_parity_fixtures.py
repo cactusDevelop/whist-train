@@ -100,6 +100,8 @@ def main():
     parser.add_argument("--out", default=os.path.join("godot_export", "play_parity_cases.json"))
     parser.add_argument("--free-best", default=None,
                         help="best.pt de l'IA libre : cas avec CES reseaux (hybride, scripts/export_free_hybrid.py)")
+    parser.add_argument("--godot-dir", default=None,
+                        help="dossier des .gd publies (whist-4-it/game) : cas avec CES poids (scripts/godot_weights.py)")
     args = parser.parse_args()
     rng = random.Random(2026)
     torch.manual_seed(2026)
@@ -108,6 +110,9 @@ def main():
         LEGAL_ONLY[0] = True
         free = train_free.load_nets(torch.load(args.free_best, map_location="cpu", weights_only=False))
         nets = {r: fp16_rounded(free[r]) for r in PLAY_ROLES}
+    elif args.godot_dir:
+        from scripts.godot_weights import load_role
+        nets = {r: load_role(args.godot_dir, r, specialists.IMPLEMENTED[r][0]) for r in PLAY_ROLES}  # deja en float16 -> float32
     else:
         nets = {r: fp16_rounded(specialists.load_or_create(r)[0]) for r in PLAY_ROLES}  # poids tels que publies (float16)
     population, _g = evolution.load_population(POPULATION_FILE_DEFAULT)

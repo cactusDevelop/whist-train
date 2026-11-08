@@ -52,10 +52,18 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--population", default=os.path.join("checkpoints_v2", "encherisseur_population.pt"))
     parser.add_argument("--out", default=os.path.join("godot_export", "bid_parity_cases.json"))
+    parser.add_argument("--godot-dir", default=None,
+                        help="dossier des .gd publies (whist-4-it/game) : cas avec CES poids (scripts/godot_weights.py)")
     args = parser.parse_args()
     rng = random.Random(20260927)
-    population, generation = evolution.load_population(args.population)
-    best = evolution.best_per_lineage(population)
+    if args.godot_dir:
+        from types import SimpleNamespace
+        from scripts.godot_weights import load_role
+        best = {lin: SimpleNamespace(net=load_role(args.godot_dir, lin, evolution.OBS_DIM)) for lin in evolution.EXPORTED_LINEAGES}
+        generation = "godot_export (%s)" % args.godot_dir
+    else:
+        population, generation = evolution.load_population(args.population)
+        best = evolution.best_per_lineage(population)
     cases = []
     for lineage in evolution.EXPORTED_LINEAGES:
         net = fp16_rounded(best[lineage].net)  # poids tels que publies (float16)
