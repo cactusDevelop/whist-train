@@ -56,6 +56,17 @@ les prises a plusieurs cartes gagnantes, des DEUX camps, avec la probabilite
 --rollout-focus-prob. Aucune contrainte de jeu : cartes legales, la cible
 montre seulement la meilleure carte au dds.
 
+MISERE CIBLEE (2026-11-08, accord user, diag scripts/misere_free_diag.py) :
+en misere etalee, best en DEFENSE perd -7.5 pts/donne vs ExpertBot (declarant
+~0) : choix de la couleur basse a entamer (+1.85) et defausse basse quand
+l'allie est maitre (+0.57). Le dds ne joue pas la misere -> --misere-rollout-prob :
+une ENTAME ou une DEFAUSSE de defense (hors 1er pli) dans les contrats de
+--misere-rollout-roles recoit une cible = cartes a --misere-rollout-margin
+points pres de la meilleure, Q = vrais points moyens sur
+--misere-rollout-samples mondes vus du siege, suite jouee par ExpertBot aux
+4 sieges (comme le diag). Meme budget de temps que la defense dds.
+Aucune contrainte de jeu.
+
 Usage (cloud seulement) : ci/run_ppo_free.sh, mode ppo_free de train.yml.
 """
 
@@ -79,7 +90,7 @@ from agents.network import PolicyValueNet, widen_adam_state
 from agents.play_guards import ai_play_mask
 from agents.specialists import PLAY_ROLES, safe_save
 from engine.bidding import Bidding
-from engine.cards import trick_winner
+from engine.cards import suit_of, trick_winner
 from engine.trou import detect_trou
 from engine.whisted import DeckChain
 from scripts import champion_play
@@ -102,6 +113,7 @@ START_HP = {"chaude": {"lr": 1e-4, "entropy": 0.02}, "zero": {"lr": 3e-4, "entro
 SELECTION_Z = 2.0
 
 DEFENSE = {"prob": 0.0, "samples": 8, "margin_tricks": 0.5, "share": 0.5, "roles": None, "focus": set(), "focus_prob": 0.0}  # roles None = tous  # --defense-rollout-*, herite par fork
+MISERE = {"prob": 0.0, "samples": 6, "margin": 4.0, "roles": {"misere_etalee"}}  # --misere-rollout-*, voir MISERE CIBLEE
 
 BIDDER = None  # herite par fork ; voir load_bidder
 CHAMPION = None
@@ -180,10 +192,42 @@ def focus_decision(game, seat):
     return sum(trick_winner(trick + [(seat, c)], game.trump_suit) == seat for c in legal) >= 2
 
 
-def defense_target(game, seat, score_fn, rng, stats, t_start, role=None, declarer=False):
+def misere_target(game, seat, rng, stats, t_start, role, contract):
+    """Cible 'suites ExpertBot' d'une entame / defausse de defense en misere (voir MISERE CIBLEE) ou None."""
+    if MISERE["prob"] <= 0 or len(game.play_log) < 4 or rng.random() >= MISERE["prob"]:
+        return None
+    trick = game.current_trick
+    if trick and any(suit_of(c) == suit_of(trick[0][1]) for c in game.hands[seat]):
+        return None  # fournit : pas vise
+    if stats["seconds"] > DEFENSE["share"] * (time.time() - t_start):
+        stats["skipped"] += 1
+        return None
+    legal = [c for c, ok in enumerate(game.legal_action_mask(seat)) if ok]
+    if len(legal) < 2:
+        return None
+    t0 = time.time()
+    q = [0.0] * len(legal)
+    for _ in range(MISERE["samples"]):
+        hands = rollouts.determinize(game, seat, rng)
+        for i, card in enumerate(legal):
+            g = rollouts.clone_with_hands(game, hands)
+            g.step(seat, card)
+            rollouts.play_out_expert([g])
+            q[i] += real_points_by_seat(role, g, contract)[seat] / MISERE["samples"]
+    stats["seconds"] += time.time() - t0
+    stats["misere"] += 1
+    target = rollouts.best_set_target(legal, q, MISERE["margin"])
+    stats["misere_corr"] += target is not None
+    return target
+
+
+def defense_target(game, seat, score_fn, rng, stats, t_start, role=None, declarer=False, contract=None):
     """Cible dds d'une decision de defense (voir DEFENSE CIBLEE) ou None.
     --defense-rollout-roles (06/11) : limite aux contrats listes (role de declarer_role_and_seats).
-    Contrats de --rollout-focus-roles : voir FOCUS (les deux camps)."""
+    Contrats de --rollout-focus-roles : voir FOCUS (les deux camps).
+    Contrats de --misere-rollout-roles : voir MISERE CIBLEE."""
+    if role in MISERE["roles"]:
+        return None if declarer else misere_target(game, seat, rng, stats, t_start, role, contract)
     focus = role in DEFENSE["focus"]
     if not focus and (declarer or (DEFENSE["roles"] is not None and role not in DEFENSE["roles"])):
         return None
@@ -230,7 +274,7 @@ def play_training_deal(chain, rng, seat_nets, learners, buffers, stats=None, t_s
             if seat in steps:
                 target = None
                 if stats is not None and (seat not in decl or role in DEFENSE["focus"]):
-                    target = defense_target(game, seat, score_fn, rng, stats, t_start, role, seat in decl)
+                    target = defense_target(game, seat, score_fn, rng, stats, t_start, role, seat in decl, contract)
                 steps[seat].append((who, obs, mask, action, logp, value.item() * RETURN_SCALE, target))
             game.step(seat, action)
     points = real_points_by_seat(role, game, contract)
@@ -288,7 +332,7 @@ def train_member(args):
     buffers = new_buffer()
     t0 = time.time()
     deals, updates = 0, {}
-    stats = {"count": 0, "corrective": 0, "skipped": 0, "seconds": 0.0, "focus": 0}
+    stats = {"count": 0, "corrective": 0, "skipped": 0, "seconds": 0.0, "focus": 0, "misere": 0, "misere_corr": 0}
     while time.time() - t0 < seconds:
         for _ in range(LOT_DEALS):
             if rng.random() < SELF_PLAY_PROB:
@@ -442,12 +486,18 @@ def main():
     parser.add_argument("--defense-rollout-roles", default="", help="contrats cibles, ex. emballage,solitaire (vide = tous)")
     parser.add_argument("--rollout-focus-roles", default="", help="voir FOCUS, ex. emballage")
     parser.add_argument("--rollout-focus-prob", type=float, default=0.0)
+    parser.add_argument("--misere-rollout-prob", type=float, default=0.0, help="voir MISERE CIBLEE")
+    parser.add_argument("--misere-rollout-samples", type=int, default=6)
+    parser.add_argument("--misere-rollout-margin", type=float, default=4.0, help="marge en points")
+    parser.add_argument("--misere-rollout-roles", default="misere_etalee")
     args = parser.parse_args()
     DEFENSE.update(prob=args.defense_rollout_prob, samples=args.defense_rollout_samples,
                    margin_tricks=args.defense_rollout_margin, share=args.defense_rollout_share,
                    roles=set(args.defense_rollout_roles.split(",")) if args.defense_rollout_roles else None,
                    focus=set(args.rollout_focus_roles.split(",")) if args.rollout_focus_roles else set(),
                    focus_prob=args.rollout_focus_prob)
+    MISERE.update(prob=args.misere_rollout_prob, samples=args.misere_rollout_samples, margin=args.misere_rollout_margin,
+                  roles=set(args.misere_rollout_roles.split(",")) if args.misere_rollout_roles else set())
     until = datetime.strptime(args.until, "%Y-%m-%dT%H:%M").replace(tzinfo=timezone.utc).timestamp()
     os.makedirs(ROOT, exist_ok=True)
 
@@ -488,6 +538,9 @@ def main():
             if DEFENSE["prob"] > 0 or DEFENSE["focus_prob"] > 0:
                 print("    defense dds : %d decisions (dont %d focus), %d corrigees, %d sautees (budget), %.0f s" % (
                     rs["count"], rs["focus"], rs["corrective"], rs["skipped"], rs["seconds"]), flush=True)
+            if MISERE["prob"] > 0:
+                print("    misere suites expert : %d decisions, %d corrigees (temps compte avec la defense dds)" % (
+                    rs["misere"], rs["misere_corr"]), flush=True)
 
         t0 = time.time()
         scores = {}
