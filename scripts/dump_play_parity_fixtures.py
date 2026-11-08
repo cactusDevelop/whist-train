@@ -42,6 +42,9 @@ SAMPLE_PROB = 0.15
 GUARD_CASES = 40  # cas ou le garde-fou de jeu retire des cartes (agents/play_guards.py)
 
 
+LEGAL_ONLY = [False]  # --free-best : l'hybride joue cartes legales seules (pas de garde-fous)
+
+
 def case_from(game, seat, nets, bid_log, hands_at_deal, phase):
     obs = game.observation(seat)
     assert all(v in (0.0, 1.0) for v in obs)
@@ -50,7 +53,8 @@ def case_from(game, seat, nets, bid_log, hands_at_deal, phase):
     guarded = ai_play_mask(game, seat)  # garde-fous de jeu (agents/play_guards.py)
     role = game.role_of(seat)
     with torch.no_grad():
-        action = nets[role].act_greedy(torch.tensor(obs, dtype=torch.float32), torch.tensor(guarded, dtype=torch.bool))
+        action = nets[role].act_greedy(torch.tensor(obs, dtype=torch.float32),
+                                       torch.tensor(mask if LEGAL_ONLY[0] else guarded, dtype=torch.bool))
     revealed = {}
     if getattr(game, "reveal_declarer_hands", False):
         revealed = {str(d): sorted(game.hands[d]) for d in game.declarers}
@@ -70,7 +74,7 @@ def case_from(game, seat, nets, bid_log, hands_at_deal, phase):
         "whisted": bool(game.whisted),
         "expected_ones": [i for i, v in enumerate(obs) if v == 1.0], "obs_dim": len(obs),
         "expected_legal": legal, "expected_guarded_legal": [c for c in range(52) if guarded[c]],
-        "expected_action_id": int(action),
+        "expected_action_id": int(action), "action_mask": "legal" if LEGAL_ONLY[0] else "guarded",
     }
 
 
@@ -94,10 +98,18 @@ def play_and_sample(game, nets, rng, bid_log, hands_at_deal, phase, counts, case
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", default=os.path.join("godot_export", "play_parity_cases.json"))
+    parser.add_argument("--free-best", default=None,
+                        help="best.pt de l'IA libre : cas avec CES reseaux (hybride, scripts/export_free_hybrid.py)")
     args = parser.parse_args()
     rng = random.Random(2026)
     torch.manual_seed(2026)
-    nets = {r: fp16_rounded(specialists.load_or_create(r)[0]) for r in PLAY_ROLES}  # poids tels que publies (float16)
+    if args.free_best:
+        from scripts import train_free
+        LEGAL_ONLY[0] = True
+        free = train_free.load_nets(torch.load(args.free_best, map_location="cpu", weights_only=False))
+        nets = {r: fp16_rounded(free[r]) for r in PLAY_ROLES}
+    else:
+        nets = {r: fp16_rounded(specialists.load_or_create(r)[0]) for r in PLAY_ROLES}  # poids tels que publies (float16)
     population, _g = evolution.load_population(POPULATION_FILE_DEFAULT)
     chain = DeckChain(0.5, rng)
     counts, cases = {}, {}
