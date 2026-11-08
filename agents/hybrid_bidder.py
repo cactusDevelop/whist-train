@@ -141,9 +141,13 @@ class HybridBidder:
 
 
 def bot_choice_as_id(bidding, seat, choice):
-    """Decision de l'ExpertBot (id ou (RAISE_TO, niveau)) -> id d'action reseau."""
+    """Decision de l'ExpertBot (id, (RAISE_TO, niveau) ou (RAISE_KIND, misere)) -> id
+    d'action reseau. Un saut de negatif n'a pas d'id : ACTION_RAISE (le negatif suivant)
+    est le plus proche."""
     if not isinstance(choice, tuple):
         return choice
+    if choice[0] == "raise_kind":
+        return ACTION_RAISE
     from engine.bidding import RAISE_TO_LEVELS, _RAISE_TO_BASE
     level = choice[1]
     current = bidding.contracts[bidding.lie_contract_index[seat]]["level"]

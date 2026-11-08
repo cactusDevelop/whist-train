@@ -90,6 +90,7 @@ from engine.bidding import (
     ACTION_PASS, ACTION_PASS_PAROLE, ACTION_RAISE, ACTION_WAIT, EMBALLAGE_MAX_LEVEL, EMBALLAGE_MIN_LEVEL,
     bid_action_to_dict,
     legal_action_ids_with_hand,
+    negatives_above,
 )
 from engine.cards import NUM_PLAYERS, NUM_SUITS, rank_of, suit_of, trick_winner
 from engine.scoring import MISERE_ORDER
@@ -399,12 +400,22 @@ def _estimate_cached(hand, trump):
 # --- enchere -----------------------------------------------------------------
 
 RAISE_TO = "raise_to"  # saut du proposeur en passe parole (hors ids d'action)
+RAISE_KIND = "raise_kind"  # saut vers un negatif plus haut (87c39f4, hors ids d'action)
+
+
+def apply_choice(bidding, seat, choice):
+    """Applique une decision : id d'action, (RAISE_TO, niveau) ou (RAISE_KIND, misere)."""
+    if isinstance(choice, tuple):
+        if choice[0] == RAISE_KIND:
+            return bidding.apply_raise_misere_to(seat, choice[1])
+        return bidding.apply_raise_to(seat, choice[1])
+    return bidding.apply(seat, choice)
 
 
 def apply_bid(bidding, seat, hand):
-    """Decide ET applique ; -> la decision (id d'action ou (RAISE_TO, niveau))."""
+    """Decide ET applique ; -> la decision (id d'action, (RAISE_TO, niveau) ou (RAISE_KIND, misere))."""
     choice = choose_bid(bidding, seat, hand)
-    ok = bidding.apply_raise_to(seat, choice[1]) if isinstance(choice, tuple) else bidding.apply(seat, choice)
+    ok = apply_choice(bidding, seat, choice)
     if not ok:
         raise AssertionError("ExpertBot : enchere illegale %r siege %d" % (choice, seat))
     return choice
@@ -412,7 +423,8 @@ def apply_bid(bidding, seat, hand):
 
 def choose_bid(bidding, seat, hand):
     """-> un id d'action d'enchere TOUJOURS legal (legal_action_ids_with_hand),
-    ou (RAISE_TO, niveau) pour le saut du proposeur en passe parole."""
+    ou (RAISE_TO, niveau) pour le saut du proposeur en passe parole,
+    ou (RAISE_KIND, misere) pour un saut vers un negatif plus haut."""
     legal = legal_action_ids_with_hand(bidding, seat, hand)
     if not legal:
         raise ValueError("aucune action legale pour le siege %d" % seat)
@@ -515,10 +527,14 @@ def _respond_to_outbid(bidding, seat, hand, c, legal, by_kind):
     passee) : relancer d'un pli si la main le porte, sinon passer."""
     target = c.get("level", 0) + 1
     if c["type"] == "misere":
-        # « misere surencherie » : monter a la misere suivante si la main la porte
-        if ACTION_RAISE in legal and MISERE_ORDER.index(c["kind"]) + 1 < len(MISERE_ORDER):
-            if MISERE_ORDER[MISERE_ORDER.index(c["kind"]) + 1] in misere_kinds_for(hand):
-                return ACTION_RAISE
+        # « misere surencherie » : monter au premier negatif au-dessus que la main
+        # porte (whist_expert_bot.gd 87c39f4 : saut direct, pas seulement le suivant)
+        above = negatives_above(c["kind"])
+        if ACTION_RAISE in legal:
+            kinds = misere_kinds_for(hand)
+            for k in above:
+                if k in kinds:
+                    return ACTION_RAISE if k == above[0] else (RAISE_KIND, k)
         return ACTION_PASS
     if c["type"] == "emballage":
         own = estimate_tricks(hand, c["suit"])
@@ -564,8 +580,9 @@ class PublicView:
     def __init__(self, game, seat, seen=None):
         """`seen` (jokers, lot 1 du 31/10) : ce que les regles changent pour ce
         pli, {"trump": atout effectif, "legal": cartes jouables, "inverted": bool}.
-        Inverse : la plus faible de la demandee gagne, sans atout -> tout est lu
-        en rangs miroirs et le jeu reste le meme ; choose_card rend la vraie carte.
+        Inverse : la plus faible de la demandee gagne, le plus faible atout si l'on
+        coupe (0e9a) -> tout est lu en rangs miroirs, atout garde (whist_expert_bot.gd
+        87c39f4), et le jeu reste le meme ; choose_card rend la vraie carte.
         None = jeu classique, rien ne change."""
         self.seat = seat
         self.hand = list(game.hands[seat])
@@ -591,7 +608,6 @@ class PublicView:
         for d in getattr(game, "exposed", ()):  # roguelike : Cartes sur Table (WhistExpertBot._revealed)
             self.revealed[d] = list(game.hands[d])
         if self.mirrored:
-            self.trump = None
             self.hand = [mirror_card(c) for c in self.hand]
             self.legal = [mirror_card(c) for c in self.legal]
             self.play_log = [(s, mirror_card(c)) for s, c in self.play_log]

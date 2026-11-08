@@ -219,7 +219,7 @@ def run_bot_bidding(hands, dealer, match=None):
                           if bid_action_to_dict(a)["action"] == "pass"]
                 if passes and bidding.apply(seat, passes[0]):
                     continue
-            ok = bidding.apply_raise_to(seat, choice[1]) if isinstance(choice, tuple) else bidding.apply(seat, choice)
+            ok = expert_bot.apply_choice(bidding, seat, choice)
             if not ok:
                 raise AssertionError("enchere illegale %r siege %d" % (choice, seat))
             continue

@@ -18,7 +18,7 @@ y etre reportee."""
 
 from agents.expert_bot import estimate_tricks, misere_slack
 from engine.bidding import (ABONDANCE_MAX_LEVEL, ABONDANCE_MIN_LEVEL, ACTION_RAISE, bid_action_to_dict,
-                            legal_action_ids_with_hand)
+                            legal_action_ids_with_hand, negatives_above)
 from engine.cards import NUM_SUITS, suit_of
 from engine.scoring import MISERE_ORDER
 
@@ -136,9 +136,9 @@ def grande_misere_too_loose(bidding, seat, hand, action_id):
         kind = info["kind"]
     elif action_id == ACTION_RAISE and bidding.lie_contract_index[seat] != -1:
         c = bidding.contracts[bidding.lie_contract_index[seat]]
-        if c["type"] != "misere" or c["kind"] == MISERE_ORDER[-1]:
+        if c["type"] != "misere" or not negatives_above(c["kind"]):
             return False
-        kind = MISERE_ORDER[MISERE_ORDER.index(c["kind"]) + 1]
+        kind = negatives_above(c["kind"])[0]
     else:
         return False
     return kind == "grande" and misere_slack(hand) > GRANDE_MISERE_MAX_SLACK

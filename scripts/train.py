@@ -1248,7 +1248,7 @@ def run_bidding_phase_ppo(bid_ppo, hands, dealer_index, visitors=None, rich_seat
         hand = hands[seat]
         if seat in expert_seats:
             choice = expert_bid_capped(bidding, seat, hand)
-            ok = bidding.apply_raise_to(seat, choice[1]) if isinstance(choice, tuple) else bidding.apply(seat, choice)
+            ok = expert_bot.apply_choice(bidding, seat, choice)
             if not ok:
                 raise AssertionError("ExpertBot : enchere illegale %r" % (choice,))
             action_id = choice if not isinstance(choice, tuple) else ACTION_RAISE
@@ -1299,7 +1299,7 @@ def expert_bid_capped(bidding, seat, hand):
     emballage-11/12 < 30 % des stats. L'ExpertBot du jeu (whist-4-it) inchange."""
     choice = expert_bot.choose_bid(bidding, seat, hand)
     if isinstance(choice, tuple):
-        if choice[1] <= EMBALLAGE_RAISE_MAX_LEVEL:
+        if choice[0] == expert_bot.RAISE_KIND or choice[1] <= EMBALLAGE_RAISE_MAX_LEVEL:
             return choice
         c = bidding.contracts[bidding.lie_contract_index[seat]]
         if c["type"] == "emballage" and bidding.can_raise_to(seat, EMBALLAGE_RAISE_MAX_LEVEL):

@@ -359,8 +359,13 @@ def test_ladder_strictly_increasing_within_each_family():
     check("Solo 6<7<8 sur l'echelle", solo_ranks == sorted(solo_ranks))
     emballage_ranks = [LADDER["emballage-%d" % lvl] for lvl in range(8, 14)]
     check("Emballage 8..13 croissant sur l'echelle", emballage_ranks == sorted(emballage_ranks))
-    misere_ranks = [LADDER["misere-%s" % k] for k in ("petite", "piccolo", "grande", "etalee")]
-    check("Misere petite<piccolo<grande<etalee sur l'echelle", misere_ranks == sorted(misere_ranks))
+    misere_ranks = [LADDER["misere-%s" % k] for k in ("piccolo", "petite", "grande", "etalee")]
+    check("Misere piccolo<petite<grande<etalee sur l'echelle (87c39f4)", misere_ranks == sorted(misere_ranks))
+    order = ["emballage-8", "solo-6", "emballage-9", "solo-7", "emballage-10", "misere-piccolo", "misere-petite",
+             "solo-8", "emballage-11", "emballage-12", "emballage-13", "solo-9", "trou", "misere-grande", "solo-10",
+             "solo-11", "misere-etalee", "solo-12", "solo-13"]
+    check("echelle complete = test_full_contracts.gd:_test_ladder_order (87c39f4)",
+          [LADDER[k] for k in order] == list(range(1, 20)))
 
 
 def test_hand_aware_legality_filters_propose_and_emballer_by_suit_held():
@@ -424,7 +429,7 @@ def test_pass_parole_declarer_jump():
     check("abondance depasse l'emballage", b.abondance(2, 3, 9))
     check("passe", b.pass_bid(3))
     check("emballeur a la main", b.turn == 1)
-    check("emballeur ne peut pas sauter", not b.can_raise_to(1, 10))
+    check("emballeur peut sauter aussi (87c39f4)", b.can_raise_to(1, 10))
     check("passe parole", b.pass_parole(1))
     check("proposeur a la main", b.turn == 0)
     check("pas de saut au niveau actuel", not b.can_raise_to(0, 8))
@@ -446,6 +451,43 @@ def test_pass_parole_declarer_jump():
     check("application par id", b.apply(0, 53) and b.contracts[b.lie_contract_index[0]]["level"] == 11)
     check("plus aucun saut ensuite", not any(i >= 52 for i in b.legal_action_ids(b.turn)))
     check("NUM_BID_ACTIONS = 56", NUM_BID_ACTIONS == 56)
+
+
+def test_bidding_1218_raises():
+    """whist-4-it 87c39f4 (rapports user 2026-11-08), cas de tests/test_full_contracts.gd
+    et tests/test_whist_rules.gd."""
+    from engine.bidding import negatives_above, solo_raise_cap
+    # Piccolo declare, la Petite Misere le domine, Piccolo monte en Petite
+    b = Bidding(0)
+    check("piccolo", b.misere(1, "piccolo"))
+    check("petite domine piccolo (rang 7 > 6)", b.misere(2, "petite"))
+    check("piccolo domine", b._is_dominated(0))
+    b.pass_bid(3), b.pass_bid(0)
+    check("tour au piccolo", b.turn == 1)
+    check("piccolo -> petite par +1", b.raise_contract(1))
+    check("petite verrouillee, deux declarants", b.finished and b.locked_contract["kind"] == "petite"
+          and b.locked_contract["declarers"] == [2, 1])
+    # b3 : Petite -> Etalee directement
+    b = Bidding(0)
+    b.misere(1, "petite"), b.misere(2, "grande"), b.pass_bid(3), b.pass_bid(0)
+    check("petite saute a l'etalee", b.turn == 1 and b.apply_raise_misere_to(1, "etalee"))
+    check("negatives_above(petite) = grande, etalee", negatives_above("petite") == ["grande", "etalee"])
+    check("negatives_above(piccolo) = petite, grande, etalee", negatives_above("piccolo") == ["petite", "grande", "etalee"])
+    check("jamais vers le bas", not Bidding(0).can_raise_misere_to(1, "piccolo"))
+    # test_whist_rules.gd l.377 / l.398 : l'emballeur peut sauter ; le Solo s'arrete a 8
+    b = Bidding(0)
+    b.propose(1, 2), b.emballer(2, 2), b.pass_bid(3), b.propose(0, 3), b.solo(0, 3, 6)
+    check("plafond solo 8 / abondance 13", (solo_raise_cap(6), solo_raise_cap(8), solo_raise_cap(9)) == (8, 8, 13))
+    check("tour a l'emballeur", b.turn == 2)
+    check("l'emballeur saute a 11", b.can_raise_to(2, 11))
+    check("le proposeur ne saute pas sans parole", not b.can_raise_to(1, 11))
+    check("passe parole", b.pass_parole(2))
+    check("le proposeur saute a 11", b.apply_raise_to(1, 11))
+    while not b.finished and b.turn == 0 and b.can_raise(0):
+        b.apply(0, 3)
+    check("le Solo s'arrete a 8 sous l'Emballage 11", b.contracts[1]["level"] == 8 and not b.finished)
+    check("le soliste passe, l'Emballage 11 gagne", b.pass_bid(0) and b.finished
+          and b.locked_contract["type"] == "emballage" and b.locked_contract["level"] == 11)
 
 
 def test_emballer_starts_above_8_when_needed():
