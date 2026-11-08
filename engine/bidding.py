@@ -10,9 +10,18 @@ Echelle des contrats, du plus faible au plus fort (LADDER, source de
 verite pour savoir qui "domine" qui) -- verifiee contre
 WHIST-RULES-REFERENCE.txt (projet Godot whist-4-it) :
   Emballage 8 < Solo 6 < Emballage 9 < Solo 7 < Emballage 10 <
-  Petite Misere < Solo 8 < Emballage 11 < Emballage 12 < Piccolo <
+  Piccolo < Petite Misere < Solo 8 < Emballage 11 < Emballage 12 <
   Emballage 13 < Solo 9 < Trou < Grande Misere < Solo 10 < Solo 11 <
   Misere Etalee < Solo 12 < Solo 13.
+  (1.2.18, whist-4-it 87c39f4, demande user 2026-11-08 : Piccolo juste sous
+  la Petite Misere ; le site le met entre Emballage 12 et 13.)
+
+Surencheres (whist-4-it 87c39f4, rapports user 2026-11-08) : un Solo ne monte
+que jusqu'a 8 (solo_raise_cap) -- l'Abondance ne s'annonce qu'a son 1er tour ;
+toute surenchere peut sauter (raise_contract_to : emballeur, proposeur en
+passe parole, Solo/Abondance sous leur plafond) ; un negatif monte directement
+vers n'importe quel negatif au-dessus de lui sur l'echelle (negatives_above,
+raise_misere_to).
 
 Solo/Abondance/Solo Chelem sont UN SEUL type de contrat interne ("solo")
 et UNE SEULE chaine de relance 6->13 -- confirme contre game/bidding.gd
@@ -32,8 +41,8 @@ from engine.scoring import MISERE_ORDER
 
 LADDER = {
     "emballage-8": 1, "solo-6": 2, "emballage-9": 3, "solo-7": 4,
-    "emballage-10": 5, "misere-petite": 6, "solo-8": 7, "emballage-11": 8,
-    "emballage-12": 9, "misere-piccolo": 10, "emballage-13": 11, "solo-9": 12,
+    "emballage-10": 5, "misere-piccolo": 6, "misere-petite": 7, "solo-8": 8,
+    "emballage-11": 9, "emballage-12": 10, "emballage-13": 11, "solo-9": 12,
     "trou": 13, "misere-grande": 14, "solo-10": 15, "solo-11": 16,
     "misere-etalee": 17, "solo-12": 18, "solo-13": 19,
 }
@@ -44,6 +53,19 @@ EMBALLAGE_MIN_LEVEL, EMBALLAGE_MAX_LEVEL = 8, 13
 SOLO_MIN_LEVEL, SOLO_PLAIN_MAX_LEVEL = 6, 8
 ABONDANCE_MIN_LEVEL, ABONDANCE_MAX_LEVEL = 9, 12
 SOLO_CHELEM_LEVEL, SOLO_MAX_LEVEL = 13, 13
+
+
+def solo_raise_cap(level):
+    """game/bidding.gd::solo_raise_cap (87c39f4) : un Solo monte jusqu'a 8,
+    une Abondance (9+) jusqu'au Solo Chelem."""
+    return SOLO_PLAIN_MAX_LEVEL if level <= SOLO_PLAIN_MAX_LEVEL else SOLO_MAX_LEVEL
+
+
+def negatives_above(kind):
+    """game/bidding.gd::negatives_above (87c39f4) : les negatifs au-dessus de
+    `kind` sur l'echelle, du plus bas au plus haut."""
+    rank = lambda k: LADDER["misere-%s" % k]
+    return sorted((k for k in MISERE_ORDER if rank(k) > rank(kind)), key=rank)
 
 # --- Actions discretes -------------------------------------------------
 
@@ -332,26 +354,41 @@ class Bidding:
                 return False
             return c["level"] < EMBALLAGE_MAX_LEVEL
         if c["type"] == "solo":
-            return seat == c["declarer"] and c["level"] < SOLO_MAX_LEVEL
+            return seat == c["declarer"] and c["level"] < solo_raise_cap(c["level"])
         if c["type"] == "misere":
-            return seat in c["declarers"] and MISERE_ORDER.index(c["kind"]) < len(MISERE_ORDER) - 1
+            return seat in c["declarers"] and bool(negatives_above(c["kind"]))
         return False  # trou ne se relance jamais
 
     def can_raise_to(self, seat, level):
-        """Saut du PROPOSEUR pendant un passe parole (regle confirmee par
-        l'utilisateur le 2026-09-27, whist-4-it 9c0dfb3) : une seule
-        decision, mais a n'importe quel niveau entre level+1 et 13 --
-        verifie contre game/bidding.gd::raise_contract_to(). L'emballeur
-        (spokesperson) n'a toujours que raise_contract (+1)."""
+        """Saut direct a `level` -- verifie contre game/bidding.gd::raise_contract_to()
+        (87c39f4, « on doit pouvoir surencherir avec tous les contrats possibles
+        au-dessus ») : emballeur (spokesperson) ou proposeur en passe parole
+        jusqu'a 13, declarant d'un Solo/Abondance sous solo_raise_cap()."""
         if not self._can_act(seat):
             return False
         ci = self.lie_contract_index[seat]
         if ci == -1:
             return False
         c = self.contracts[ci]
-        if c["type"] != "emballage" or seat != c["declarer"] or not c["parole_pending"]:
+        if level <= c.get("level", 0):
             return False
-        return c["level"] < level <= EMBALLAGE_MAX_LEVEL
+        if c["type"] == "emballage":
+            parole = seat == c["declarer"] and c["parole_pending"]
+            return (seat == c["spokesperson"] or parole) and level <= EMBALLAGE_MAX_LEVEL
+        if c["type"] == "solo":
+            return seat == c["declarer"] and level <= solo_raise_cap(c["level"])
+        return False
+
+    def can_raise_misere_to(self, seat, kind):
+        """game/bidding.gd::raise_misere_to (87c39f4) : un negatif monte
+        directement vers n'importe quel negatif au-dessus de lui."""
+        if not self._can_act(seat):
+            return False
+        ci = self.lie_contract_index[seat]
+        if ci == -1:
+            return False
+        c = self.contracts[ci]
+        return c["type"] == "misere" and seat in c["declarers"] and kind in negatives_above(c["kind"])
 
     def can_pass_parole(self, seat):
         if not self._can_act(seat):
@@ -454,23 +491,44 @@ class Bidding:
             c["parole_pending"] = False
         elif c["type"] == "solo":
             c["level"] += 1
-        else:  # misere
-            next_kind = MISERE_ORDER[MISERE_ORDER.index(c["kind"]) + 1]
-            c["declarers"].remove(seat)
-            target = self._find_or_create_misere_entry(next_kind)
-            self.contracts[target]["declarers"].append(seat)
-            self.lie_contract_index[seat] = target
+        else:  # misere : le negatif suivant sur l'echelle (raise_misere_to(above[0]) cote Godot)
+            self._move_misere(seat, c, negatives_above(c["kind"])[0])
         self._advance()
         return True
+
+    def _move_misere(self, seat, c, kind):
+        c["declarers"].remove(seat)
+        target = self._find_or_create_misere_entry(kind)
+        self.contracts[target]["declarers"].append(seat)
+        self.lie_contract_index[seat] = target
+
+    def raise_misere_to(self, seat, kind):
+        if not self.can_raise_misere_to(seat, kind):
+            return False
+        self.has_acted[seat] = True  # miroir de last_action[player] (game/bidding.gd)
+        self._move_misere(seat, self.contracts[self.lie_contract_index[seat]], kind)
+        self._advance()
+        return True
+
+    def apply_raise_misere_to(self, seat, kind):
+        """Saut de negatif hors ids d'action (le reseau n'a que ACTION_RAISE =
+        negatif suivant) ; tient bid_summary a jour comme apply()."""
+        ok = self.raise_misere_to(seat, kind)
+        if ok:
+            self.last_action[seat] = "raise"
+            update_bid_summary(self.bid_summary, self, seat, "raise")
+        return ok
 
     def raise_contract_to(self, seat, level):
         if not self.can_raise_to(seat, level):
             return False
         self.has_acted[seat] = True  # miroir de last_action[player] (game/bidding.gd)
         c = self.contracts[self.lie_contract_index[seat]]
+        if c["type"] == "emballage":
+            if c["parole_pending"]:
+                c["closed"] = True
+            c["parole_pending"] = False
         c["level"] = level
-        c["parole_pending"] = False
-        c["closed"] = True
         self._advance()
         return True
 
