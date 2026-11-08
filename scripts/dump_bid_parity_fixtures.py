@@ -59,7 +59,7 @@ def main():
     if args.godot_dir:
         from types import SimpleNamespace
         from scripts.godot_weights import load_role
-        best = {lin: SimpleNamespace(net=load_role(args.godot_dir, lin, evolution.OBS_DIM)) for lin in evolution.EXPORTED_LINEAGES}
+        best = {lin: SimpleNamespace(net=load_role(args.godot_dir, lin, evolution.OBS_DIM), id=-1) for lin in evolution.EXPORTED_LINEAGES}
         generation = "godot_export (%s)" % args.godot_dir
     else:
         population, generation = evolution.load_population(args.population)
