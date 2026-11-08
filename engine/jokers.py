@@ -30,12 +30,14 @@ import random
 
 from engine.cards import NUM_PLAYERS, legal_plays, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "8664466e6a6ce1b0"
+JOKER_SPEC_HASH = "f1654a462b62ee8d"  # f165 : garde defausse vide de La Peche2 (whist-4-it) ; acb9 : La Peche au choix (la_peche2), un joker gratuit relance dans la donne coute 1 (whist-4-it 9f25355) ; 473e : grille revue sur la mesure 22d8 (whist-4-it bbb9a97) ; 22d8 : 2 ⚡ par donne sous dominion (3 hors dominion) ; 8ebd : grille G2 raretes/couts (mesure des moments utiles 515d) ; fc90 : defausse due d'un sort de Feu de Paille2 payee apres lui (bots compris) ; 515d : pas de remelange en cours de donne (dominion) ; ee3a : bot_spares joueur
+# a76f (whist-4-it, 06/11) : 12 jokers recycles « a la Dominion » (DOMINION_REPLACED), choix en attente
+# (MatchState.choices / bot_picks), sort gratuit (cast_free), Complice2 rejoue le sort -> regles changees.
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
 # texte ou de cablage seulement) : un reseau entraine sous l'une d'elles est
 # reexporte tel quel avec JOKER_SPEC_HASH. Une regle qui change -> vider la
 # liste (sauf le hash courant) et reentrainer.
-RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH, "82618eba4b8f4bf1"}
+RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH}  # a76f : regles changees (avant : 8664, 8261)
 # 8664 (whist-4-it 6b05a37, 03/11) : JokerAI recoit config + RogueMatch.bosses() ; le Moine (2e regle en Mise
 # Doree contre la Baronne) retire pli/aura du masque bot et du combo-bot meme sans priority (avant : seulement
 # via turn_error sous priority). Masque des bots seulement, aucune regle de jeu -> 8261 equivalent, reexport seul.
@@ -73,7 +75,8 @@ RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH, "82618eba4b8f4bf1"}
 # une autre carte legale ; aucun joker, cout ni observation ne change -> regles = 07ac.
 # Exportable sans equivalence de regles : champion du gate cloud MESURE sous les regles courantes
 # (run 40100438746, 07ac : iter 93 champion_vs_heuristic +26..+41, aucune iteration acceptee devant lui).
-MEASURED_CHAMPION_HASHES = {"1f49fc6fb6a25cae"}  # e1f4 : champion 1f49 (iter 93) mesure sous 8f41 (run 40783453624,
+MEASURED_CHAMPION_HASHES = {"1f49fc6fb6a25cae", "473e418c736d5419"}  # acb9 : champion 473e (iter 56) reexporte sans reentrainement
+# (demande whist-4-it 9f25355, reentrainement acb9 a decider) ; e1f4 : champion 1f49 (iter 93) mesure sous 8f41 (run 40783453624,
 # 19 portes, champion_vs_heuristic +12.9..+23.7, se ~3.4) ; 8f41 -> e1f4 ne change que la garde de Courant d'Air
 # 65a7 : regles changees, le champion 6c54 doit repasser la porte
 # 07ac (whist-4-it 9661351) : Dette de Jeu journalise {"event": "debt"} (aucune regle ne change) -> regles = c8f6.
@@ -128,54 +131,54 @@ OBS_VERSION = 3  # 2 = enemy_traps rempli ; 3 = cartes exactes, Soupcon/Oeil, jo
 
 # id -> (type, rarete, cout, bot_casts) -- joker_catalog.gd / joker_effects.gd
 CATALOG = {
-    "cameleon": ("pli", "arriere_salle", 1, False),
-    "zero": ("pli", "comptoir", 0, False),
-    "traitre": ("pli", "salle", 1, False),
+    "cameleon": ("pli", "salle", 1, False),
+    "zero": ("pli", "salle", 1, False),
+    "traitre": ("pli", "salle", 2, False),
     "coup_de_vent": ("sort", "salle", 1, True),
-    "main_lourde": ("sort", "comptoir", 1, True),
-    "embuscade": ("piege", "comptoir", 1, True),
+    "main_lourde": ("sort", "comptoir", 0, True),
+    "embuscade": ("piege", "salle", 1, True),
     "kermesse": ("aura", "salle", 2, True),
     "coup_d_oeil": ("enchere", "comptoir", 1, False),
     "regard_furtif": ("sort", "arriere_salle", 1, False),
     "voeu_de_pauvrete": ("passif", "salle", 0, False),
-    "miroir": ("pli", "comptoir", 1, False),
-    "borgne": ("pli", "salle", 1, False),
+    "miroir": ("pli", "salle", 2, False),
+    "borgne": ("pli", "arriere_salle", 2, False),
     "carte_fantome": ("pli", "salle", 2, False),
-    "double_valet": ("pli", "arriere_salle", 2, False),
-    "atout_errant": ("pli", "comptoir", 1, False),
+    "double_valet": ("pli", "salle", 1, False),
+    "atout_errant": ("pli", "salle", 2, False),
     "courant_d_air": ("sort", "comptoir", 0, False),
     "tournee_generale": ("sort", "comptoir", 1, False),
-    "gueule_de_bois": ("sort", "salle", 1, False),
-    "remonte_pli": ("sort", "salle", 1, False),  # 4d7d : L'Hameçon, id inchange
-    "la_peche": ("sort", "salle", 1, False),
+    "gueule_de_bois": ("sort", "salle", 2, False),
+    "remonte_pli": ("sort", "comptoir", 1, False),  # 4d7d : L'Hameçon, id inchange
+    "la_peche": ("sort", "comptoir", 0, False),
     "faux_depart": ("sort", "salle", 1, False),
-    "inversion": ("aura", "salle", 2, True),
+    "inversion": ("aura", "cave", 3, True),
     "fausse_piste": ("piege", "comptoir", 2, False),
-    "collet": ("piege", "salle", 1, False),
+    "collet": ("piege", "arriere_salle", 1, False),
     "contre_espionnage": ("piege", "comptoir", 1, False),
     "croupier_endormi": ("piege", "comptoir", 1, False),
-    "dette_de_jeu": ("piege", "arriere_salle", 2, False),
+    "dette_de_jeu": ("piege", "salle", 1, False),
     "fumee_de_pipe": ("aura", "comptoir", 1, False),
     "silence_du_cercle": ("aura", "cave", 3, False),
-    "lune_noire": ("aura", "comptoir", 1, False),
+    "lune_noire": ("aura", "arriere_salle", 2, False),
     "coeur_de_zinneke": ("aura", "comptoir", 1, False),
     "brouillard_de_la_senne": ("aura", "cave", 2, False),
     "cartes_sur_table": ("enchere", "comptoir", 0, False),
     "bluff": ("enchere", "salle", 1, False),
     "rachat": ("enchere", "salle", 2, False),
-    "main_de_fer": ("sort", "arriere_salle", 3, False),
+    "main_de_fer": ("sort", "cave", 3, False),
     "pot_de_vin": ("enchere", "arriere_salle", 1, False),
     "fossoyeur_de_plis": ("passif", "salle", 0, False),
     "brimborion_dore": ("passif", "arriere_salle", 0, False),
-    "manche_truquee": ("sort", "arriere_salle", 2, False),
-    "coup_du_chapeau": ("aura", "comptoir", 1, True),
+    "manche_truquee": ("sort", "salle", 1, False),
+    "coup_du_chapeau": ("aura", "arriere_salle", 1, True),
     "pourboire": ("sort", "comptoir", 1, False),
     "chope_vide": ("passif", "comptoir", 0, False),
     "faux_pas": ("sort", "comptoir", 1, True),
     "pli_refile": ("sort", "salle", 1, False),
-    "valet_borgne": ("sort", "cave", 1, False),
-    "horloge_arretee": ("sort", "cave", 1, False),
-    "treizieme_carte": ("aura", "cave", 1, False),
+    "valet_borgne": ("sort", "cave", 3, False),
+    "horloge_arretee": ("sort", "salle", 2, False),
+    "treizieme_carte": ("aura", "salle", 1, False),
     "livre_de_comptes": ("sort", "cave", 1, False),
     # 65a7 (whist-4-it f31712b) : jokers de misere, jamais lances par les bots
     "defausse_discrete": ("sort", "salle", 3, False),
@@ -184,7 +187,7 @@ CATALOG = {
     "cadeau_empoisonne": ("piege", "salle", 2, False),
     # 6483 (Synergies 04c) : jokers de combos, jamais lances par les bots
     "beau_valet": ("aura", "comptoir", 1, False),
-    "bal_des_valets": ("aura", "arriere_salle", 2, False),
+    "bal_des_valets": ("aura", "comptoir", 1, False),
     "valet_de_chambre": ("sort", "comptoir", 0, False),
     "boite_d_allumettes": ("passif", "salle", 0, False),
     "poche_interieure": ("passif", "salle", 0, False),
@@ -193,20 +196,20 @@ CATALOG = {
     "addition": ("sort", "comptoir", 1, False),
     "complice": ("sort", "comptoir", 0, False),
     "verre_de_trop": ("aura", "salle", 1, False),
-    "refrain": ("sort", "salle", 1, False),
+    "refrain": ("sort", "comptoir", 1, False),
     "cendrier": ("passif", "salle", 0, False),
     "consigne": ("passif", "comptoir", 0, False),
     # 177e (Synergies 07) : reworks sous de nouveaux ids, jamais lances par les bots
     "pli_refile2": ("sort", "salle", 2, False),
-    "coeur_de_zinneke2": ("aura", "comptoir", 1, False),
+    "coeur_de_zinneke2": ("aura", "comptoir", 0, False),
     "chope_vide2": ("passif", "comptoir", 0, False),
     "croupier_endormi2": ("piege", "comptoir", 1, False),
-    "faux_depart2": ("sort", "salle", 1, False),
+    "faux_depart2": ("sort", "arriere_salle", 2, False),
     "la_tournee2": ("aura", "salle", 2, False),
     "cadeau_empoisonne2": ("piege", "salle", 2, False),
     # 61ef (Synergies 09) : jamais lances par les bots
     "vieille_habitude": ("passif", "comptoir", 0, False),
-    "pot_commun": ("sort", "salle", 1, False),
+    "pot_commun": ("sort", "comptoir", 0, False),
     "trouble_fete": ("aura", "salle", 1, False),
     "mauvais_perdant": ("passif", "comptoir", 0, False),
     "cierge": ("aura", "cave", 2, False),
@@ -221,23 +224,48 @@ CATALOG = {
     "pelle_du_fossoyeur": ("passif", "maudit", 0, False),
     "sceau_du_grand_maitre": ("passif", "maudit", 0, False),
     "cavalier_seul": ("passif", "maudit", 0, False),
+    # a76f (whist-4-it, CHANTIER-REWORK-JOKERS-PLAN.md « Code (2026-11-06) ») : les inutiles
+    # recycles « a la Dominion », tous des sorts ; bot_casts vrai (DeckEngine), mais HORS du
+    # CASTABLE du reseau (DOMINION_IDS) : aucun deck de bot ne les tient, ACTION_DIM inchange.
+    "ardoise2": ("sort", "comptoir", 0, True),
+    "tournee_generale2": ("sort", "comptoir", 1, True),
+    "valet_de_chambre2": ("sort", "comptoir", 0, True),
+    "addition2": ("sort", "comptoir", 1, True),
+    "vieille_habitude2": ("sort", "comptoir", 1, True),
+    "chope_vide3": ("sort", "comptoir", 1, True),
+    "complice2": ("sort", "comptoir", 1, True),
+    "consigne2": ("sort", "comptoir", 0, True),
+    "cendrier2": ("sort", "salle", 0, True),
+    "mauvais_perdant2": ("sort", "comptoir", 1, True),
+    "feu_de_paille2": ("sort", "salle", 0, True),
+    "poche_interieure2": ("sort", "salle", 0, True),
+    "la_peche2": ("sort", "salle", 1, True),
 }
 # JokerCatalog.OPPONENT_ONLY : jamais proposes au joueur (chaise_vide, deck simule)
 OPPONENT_ONLY = ("regle_du_moine", "gant_de_la_baronne", "pelle_du_fossoyeur", "sceau_du_grand_maitre", "cavalier_seul")
 # JokerCatalog.REPLACED (177e) : ancien -> nouveau ; l'ancien reste au catalogue, hors des decks et des mesures
 REPLACED = {"carte_fantome": "zero", "pli_refile": "pli_refile2", "coeur_de_zinneke": "coeur_de_zinneke2",
-            "chope_vide": "chope_vide2", "croupier_endormi": "croupier_endormi2", "faux_depart": "faux_depart2",
+            "chope_vide": "chope_vide3", "croupier_endormi": "croupier_endormi2", "faux_depart": "faux_depart2",
             "la_tournee": "la_tournee2", "cadeau_empoisonne": "cadeau_empoisonne2"}
+# JokerCatalog.DOMINION_REPLACED (a76f) : restent pour les runs d'avant et les decks des boss,
+# hors de all_ids() -- ici fusionnes dans REPLACED (hors des decks du joueur et des mesures).
+DOMINION_REPLACED = {"ardoise": "ardoise2", "tournee_generale": "tournee_generale2", "valet_de_chambre": "valet_de_chambre2",
+                     "addition": "addition2", "vieille_habitude": "vieille_habitude2", "chope_vide2": "chope_vide3",
+                     "complice": "complice2", "consigne": "consigne2", "cendrier": "cendrier2",
+                     "mauvais_perdant": "mauvais_perdant2", "feu_de_paille": "feu_de_paille2",
+                     "poche_interieure": "poche_interieure2", "la_peche": "la_peche2"}
+DOMINION_IDS = frozenset(DOMINION_REPLACED.values())
+REPLACED.update(DOMINION_REPLACED)
 ON_TURN_IDS = ("coup_de_vent", "faux_pas")  # JokerDef.ON_TURN_IDS : a son tour de pli, apres avoir vu une coupe
 STARTING_DECK = ["cameleon", "embuscade", "main_lourde"]  # JokerCatalog.STARTING_DECK
-VALET_FAMILY = ("cameleon", "double_valet", "beau_valet", "bal_des_valets", "valet_de_chambre")  # JokerCatalog.FAMILIES["valets"]
+VALET_FAMILY = ("cameleon", "double_valet", "beau_valet", "bal_des_valets", "valet_de_chambre", "valet_de_chambre2")  # JokerCatalog.FAMILIES["valets"]
 UPGRADE_SUFFIX = "+"  # JokerDef : cout -1 (jamais un cout 0 ni un maudit)
 MAX_COPIES = 2
 SUSPICION_BY_RARITY = {"arriere_salle": 2, "cave": 4}  # JokerDef.SUSPICION_BY_RARITY
 FROM_DECK_IDS = ("brimborion_dore", "patron")  # JokerDef.FROM_DECK_IDS : jamais pioches, agissent depuis le deck
 BOT_TYPES = ("sort", "piege", "aura")  # RogueMatch.BOT_TYPES
 # Actions de l'IA : 0 = aucun cast, 1..K = ces jokers (ids tries).
-CASTABLE = sorted(i for i, (t, _r, _c, bc) in CATALOG.items() if bc and t in BOT_TYPES)
+CASTABLE = sorted(i for i, (t, _r, _c, bc) in CATALOG.items() if bc and t in BOT_TYPES and i not in DOMINION_IDS)
 ACTION_DIM = 1 + len(CASTABLE)
 
 DRAW_PER_HAND = 3  # MatchState
@@ -245,7 +273,8 @@ SPAMMER_DRAWS = 5  # 65a7 (ff4b72a) : elites/boss/habitues piochent 5 jokers (to
 DISCARD_GAIN = 1  # 65a7 (48b2dc3) : un joker defausse de la main = +1 energie
 LASTING_CASES = 2  # 65a7 (d74be81) : effets de donne par siege (JokerRules.LASTING_CASES)
 SPAMMER_CASES = 3
-ENERGY_PER_HAND = 3
+ENERGY_PER_HAND = 2  # 22d8 (07/11, « Ok on passe a 2 ») : a 3 les ⚡ ne manquaient jamais (1 ⚡ = 0.1 pt)
+LEGACY_ENERGY_PER_HAND = 3  # runs d'avant (dominion faux)
 SUSPICION_MAX = 10
 HEAT_ENERGY_AT = 3  # Synergies 04b : paliers de Chaleur du siege 0 (MatchState)
 HEAT_DRAW_AT = 6
@@ -518,6 +547,10 @@ class Effect:
         """Rien a changer dans le contrat de la donne -> injouable (whist-4-it
         bf79074, signalement 2026-10-12 : Coup de Vent en Grande Misere)."""
         return False
+
+    def pointless_reason(self):
+        """a76f : la cle d'erreur quand pointless() tient (JokerUi.ERROR_TEXTS)."""
+        return "pointless"
 
     def energy_bonus(self):
         return 0
@@ -1789,6 +1822,262 @@ class Patron(Curse):
         return self.EXTRA
 
 
+# --- a76f (whist-4-it, CHANTIER-REWORK-JOKERS-PLAN.md) : les inutiles recycles a la Dominion ---
+# on_play agit avant que le joker quitte la main : il ne se compte jamais lui-meme.
+
+class DeckEngine(Effect):
+    """+Cartes / +Actions : un sort qui ne nourrit que les suivants."""
+    def bot_casts(self):
+        return True
+
+    def bot_wants(self, rules):
+        return not self.pointless(rules)
+
+    def _can_draw(self, rules):
+        return rules.state.can_draw(self.owner)
+
+
+class Ardoise2(DeckEngine):
+    """Laboratoire : la pioche a credit."""
+    DRAWS = 2
+    DEBT = 1
+
+    def pointless(self, rules):
+        return not self._can_draw(rules)
+
+    def pointless_reason(self):
+        return "pile"
+
+    def bot_wants(self, rules):
+        return not self.pointless(rules) and rules.state.debts[self.owner] == 0
+
+    def on_play(self, rules, target=-1):
+        rules.state.draw_jokers(self.owner, self.DRAWS)
+        rules.state.debts[self.owner] += self.DEBT
+        return {}
+
+
+class TourneeGenerale2(DeckEngine):
+    """Salle du Conseil : la tournee est pour le proprietaire."""
+    DRAWS = 3
+
+    def pointless(self, rules):
+        return not self._can_draw(rules)
+
+    def pointless_reason(self):
+        return "pile"
+
+    def on_play(self, rules, target=-1):
+        rules.state.draw_jokers(self.owner, self.DRAWS)
+        for seat in range(NUM_PLAYERS):
+            if rules.is_opponent(self.owner, seat):
+                rules.state.draw_jokers(seat, 1)
+        return {}
+
+
+def _valet_wanted(jid):
+    return base_id(jid) in VALET_FAMILY and base_id(jid) != "valet_de_chambre2"
+
+
+class ValetDeChambre2(DeckEngine):
+    """Atelier : va chercher un Valet dans la pioche, jamais un autre Valet de Chambre."""
+    def pointless(self, rules):
+        return not any(_valet_wanted(j) for j in rules.state.draw_pile[self.owner])
+
+    def pointless_reason(self):
+        return "no_valet"
+
+    def on_play(self, rules, target=-1):
+        return {} if rules.state.fetch(self.owner, _valet_wanted) != "" else {"error": "no_valet"}
+
+
+class Addition2(DeckEngine):
+    """Marche."""
+    def on_play(self, rules, target=-1):
+        rules.state.gain_energy(self.owner, 1)
+        rules.state.draw_jokers(self.owner, 1)
+        rules.state.win_sous(self.owner, 1)
+        return {}
+
+
+class VieilleHabitude2(DeckEngine):
+    """Bibliotheque."""
+    HAND = 4
+
+    def _missing(self, rules):
+        return self.HAND - (len(rules.state.joker_hand[self.owner]) - 1)
+
+    def pointless(self, rules):
+        return self._missing(rules) <= 0 or not self._can_draw(rules)
+
+    def pointless_reason(self):
+        return "full"
+
+    def on_play(self, rules, target=-1):
+        rules.state.draw_jokers(self.owner, self._missing(rules))
+        return {}
+
+
+class ChopeVide3(DeckEngine):
+    """Village."""
+    ENERGY = 2
+
+    def on_play(self, rules, target=-1):
+        rules.state.draw_jokers(self.owner, 1)
+        rules.state.gain_energy(self.owner, self.ENERGY)
+        return {}
+
+
+class Complice2(Pending):
+    """Salle du Trone, sorts seulement : JokerRules.play rejoue le prochain."""
+    def doubles(self, seat, jid):
+        """Un sort qui dure la donne (L'Horloge Arretee) demanderait une 2e case."""
+        return (not self.spent and seat == self.owner and jtype(jid) == "sort" and base_id(jid) != "complice2"
+                and make_effect(jid, seat).scope != HAND)
+
+    def bot_casts(self):
+        return True
+
+    def bot_wants(self, rules):
+        return any(jtype(j) == "sort" and base_id(j) != "complice2" and make_effect(j, self.owner).bot_wants(rules)
+                   for j in rules.state.joker_hand[self.owner])
+
+
+class Consigne2(DeckEngine):
+    """Cave (Cellar) : ce que le proprietaire jette est du, jamais paye en energie."""
+    def _others(self, rules):
+        hand = list(rules.state.joker_hand[self.owner])
+        if self.id in hand:
+            hand.remove(self.id)
+        return hand
+
+    def pointless(self, rules):
+        return not self._others(rules)
+
+    def pointless_reason(self):
+        return "empty_hand"
+
+    def bot_wants(self, rules):
+        return any(rules.state.bot_spares(self.owner, j) for j in self._others(rules))
+
+    def on_play(self, rules, target=-1):
+        hand = self._others(rules)
+        rules.state.offer_choice(self.owner, {"kind": "consigne", "joker": self.id, "options": hand,
+                                              "min": 0, "max": len(hand)})
+        return {}
+
+
+class Cendrier2(DeckEngine):
+    """Presage (Harbinger) : on fouille les cendres pour la prochaine pioche."""
+    def pointless(self, rules):
+        return not self._can_draw(rules)
+
+    def pointless_reason(self):
+        return "pile"
+
+    def on_play(self, rules, target=-1):
+        st = rules.state
+        st.draw_jokers(self.owner, 1)
+        if st.discard[self.owner]:
+            st.offer_choice(self.owner, {"kind": "cendrier", "joker": self.id, "options": list(st.discard[self.owner]),
+                                         "min": 1, "max": 1})
+        return {}
+
+
+class LaPeche2(DeckEngine):
+    """acb9 : La Peche au choix -- un joker de la defausse, au choix, revient en main."""
+    def pointless(self, rules):
+        return not rules.state.discard[self.owner]
+
+    def pointless_reason(self):
+        return "empty_discard"
+
+    def bot_wants(self, rules):
+        return any(not rules.state.bot_spares(self.owner, j) for j in rules.state.discard[self.owner])
+
+    def on_play(self, rules, target=-1):
+        st = rules.state
+        if st.discard[self.owner]:  # lancee par Feu de Paille2 depuis une defausse ou elle etait seule : rien a reprendre
+            st.offer_choice(self.owner, {"kind": "la_peche", "joker": self.id, "options": list(st.discard[self.owner]),
+                                         "min": 1, "max": 1})
+        return {}
+
+
+class MauvaisPerdant2(DeckEngine):
+    """Milice : chaque victime choisit sa defausse (MatchState.must_discard)."""
+    def _victims(self, rules):
+        return [s for s in range(NUM_PLAYERS) if rules.is_opponent(self.owner, s) and rules.state.joker_hand[s]]
+
+    def pointless(self, rules):
+        return not self._victims(rules)
+
+    def pointless_reason(self):
+        return "no_joker"
+
+    def on_play(self, rules, target=-1):
+        for seat in self._victims(rules):
+            rules.state.must_discard(seat, 1)
+        return {}
+
+
+class FeuDePaille2(DeckEngine):
+    """Vassal : le dessus de la pioche part ; un sort est lance pour rien."""
+    def pointless(self, rules):
+        return not self._can_draw(rules)
+
+    def pointless_reason(self):
+        return "pile"
+
+    def on_play(self, rules, target=-1):
+        st = rules.state
+        jid = st.reveal(self.owner)
+        if jid == "":
+            return {"error": "pile"}
+        if jtype(jid) != "sort":
+            return {"revealed": jid}
+        effect = make_effect(jid, self.owner)
+        if effect.pointless(rules) or rules.blocked(jid, self.owner):
+            return {"revealed": jid}
+        if not effect.needs_target():
+            cast = st.cast_free(self.owner, jid, -1, False)
+            return {"revealed": jid, "cast": cast, "discard": cast.get("discard", 0)}
+        targets = targets_of(effect, self.owner, rules)
+        if not targets:
+            return {"revealed": jid}
+        if self.owner in st.players:
+            st.offer_choice(self.owner, {"kind": "target", "joker": jid, "options": targets, "min": 1, "max": 1,
+                                         "target_kind": effect.target_kind()})
+            return {"revealed": jid}
+        cast = st.cast_free(self.owner, jid, targets[0], False)
+        return {"revealed": jid, "cast": cast, "discard": cast.get("discard", 0)}
+
+
+class PocheInterieure2(DeckEngine):
+    """Sentinelle : les 3 prochains de la pioche, jetes ou remis dans l'ordre choisi."""
+    LOOK = 3
+
+    def pointless(self, rules):
+        return not rules.state.draw_pile[self.owner]
+
+    def pointless_reason(self):
+        return "pile"
+
+    def on_play(self, rules, target=-1):
+        pile = rules.state.draw_pile[self.owner]
+        top = pile[-min(self.LOOK, len(pile)):][::-1]  # le dessus d'abord
+        rules.state.offer_choice(self.owner, {"kind": "poche", "joker": self.id, "options": top,
+                                              "min": 0, "max": len(top), "ordered": True})
+        return {}
+
+
+def targets_of(effect, seat, rules):
+    """JokerEffects.targets_of : les cibles possibles maintenant, sieges (adversaires d'abord) ou couleurs."""
+    if effect.target_kind() == "suit":
+        return list(range(4))
+    seats = [s for s in range(NUM_PLAYERS) if s != seat and effect.accepts_target(s, rules)]
+    return sorted(seats, key=lambda s: (not rules.is_opponent(seat, s), s))
+
+
 EFFECTS = {
     "cameleon": Cameleon, "zero": Zero, "traitre": Traitor, "coup_de_vent": CoupDeVent,
     "main_lourde": MainLourde, "embuscade": Embuscade, "kermesse": Kermesse, "coup_d_oeil": CoupDOeil,
@@ -1821,6 +2110,11 @@ EFFECTS = {
     "cadeau_empoisonne2": CadeauEmpoisonne2,
     "vieille_habitude": VieilleHabitude, "pot_commun": PotCommun, "trouble_fete": TroubleFete,
     "mauvais_perdant": MauvaisPerdant, "cierge": Cierge, "patron": Patron,
+    "ardoise2": Ardoise2, "tournee_generale2": TourneeGenerale2, "valet_de_chambre2": ValetDeChambre2,
+    "addition2": Addition2, "vieille_habitude2": VieilleHabitude2, "chope_vide3": ChopeVide3,
+    "complice2": Complice2, "consigne2": Consigne2, "cendrier2": Cendrier2,
+    "mauvais_perdant2": MauvaisPerdant2, "feu_de_paille2": FeuDePaille2, "poche_interieure2": PocheInterieure2,
+    "la_peche2": LaPeche2,
 }
 assert set(EFFECTS) == set(CATALOG)
 
@@ -1863,6 +2157,14 @@ class MatchState:
         self.debts = [0] * NUM_PLAYERS  # 6483 : ⚡ dus (L'Ardoise)
         self.kept = [""] * NUM_PLAYERS  # 6483 : joker garde (Poche Interieure)
         self.last_spell = [""] * NUM_PLAYERS  # 6483 : dernier sort paye, Refrain a part
+        # a76f : par joueur, le choix qu'un joker a laisse ouvert ({} = aucun) ; ceux d'un bot sont
+        # faits aussitot (bot_picks). Joueur simule = RogueAutopilot : bot_picks juste apres le paiement.
+        self.choices = [{} for _ in range(NUM_PLAYERS)]
+        self.players = [PLAYER]
+        # 515d (choix utilisateur 06/11, boucle Chope Vide3 / Addition2) : sous `dominion`, une pioche
+        # vide ne reprend la defausse qu'au tirage d'ouverture de la donne (runs neuves, Duel).
+        self.dominion = False
+        self.recycled = []  # MatchState.recycled : les joueurs qui ont deja recycle cette donne
         for pile in self.draw_pile:
             self.rng.shuffle(pile)
 
@@ -1872,8 +2174,15 @@ class MatchState:
             for jid in self.curses[seat]:
                 self.rules.curses.append(make_effect(jid, seat))
 
+    @staticmethod
+    def energy_for(dominion):
+        return ENERGY_PER_HAND if dominion else LEGACY_ENERGY_PER_HAND
+
+    def base_energy(self):
+        return self.energy_for(self.dominion)
+
     def energy_per_hand(self, seat):
-        n = ENERGY_PER_HAND + (self.spammer_energy if seat in self.spammers else 0)
+        n = self.base_energy() + (self.spammer_energy if seat in self.spammers else 0)
         if seat == PLAYER:
             n += self.run_energy + self.heat_energy()
         return n + (sum(e.energy_bonus() for e in self.rules.curses if e.owner == seat) if self.rules else 0)
@@ -1893,7 +2202,7 @@ class MatchState:
             n = SPAMMER_DRAWS if seat in self.spammers else DRAW_PER_HAND
             if seat == PLAYER:
                 n += self.run_draws + self.heat_draws()
-            self.draw_jokers(seat, n + self.next_hand_draws[seat] + (self.rules.draw_bonus(seat) if self.rules else 0))
+            self.draw_jokers(seat, n + self.next_hand_draws[seat] + (self.rules.draw_bonus(seat) if self.rules else 0), opening=True)
         self.dry_hand = self.next_hand_malus >= NO_ENERGY
         self.next_hand_malus = 0
         self.next_hand_draws = [0] * NUM_PLAYERS
@@ -1904,6 +2213,8 @@ class MatchState:
         self.debts = [0] * NUM_PLAYERS
         self.kept = [""] * NUM_PLAYERS
         self.last_spell = [""] * NUM_PLAYERS
+        self.choices = [{} for _ in range(NUM_PLAYERS)]
+        self.recycled = []
         self._owe_returns()
 
     def _owe_returns(self):
@@ -1926,6 +2237,7 @@ class MatchState:
         self.borrowed[seat] = list(jids)
 
     def end_hand(self):
+        self._settle_choices()
         self.to_discard = [0] * NUM_PLAYERS
         self.to_return = [0] * NUM_PLAYERS
         for seat in range(NUM_PLAYERS):
@@ -1940,10 +2252,11 @@ class MatchState:
             self.discard[seat].extend(going)
             self.joker_hand[seat] = staying
 
-    def draw_jokers(self, seat, n):
+    def draw_jokers(self, seat, n, opening=False):
+        """`opening` : le tirage du debut de donne, le seul qui remelange sous `dominion`."""
         for _ in range(n):
             if not self.draw_pile[seat]:
-                if not self.discard[seat]:
+                if not self.discard[seat] or (self.dominion and not opening):
                     return
                 self.draw_pile[seat] = self.discard[seat]
                 self.discard[seat] = []
@@ -1962,6 +2275,8 @@ class MatchState:
             return "not_in_hand"
         if self.arms_on_draw(seat) or jtype(jid) != "passif":
             return "passive"
+        if self.choices[seat]:
+            return "choice"
         return "discard" if self.to_discard[seat] > 0 else ""
 
     def pose_passives(self):
@@ -2079,17 +2394,20 @@ class MatchState:
             return "not_in_hand"
         if self.to_discard[seat] > 0:
             return "discard"
+        if self.choices[seat]:
+            return "choice"
         if jtype(jid) == "passif":
             return "passive"
         # match_state.gd : "pointless" en phase PLAYING (ici : une donne liee)
         if self.rules is not None and self.rules.game is not None and make_effect(jid, seat).pointless(self.rules):
-            return "pointless"
+            return make_effect(jid, seat).pointless_reason()
         if self.cost_of(seat, jid) > self.energy[seat]:
             return "energy"
         return ""
 
-    def spend(self, seat, jid):
-        self.energy[seat] -= self.cost_of(seat, jid)
+    def spend(self, seat, jid, free=False):
+        """`free` : lance par un autre joker (Feu de Paille2), rien a payer."""
+        self.energy[seat] -= 0 if free else self.cost_of(seat, jid)
         self.played_this_hand[seat] += 1
         self.cast_ids[seat].append(jid)
         self.joker_hand[seat].remove(jid)
@@ -2104,6 +2422,198 @@ class MatchState:
             self.suspicion = min(SUSPICION_MAX, self.suspicion + jsuspicion(jid))
         if self.rules is not None:
             self.rules.joker_paid(seat, jid)
+
+    # --- a76f : les mouvements des jokers Dominion sur les piles (match_state.gd) ---
+
+    def fetch(self, seat, wanted):
+        """Valet de Chambre2 : le premier joker depuis le dessus de la pioche que `wanted`
+        accepte, en main ; "" sans."""
+        pile = self.draw_pile[seat]
+        for i in range(len(pile) - 1, -1, -1):
+            if wanted(pile[i]):
+                jid = pile.pop(i)
+                self._take(seat, jid)
+                return jid
+        return ""
+
+    def _take(self, seat, jid):
+        """En main comme une pioche : un passif s'arme comme pioche."""
+        self.joker_hand[seat].append(jid)
+        if jtype(jid) == "passif" and self.rules is not None and self.arms_on_draw(seat) and self.rules.free_case(seat) >= 0:
+            self.rules.play(seat, jid)
+
+    RECYCLE_COST = 1
+
+    def recycle_error(self, jid, seat=PLAYER):
+        """MatchState.recycle_error : "" si le joueur `seat` peut recycler `jid` maintenant."""
+        if seat not in self.players or jid not in self.joker_hand[seat]:
+            return "not_in_hand"
+        if self.to_discard[seat] > 0:
+            return "discard"
+        if self.choices[seat]:
+            return "choice"
+        if seat in self.recycled:
+            return "recycled"
+        if self.energy[seat] < self.RECYCLE_COST:
+            return "energy"
+        if not self.can_draw(seat):
+            return "pile"
+        return ""
+
+    def recycle(self, jid, seat=PLAYER):
+        """MatchState.recycle (+ RogueMatch.recycle_joker : un passif arme est desarme) : 1 energie,
+        le joker part, un autre est pioche avant qu'il n'atteigne la defausse."""
+        if self.rules is not None and self.arms_on_draw(seat) and jtype(jid) == "passif":
+            self.rules.disarm(seat, jid)
+        self.energy[seat] += self._discard_extra(seat, jid) - self.RECYCLE_COST
+        self.joker_hand[seat].remove(jid)
+        self.recycled.append(seat)
+        self.draw_jokers(seat, 1)
+        self.discard[seat].append(jid)
+
+    def can_draw(self, seat):
+        """515d : pioche non vide, ou (hors dominion) une defausse a remelanger."""
+        return bool(self.draw_pile[seat]) or (not self.dominion and bool(self.discard[seat]))
+
+    def reveal(self, seat):
+        """Feu de Paille2 : le dessus de la pioche (remelangee depuis la defausse s'il le
+        faut) sur la defausse ; "" quand les deux sont vides."""
+        if not self.draw_pile[seat]:
+            if not self.can_draw(seat):
+                return ""
+            self.draw_pile[seat] = self.discard[seat]
+            self.discard[seat] = []
+            self.rng.shuffle(self.draw_pile[seat])
+        jid = self.draw_pile[seat].pop()
+        self.discard[seat].append(jid)
+        return jid
+
+    def cast_free(self, seat, jid, target, owe=True):
+        """Feu de Paille2 : le sort `jid`, sur la defausse, lance pour rien. -> ce que
+        JokerRules.play a rendu ; {"error"} et de retour sur la defausse s'il ne peut pas.
+        fc90 : `owe` False -> ses defausses dues sont rendues a l'appelant (payees apres lui)."""
+        d = self.discard[seat]
+        if jid not in d or self.rules is None:
+            return {"error": "not_in_hand"}
+        del d[len(d) - 1 - d[::-1].index(jid)]
+        self.joker_hand[seat].append(jid)
+        played = self.rules.play(seat, jid, target)
+        if played.get("error"):
+            self.joker_hand[seat].remove(jid)
+            self.discard[seat].append(jid)
+            return played
+        self.spend(seat, jid, free=True)
+        if owe and played.get("discard", 0) > 0:
+            self.must_discard(seat, played["discard"])
+        return played
+
+    def bot_spares(self, seat, jid):
+        """Un bot jette `jid` pour rien qui lui manquerait (La Consigne2). ee3a : un joueur (pilote
+        auto) lance aussi ses jokers de pli et d'enchere -> seulement ce qui ne peut plus servir,
+        en phase de jeu (une enchere passee, un joker pointless maintenant)."""
+        if seat in self.players:
+            playing = self.rules is not None and self.rules.game is not None
+            return playing and (jtype(jid) == "enchere" or make_effect(jid, seat).pointless(self.rules))
+        if base_id(jid) in COMBO_CAST:
+            return False
+        return jtype(jid) not in BOT_TYPES or not make_effect(jid, seat).bot_casts()
+
+    def offer_choice(self, seat, choice):
+        """Le choix d'un joueur attend (settle_player_choice) ; celui d'un bot est fait maintenant."""
+        if seat in self.players:
+            self.choices[seat] = choice
+        else:
+            self._apply_choice(seat, choice, self.bot_picks(seat, choice))
+
+    def bot_picks(self, seat, choice):
+        """Les choix d'un bot (et du minuteur, et de RogueAutopilot), indices dans les options :
+        ce qu'il ne lance jamais part, le reste garde son ordre ; le plus cher qu'il lance
+        revient sur la pioche ; la premiere cible."""
+        options = choice.get("options", [])
+        kind = choice.get("kind", "")
+        if kind == "consigne":
+            return [i for i in range(len(options)) if self.bot_spares(seat, options[i])]
+        if kind == "poche":
+            return [i for i in range(len(options)) if not self.bot_spares(seat, options[i])]
+        if kind in ("cendrier", "la_peche"):
+            best = 0
+            for i in range(len(options)):
+                better = jcost(options[i]) > jcost(options[best])
+                if self.bot_spares(seat, options[best]) or (not self.bot_spares(seat, options[i]) and better):
+                    best = i
+            return [best]
+        return [0] if options else []
+
+    def choose(self, seat, picks):
+        """"" une fois le choix du joueur `seat` regle par `picks`, sinon pourquoi pas."""
+        choice = self.choices[seat]
+        if not choice:
+            return "no_choice"
+        at = []
+        for p in picks:
+            if not isinstance(p, int) or p < 0 or p >= len(choice["options"]) or p in at:
+                return "picks"
+            at.append(p)
+        if len(at) < int(choice["min"]) or len(at) > int(choice["max"]):
+            return "picks"
+        self.choices[seat] = {}
+        self._apply_choice(seat, choice, at)
+        return ""
+
+    def settle_player_choice(self, seat=PLAYER):
+        """RogueAutopilot._try_joker (a76f) : juste apres le joker paye, son choix ouvert
+        se regle par bot_picks."""
+        if self.choices[seat]:
+            self.choose(seat, self.bot_picks(seat, self.choices[seat]))
+
+    def _apply_choice(self, seat, choice, at):
+        options = choice["options"]
+        kind = choice["kind"]
+        if kind == "consigne":
+            thrown = 0
+            for i in at:
+                if options[i] in self.joker_hand[seat]:
+                    self.to_discard[seat] += 1
+                    self.discard_joker(seat, options[i])
+                    thrown += 1
+            self.draw_jokers(seat, thrown)
+        elif kind == "cendrier":
+            jid = options[at[0]]
+            d = self.discard[seat]
+            if jid in d:
+                del d[len(d) - 1 - d[::-1].index(jid)]
+                self.draw_pile[seat].append(jid)
+        elif kind == "la_peche":
+            jid = options[at[0]]
+            d = self.discard[seat]
+            if jid in d:
+                del d[len(d) - 1 - d[::-1].index(jid)]
+                self.joker_hand[seat].append(jid)
+        elif kind == "poche":
+            pile = self.draw_pile[seat]
+            found = []
+            for jid in options:
+                if jid in pile:
+                    del pile[len(pile) - 1 - pile[::-1].index(jid)]
+                    found.append(jid)
+            kept_ids = []
+            for i in at:
+                if options[i] in found:
+                    found.remove(options[i])
+                    kept_ids.append(options[i])
+            self.discard[seat].extend(found)
+            for jid in reversed(kept_ids):
+                pile.append(jid)
+        elif kind == "target":
+            self.cast_free(seat, choice["joker"], int(options[at[0]]))
+
+    def _settle_choices(self):
+        """Fin de donne : un choix ouvert se regle comme un bot ; la cible d'un sort tombe."""
+        for seat in range(NUM_PLAYERS):
+            choice = self.choices[seat]
+            self.choices[seat] = {}
+            if choice and choice["kind"] != "target":
+                self._apply_choice(seat, choice, self.bot_picks(seat, choice))
 
 
 # --- regles (joker_rules.gd) ------------------------------------------------
@@ -2338,11 +2848,27 @@ class JokerRules:
                     return {"error": "case"}
         if any(e.cancels(seat, jid, self) for e in self.live()):
             return {"cancelled": True}
+        # a76f : depense avant que le sort agisse -- un sort qu'il lance a son tour (Feu de Paille2)
+        # n'est pas le prochain sort.
+        doubler = next((e for e in self.effects if isinstance(e, Complice2) and e.doubles(seat, jid)), None)
+        if doubler is not None:
+            doubler.spent = True
         result = effect.on_play(self, target)
         if result.get("error"):
+            if doubler is not None:
+                doubler.spent = False
             return result
         if effect.scope != INSTANT:
             self.effects.append(effect)
+        if doubler is not None:
+            self.effects = [x for x in self.effects if x is not doubler]
+            again = make_effect(jid, seat)
+            twice = again.on_play(self, target)
+            if not twice.get("error"):
+                if again.scope != INSTANT:
+                    self.effects.append(again)
+                result["discard"] = result.get("discard", 0) + twice.get("discard", 0)
+                result["twice"] = True
         if case >= 0:
             old = self.cases[seat][case]
             if old is not None:
@@ -2488,6 +3014,10 @@ class JokerRules:
         for e in self.effects:
             if e.owner == seat:
                 cost = max(0, cost - e.discount(jid))
+        # acb9 : un joker gratuit relance dans la meme donne coute 1 (boucle Main Lourde + La Peche)
+        if (cost == 0 and jcost(jid) == 0 and self.state is not None and jid in self.state.cast_ids[seat]
+                and jid not in self.state.borrowed[seat]):
+            cost = 1
         return cost
 
     def joker_paid(self, seat, jid):

@@ -35,7 +35,8 @@ PORTE A DEUX TEMPS (2026-11-07, accord user) : 35 portes refusees de suite
 (cycles 219-253) alors que les candidats etaient souvent a +0.1..+0.25 :
 avec 10000 donnes il faut ~+0.46 pour passer, un vrai petit progres est
 invisible. --gate-extra-deals N : un candidat positif mais refuse est remesure
-sur N donnes neuves de plus, decision sur le cumul (meme z = 2). Deux regards
+sur N donnes neuves de plus, decision sur ces N donnes SEULES (meme z = 2 ;
+08/11 : le cumul recomptait les donnes qui avaient fait remarquer le candidat). Deux regards
 au lieu d'un : risque d'accepter un faux progres ~3-4 % au lieu de ~2 %.
 
 DEFENSE CIBLEE (2026-11-05, accord user) : le BILAN vs ExpertBot plafonne
@@ -507,8 +508,11 @@ def main():
             print("    porte %s : %s -> positif sous le bruit, +%d donnes" % (top, show(r), args.gate_extra_deals), flush=True)
             extra = measure(pool, member_path(top), args.gate_extra_deals, GATE_SEED + 1000 * state["cycle"] + 500,
                             args.workers)
+            # decision sur les SEULES donnes neuves : les 10000 premieres ont choisi ce candidat (positif), les
+            # recompter gonflerait le gain (malediction du gagnant, constat 08/11) ; affichage = cumul
+            accepted = gate_ok(extra)
+            print("    remesure %s seule : %s -> %s" % (top, show(extra), "ok" if accepted else "non"), flush=True)
             r = combine(r, extra)
-            accepted = gate_ok(r)
         print("=== Porte %s vs best, cycle %d (donnes neuves) : %s -> %s ===" % (
             top, state["cycle"], show(r), "ACCEPTEE, nouveau best" if accepted else "refusee"), flush=True)
         if accepted:

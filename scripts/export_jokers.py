@@ -9,7 +9,9 @@ roguelike ») :
       masque, logits fp16 et action argmax attendue ;
   godot_export/joker_obs_spec.md  -- la spec de l'observation.
 
---godot-sync copie le .gd dans whist-4-it/game/ (prevenir la session
+--godot-sync copie le .gd et joker_moments.json (si present, telecharger d'abord
+`gh release download checkpoint-latest -R cactusDevelop/whist-train -p joker_moments.json`)
+dans whist-4-it/game/ (prevenir la session
 whist-4-it AVANT, voir la memoire « warn whist-4-it before export »).
 
 Usage : venv/Scripts/python.exe scripts/export_jokers.py [--cases 60] [--godot-sync]
@@ -32,7 +34,6 @@ from agents.network import HIDDEN, PolicyValueNet
 from engine import joker_match as jm
 from engine import jokers as J
 from engine import joker_obs as O
-from scripts import joker_profit as P
 from scripts.export_to_godot import fp16_rounded
 from scripts.godot_paths import find_godot_project
 from scripts.train_jokers import CHECKPOINT, logits_np, net_to_numpy
@@ -40,6 +41,7 @@ from scripts.train_jokers import CHECKPOINT, logits_np, net_to_numpy
 OUT_DIR = "godot_export"
 GD_NAME = "whist_ai_weights_data_v2_jokers.gd"
 EXPERT_CASES = "joker_expert_cases.json"
+MOMENTS_FILE = "joker_moments.json"  # sortie de scripts/joker_moments.py (mode cloud jokers_moments)
 GODOT_PROJECT = find_godot_project()  # WHIST_4_IT_DIR ou dossier voisin
 GODOT_GAME_DIR = os.path.join(GODOT_PROJECT or os.path.join("..", "whist-4-it"), "game")
 
@@ -308,11 +310,13 @@ def main():
     if args.godot_sync:
         shutil.copy(gd, os.path.join(GODOT_GAME_DIR, GD_NAME))
         print("copie dans %s" % GODOT_GAME_DIR)
-        if os.path.exists(P.STATE_FILE):  # test de rentabilite (scripts/joker_profit.py), code a jour
-            print("rentabilite :", P.rerender())
-        if os.path.exists(P.GODOT_FILE):
-            shutil.copy(P.GODOT_FILE, os.path.join(GODOT_GAME_DIR, os.path.basename(P.GODOT_FILE)))
-            print("rentabilite des jokers copiee : %s" % os.path.basename(P.GODOT_FILE))
+        # Stats IA (G4) du jeu lit joker_moments.json (scripts/joker_moments.py, telecharge de la release
+        # checkpoint-latest) ; joker_profit_stats.json n'est plus copie (supprime cote whist-4-it, 07/11).
+        if os.path.exists(MOMENTS_FILE):
+            shutil.copy(MOMENTS_FILE, os.path.join(GODOT_GAME_DIR, os.path.basename(MOMENTS_FILE)))
+            print("moments des jokers copies : %s" % os.path.basename(MOMENTS_FILE))
+        else:
+            print("ATTENTION : %s absent, Stats IA non mis a jour" % MOMENTS_FILE)
 
 
 if __name__ == "__main__":

@@ -95,7 +95,9 @@ class Match:
         self.state.run_energy = config.get("run_energy", 0)  # RogueMatch : config du match (04a, 04b), jamais le Duel
         self.state.run_draws = config.get("run_draws", 0)
         self.state.heat = config.get("heat", False)
-        self.state.pose = config.get("pose", False)  # 7c98 : runs neuves, Duel, Belle
+        self.state.pose = config.get("pose", False)
+        # 515d : RogueMatch state.dominion = config (runs neuves, Duel) ; la simulation ne joue que la version actuelle
+        self.state.dominion = config.get("dominion", True)  # 7c98 : runs neuves, Duel, Belle
         self.rules = JokerRules(self.state, random.Random(self.rng.random()))
         self.rules.set_spammers(spammers)  # 65a7 : 3 cases d'effet de donne
         boss = config.get("boss", "")
@@ -604,6 +606,13 @@ class Player:
         self.force_trick = None
         self.forced_ok = None
         self.bid_probe = None
+        # Moments (scripts/joker_moments.py) : a la prochaine decision (enchere ou pli), `lead` est
+        # lance d'abord puis la regle continue ; `ban` y est interdit ; `swap` est recycle (Recycler :
+        # 1 energie, une nouvelle pioche) ; `drop` est defausse pour l'energie. Consommes par cette decision.
+        self.lead = None
+        self.ban = set()
+        self.swap = None
+        self.drop = None
 
     def _target(self, rules, jid=None):
         if jid is not None and J.make_effect(jid, PLAYER).target_kind() == "suit":  # 6c54 : sa plus longue couleur
@@ -663,10 +672,27 @@ class Player:
         if played.get("error"):
             return None
         J.spend(state, PLAYER, jid, played)
+        state.settle_player_choice(PLAYER)  # a76f : RogueAutopilot._try_joker regle le choix par bot_picks
         if played.get("exhaust") and jid in state.discard[PLAYER]:
             state.discard[PLAYER].remove(jid)
         J.watch_eye(state, rules, eye, jid)
         return played
+
+    def _take_moment(self, state):
+        """-> (lead, tried) de la decision ; applique `recycle`."""
+        lead, tried, swap, drop = self.lead, set(self.ban), self.swap, self.drop
+        self.lead, self.ban, self.swap, self.drop = None, set(), None, None
+        if swap is not None:
+            ok = state.recycle_error(swap, PLAYER) == ""
+            if ok:
+                state.recycle(swap, PLAYER)
+            self.forced_ok = ok
+        if drop is not None:
+            ok = drop in state.joker_hand[PLAYER] and not state.choices[PLAYER]
+            if ok:
+                state.discard_joker(PLAYER, drop)
+            self.forced_ok = ok
+        return lead, tried
 
     def _forced(self, state, rules, eye, jid, target=None):
         # _cast -> None si refuse ; un joker accepte peut renvoyer {} (Coup de Vent, Bluff...)
@@ -685,8 +711,15 @@ class Player:
                 tgt = X.bid_target(jid)
             self._forced(state, rules, eye, jid, tgt)
             return
-        tried = set()
+        lead, tried = self._take_moment(state)
         cards = rules.deal_hands[PLAYER] if rules.deal_hands else []
+        if lead is not None:
+            tgt = None
+            if self.style == "expert":
+                from agents import joker_expert as X
+                tgt = X.bid_target(lead)
+            self._forced(state, rules, eye, lead, tgt)
+            tried.add(lead)
         for _ in range(self.MAX_CASTS):
             got = self._pick(state, rules, boss, True, tried, cards=cards)
             if got is None:
@@ -716,7 +749,19 @@ class Player:
                 hand.step_joker_card(PLAYER, played["card"], jid)
                 return True
             return False
-        tried = set()
+        lead, tried = self._take_moment(hand.state)
+        if lead is not None:
+            tgt = None
+            if self.style == "expert":
+                from agents import joker_expert as X
+                tgt = X.target(X.view(hand, PLAYER), lead)
+            played = self._forced(hand.state, hand.rules, hand.eye, lead, tgt)
+            tried.add(lead)
+            if played is not None and played.get("card") is not None:
+                hand.step_joker_card(PLAYER, played["card"], lead)
+                return True
+            if once and played is not None:
+                return False
         for _ in range(self.MAX_CASTS):
             got = self._pick(hand.state, hand.rules, hand.boss, False, tried, hand=hand)
             if got is None:

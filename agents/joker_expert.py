@@ -29,7 +29,7 @@ from engine.cards import NUM_PLAYERS, suit_of, rank_of, legal_plays
 from engine import jokers as J
 from engine.misere import MISERE_MAX_TRICKS
 
-JOKER_EXPERT_VERSION = 4  # 4 (03/11) : 3 cas tranches par search_joker_rules (run 41585901856) ; 3 (177e) : regles relues pour la fenetre avant le pli ; 2 : 2 (30/10) : garde-fou Oeil, Pot-de-Vin reserve aux mains de misere hors piccolo
+JOKER_EXPERT_VERSION = 4  # a76f (06/11) : + regles JOUEUR des 12 jokers Dominion, Python seulement (joker_expert.gd ne porte que les bots) -> version inchangee ; 4 4 (03/11) : 3 cas tranches par search_joker_rules (run 41585901856) ; 3 (177e) : regles relues pour la fenetre avant le pli ; 2 : 2 (30/10) : garde-fou Oeil, Pot-de-Vin reserve aux mains de misere hors piccolo
 
 YES, NO, OPEN_YES, OPEN_NO = "oui", "non", "ouvert_oui", "ouvert_non"
 OPEN = (OPEN_YES, OPEN_NO)
@@ -41,6 +41,10 @@ JACK, QUEEN, KING, ACE = 9, 10, 11, 12
 BOT_PRIORITY = ["inversion", "coup_de_vent", "coup_du_chapeau", "kermesse", "embuscade", "faux_pas", "main_lourde"]
 PLAYER_PRIORITY = [
     # remises et energie d'abord, sorts / pieges / auras decisifs, cartes de pli, le reste, les points de fin de tour
+    # a76f : moteur Dominion en tete -- energie (Village/Marche), puis le doubleur avant le sort qu'il double,
+    # les pioches, enfin ce qui trie la pioche (n'agit que sur les pioches suivantes)
+    "chope_vide3", "addition2", "complice2", "ardoise2", "tournee_generale2", "valet_de_chambre2", "cendrier2",
+    "feu_de_paille2", "consigne2", "vieille_habitude2", "mauvais_perdant2", "poche_interieure2", "la_peche2",
     "complice", "valet_de_chambre", "ardoise", "verre_de_trop", "refrain",
     "main_de_fer", "horloge_arretee", "valet_borgne", "inversion", "brouillard_de_la_senne", "remonte_pli", "la_peche", "pli_refile2",
     "coup_de_vent",
@@ -93,6 +97,7 @@ def view(hand, me):
         "hand": my, "legal": legal, "energy": state.energy[me], "suspicion": state.suspicion,
         "joker_hand": list(state.joker_hand[me]), "piles": len(state.draw_pile[me]) + len(state.discard[me]),
         "discard_top": state.discard[me][-1] if state.discard[me] else "",
+        "discard_wanted": [j for j in state.discard[me] if not state.bot_spares(me, j)],
         "tricks_won": list(g.tricks_won), "declarer_tricks": sum(g.tricks_won[s] for s in side),
         "my_tricks": g.tricks_won[me],
         "opponents": [s for s in range(NUM_PLAYERS) if rules.is_opponent(me, s)],
@@ -100,6 +105,9 @@ def view(hand, me):
         "side": sorted(side),
         "armed": sorted(e.id for e in rules.effects if e.owner == me and not e.spent),
         "played": state.played_this_hand[me], "last_spell": state.last_spell[me],
+        # a76f : pioche / dette / ce que La Consigne2 jetterait (MatchState.bot_picks)
+        "draw_n": len(state.draw_pile[me]), "debt": state.debts[me],
+        "spares": [j for j in state.joker_hand[me] if state.bot_spares(me, j)],
         "enemy_jokers": sum(len(state.joker_hand[s]) for s in range(NUM_PLAYERS) if rules.is_opponent(me, s)),
         "eye": getattr(hand, "eye", "") if me == J.PLAYER else "",
         "best_seat": None, "best_card": None, "best_friendly": False, "enemy_ruff_best": False,
@@ -586,9 +594,90 @@ def _verre_de_trop(v):
 
 def _refrain(v):
     spell = v["last_spell"]
-    if not spell or J.jsuspicion(spell) > 0:
+    if not spell or J.jsuspicion(spell) > 0 or J.base_id(spell) == "complice2":  # pas de boucle Refrain <-> Complice2
         return NO, "pas_de_sort_ou_suspect"
     return (YES, "relance_utile") if rule(v, spell)[0] in (YES, OPEN_YES) else (NO, "relance_inutile")
+
+
+# --- joueur : jokers Dominion (a76f) : la main de jokers part a la defausse en fin de donne,
+# une pioche ne vaut que si elle peut encore servir dans CETTE donne ---------------------
+
+def _energy_after(v, jid):
+    return v["energy"] - J.jcost(jid)
+
+
+def _draws_pay(v, jid, need=1):
+    """Assez de plis et d'energie apres lui pour lancer ce qu'il pioche."""
+    return v["remaining"] >= 3 and _energy_after(v, jid) >= need
+
+
+def _chope_vide3(v):
+    return YES, "village"  # pioche 1 et +2 : net +1 et une carte
+
+
+def _addition2(v):
+    return YES, "marche"  # +1 / pioche 1 / +1 sou pour 1 : jamais perdant
+
+
+def _complice2(v):
+    if owned(v, "complice2"):
+        return NO, "deja_arme"
+    left = _energy_after(v, "complice2")
+    for j in v["joker_hand"]:
+        if J.jtype(j) != "sort" or J.base_id(j) in ("complice2", "refrain") or J.make_effect(j, v["me"]).scope == J.HAND:
+            continue
+        if J.jcost(j) <= left and rule(v, j)[0] in (YES, OPEN_YES):
+            return YES, "double_un_sort_utile"
+    return NO, "rien_a_doubler"
+
+
+def _ardoise2(v):
+    if v["debt"] > 0:
+        return NO, "deja_endette"
+    return (YES, "pioche_a_credit") if _draws_pay(v, "ardoise2") else (NO, "tard_ou_sans_energie")
+
+
+def _tournee_generale2(v):
+    return (YES, "grosse_pioche") if _draws_pay(v, "tournee_generale2") else (NO, "tard_ou_sans_energie")
+
+
+def _valet_de_chambre2(v):
+    # pointless() a filtre : un Valet est dans la pioche
+    return (YES, "va_chercher_le_valet") if v["remaining"] >= 2 else (NO, "trop_tard")
+
+
+def _cendrier2(v):
+    return (YES, "pioche_gratuite") if v["remaining"] >= 2 else (NO, "trop_tard")
+
+
+def _feu_de_paille2(v):
+    return (YES, "sort_gratuit_possible") if v["remaining"] >= 2 else (NO, "trop_tard")
+
+
+def _la_peche2(v):
+    # acb9 : reprendre au choix un joker utile de la defausse
+    if v["remaining"] < 2:
+        return NO, "trop_tard"
+    return (YES, "reprend_l_utile") if v["discard_wanted"] else (NO, "rien_a_reprendre")
+
+
+def _consigne2(v):
+    if v["remaining"] < 3:
+        return NO, "trop_tard"
+    return (YES, "recycle_l_inutile") if v["spares"] else (NO, "rien_a_jeter")
+
+
+def _vieille_habitude2(v):
+    missing = J.VieilleHabitude2.HAND - (len(v["joker_hand"]) - 1)
+    return (YES, "main_a_remplir") if missing >= 2 and _draws_pay(v, "vieille_habitude2") else (NO, "main_pleine_ou_tard")
+
+
+def _mauvais_perdant2(v):
+    return (YES, "vide_les_mains_adverses") if v["enemy_jokers"] >= 2 and v["remaining"] >= 3 else (NO, "peu_a_gagner")
+
+
+def _poche_interieure2(v):
+    return YES, "trie_la_pioche"  # 0 : ne sert que les pioches suivantes, jamais perdant
 
 
 # --- joueur : pieges -----------------------------------------------------------------
@@ -671,10 +760,17 @@ def _coeur_de_zinneke(v):
 
 
 def _brouillard(v):
-    # 6c54 : ma plus longue couleur est l'atout des plis que j'entame
+    # 6c54 : la couleur choisie est l'atout des plis que j'entame. 8ebd : ma meilleure couleur hors
+    # atout (main_de_fer_suit, plis estimes expert_bot), seulement si elle vaut >= 1 pli de plus que
+    # l'atout du contrat (avant : ma plus longue couleur, meme faible ou deja atout)
     if v["misere"]:
         return NO, "misere"
-    return (YES, "atout_a_mon_entame") if v["remaining"] >= 6 else (NO, "tard")
+    if v["remaining"] < 6:
+        return NO, "tard"
+    from agents import expert_bot
+    best = main_de_fer_suit(v["hand"], v["trump"])
+    gain = expert_bot.estimate_tricks(v["hand"], best) - expert_bot.estimate_tricks(v["hand"], v["trump"])
+    return (YES, "meilleur_atout_a_mon_entame") if gain >= 1 else (NO, "atout_deja_bon")
 
 
 def _meche_courte(v):
@@ -723,6 +819,10 @@ RULES = {
     "valet_de_chambre": _valet_de_chambre, "feu_de_paille": _feu_de_paille, "ardoise": _ardoise,
     "addition": _addition, "complice": _complice, "verre_de_trop": _verre_de_trop, "refrain": _refrain,
     "pot_commun": _pot_commun, "trouble_fete": _trouble_fete, "cierge": _cierge,
+    "chope_vide3": _chope_vide3, "addition2": _addition2, "complice2": _complice2, "ardoise2": _ardoise2,
+    "tournee_generale2": _tournee_generale2, "valet_de_chambre2": _valet_de_chambre2, "cendrier2": _cendrier2,
+    "feu_de_paille2": _feu_de_paille2, "consigne2": _consigne2, "vieille_habitude2": _vieille_habitude2,
+    "mauvais_perdant2": _mauvais_perdant2, "poche_interieure2": _poche_interieure2, "la_peche2": _la_peche2,
 }
 
 
@@ -750,7 +850,7 @@ def target(v, jid):
             return v["opponents"][0]
         return v["misere_opponents"][0] if v["misere"] else v["me"]
     if b == "brouillard_de_la_senne":
-        return J.longest_suit(v["hand"])  # couleur (6c54)
+        return main_de_fer_suit(v["hand"], v["trump"])  # 8ebd : meilleure couleur hors atout (avant : la plus longue)
     if b == "pli_refile":
         decl = [s for s in v["opponents"] if s in v["side"]]
         defs = [s for s in v["opponents"] if s not in v["side"]]
