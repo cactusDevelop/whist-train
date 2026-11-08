@@ -9,6 +9,11 @@ Deux encheres : `net` (l'encherisseur fixe de l'entrainement) et `expert`
 (ExpertBot, celle du jeu actuel). Joueurs : expert, hasard, championne (avec ses
 garde-fous, comme en jeu), best et membres de checkpoints_free (cartes legales).
 
+HYBRIDE (2026-11-08, conseil) : joueur "hybride" = best sur les contrats de
+--hybrid-roles (ex. piccolo,grande_misere), ExpertBot ailleurs ; c'est ce qu'on
+brancherait en jeu. --pairs choisit les lignes, --seed des donnes neuves
+(ne pas juger l'hybride sur les donnes qui ont servi a choisir ses contrats).
+
 Usage (cloud seulement) : ci/run_free_match.sh, mode free_match de train.yml.
 """
 
@@ -42,11 +47,17 @@ PAIRS = (  # (candidat, base) ; expert contre hasard donne l'echelle
 
 NETS = {}  # herites par fork
 BIDDER = None
+HYBRID_ROLES = set()  # herite par fork
+CUR_ROLE = [None]  # contrat de la donne en cours (par processus)
 
 
 def choose(player, game, seat, rng):
     if player == "expert":
         return expert_bot.choose_card(game, seat)
+    if player == "hybride":
+        player = "best" if CUR_ROLE[0] in HYBRID_ROLES else "expert"
+        if player == "expert":
+            return expert_bot.choose_card(game, seat)
     if player == "hasard":
         return rng.choice([a for a, ok in enumerate(game.legal_action_mask(seat)) if ok])
     mask = ai_play_mask(game, seat) if player == "championne" else game.legal_action_mask(seat)
@@ -82,6 +93,7 @@ def match_chunk(args):
             contract = bidding.locked_contract
             role, decl = declarer_role_and_seats(contract)
             defense = {s for s in range(4) if s not in decl}
+            CUR_ROLE[0] = role
             ref = play(contract, role, hands, dealer, bidding, whisted, set())
             with_decl = play(contract, role, hands, dealer, bidding, whisted, set(decl))
             with_def = play(contract, role, hands, dealer, bidding, whisted, defense)
@@ -91,8 +103,8 @@ def match_chunk(args):
     return rows
 
 
-def run_pair(pool, cand, base, bid, deals, procs):
-    parts = pool.map(match_chunk, [(cand, base, bid, deals // procs, SEED + 10 * i) for i in range(procs)], chunksize=1)
+def run_pair(pool, cand, base, bid, deals, procs, seed=SEED):
+    parts = pool.map(match_chunk, [(cand, base, bid, deals // procs, seed + 10 * i) for i in range(procs)], chunksize=1)
     rows = {}
     for part in parts:
         for role, r in part.items():
@@ -104,8 +116,10 @@ def run_pair(pool, cand, base, bid, deals, procs):
     gain, se = champion_play.mean_se([a + b for a, b in zip(decl, defense)])
     m_decl, se_decl = champion_play.mean_se(decl)
     m_def, se_def = champion_play.mean_se(defense)
-    by_role = {role: {"n": len(r["decl"]), "gain": round(champion_play.mean_se(
-        [a + b for a, b in zip(r["decl"], r["def"])])[0], 2)} for role, r in sorted(rows.items())}
+    by_role = {}
+    for role, r in sorted(rows.items()):
+        g, g_se = champion_play.mean_se([a + b for a, b in zip(r["decl"], r["def"])])
+        by_role[role] = {"n": len(r["decl"]), "gain": round(g, 2), "se": round(g_se, 2)}
     return {"candidat": cand, "base": base, "enchere": bid, "donnes": len(decl), "gain": round(gain, 3),
             "se": round(se, 3), "declarant": round(m_decl, 3), "declarant_se": round(se_decl, 3),
             "defense": round(m_def, 3), "defense_se": round(se_def, 3), "par_contrat": by_role}
@@ -116,7 +130,15 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--deals", type=int, default=10000)
     parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--pairs", default="", help="lignes candidat:base separees par des virgules (vide = toutes)")
+    parser.add_argument("--bids", default=",".join(BIDS))
+    parser.add_argument("--seed", type=int, default=SEED)
+    parser.add_argument("--hybrid-roles", default="", help="voir HYBRIDE")
     args = parser.parse_args()
+    pairs = [tuple(p.split(":")) for p in args.pairs.split(",")] if args.pairs else list(PAIRS)
+    HYBRID_ROLES.update(x for x in args.hybrid_roles.split(",") if x)
+    if any("hybride" in p for p in pairs) and not HYBRID_ROLES:
+        raise SystemExit("hybride sans --hybrid-roles")
 
     NETS["championne"], meta = champion_play.load_champion()
     if NETS["championne"] is None:
@@ -131,10 +153,10 @@ def main():
     print("Championne : %s ; %d donnes par ligne, %d enchere(s)." % (meta, args.deals, len(BIDS)), flush=True)
 
     pool = multiprocessing.get_context("fork").Pool(args.workers, train_free.init_worker)
-    for bid in BIDS:
-        for cand, base in PAIRS:
+    for bid in args.bids.split(","):
+        for cand, base in pairs:
             t0 = time.time()
-            r = run_pair(pool, cand, base, bid, args.deals, args.workers)
+            r = run_pair(pool, cand, base, bid, args.deals, args.workers, args.seed)
             verdict = "DEVANT" if r["gain"] - 2 * r["se"] > 0 else ("DERRIERE" if r["gain"] + 2 * r["se"] < 0 else "egalite")
             print("=== enchere %-6s %-10s a la place de %-10s : %+.2f +- %.2f (declarant %+.2f, defense %+.2f, "
                   "%d donnes, %.0fs) -> %s ===" % (bid, cand, base, r["gain"], 2 * r["se"], r["declarant"], r["defense"],
