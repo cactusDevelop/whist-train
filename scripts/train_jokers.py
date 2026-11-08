@@ -278,7 +278,10 @@ GATE_PATIENCE = 4
 
 
 def gate(pool, cand, champ, workers, matches, it):
-    seeds = [GATE_SEED + it * GATE_STRIDE + i for i in range(matches)]
+    # 08/11 (conseil) : `it` repart de 0 a chaque nouvelle empreinte -> decalage par empreinte,
+    # pour ne pas rejouer les memes matchs de porte d'une grille de regles a l'autre (reste dans 30M..50M)
+    shift = int(J.JOKER_SPEC_HASH[:8], 16) % 1999
+    seeds = [GATE_SEED + ((shift + it) % 1999) * GATE_STRIDE + i for i in range(matches)]
     chunks = [seeds[i::workers] for i in range(workers)]
     rows = [r for part in pool.map(policies_worker, [(c, [(cand, None), (champ, None)]) for c in chunks])
             for r in part]
