@@ -1,1 +1,1 @@
---pairs hybride:expert,best:expert --hybrid-roles piccolo,grande_misere --seed 20261109 --bids expert
+--pairs hybride:expert --hybrid-roles piccolo,grande_misere,petite_misere,misere_etalee --seed 20261110 --bids expert
