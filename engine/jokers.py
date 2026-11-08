@@ -30,7 +30,7 @@ import random
 
 from engine.cards import NUM_PLAYERS, legal_plays, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "f1654a462b62ee8d"  # f165 : garde defausse vide de La Peche2 (whist-4-it) ; acb9 : La Peche au choix (la_peche2), un joker gratuit relance dans la donne coute 1 (whist-4-it 9f25355) ; 473e : grille revue sur la mesure 22d8 (whist-4-it bbb9a97) ; 22d8 : 2 ⚡ par donne sous dominion (3 hors dominion) ; 8ebd : grille G2 raretes/couts (mesure des moments utiles 515d) ; fc90 : defausse due d'un sort de Feu de Paille2 payee apres lui (bots compris) ; 515d : pas de remelange en cours de donne (dominion) ; ee3a : bot_spares joueur
+JOKER_SPEC_HASH = "0e9af98d11ea539b"  # 0e9a : sous Inversion/Traitre, une coupe -> le plus faible atout gagne (whist-4-it 1.2.18) ; f165 : garde defausse vide de La Peche2 (whist-4-it) ; acb9 : La Peche au choix (la_peche2), un joker gratuit relance dans la donne coute 1 (whist-4-it 9f25355) ; 473e : grille revue sur la mesure 22d8 (whist-4-it bbb9a97) ; 22d8 : 2 ⚡ par donne sous dominion (3 hors dominion) ; 8ebd : grille G2 raretes/couts (mesure des moments utiles 515d) ; fc90 : defausse due d'un sort de Feu de Paille2 payee apres lui (bots compris) ; 515d : pas de remelange en cours de donne (dominion) ; ee3a : bot_spares joueur
 # a76f (whist-4-it, 06/11) : 12 jokers recycles « a la Dominion » (DOMINION_REPLACED), choix en attente
 # (MatchState.choices / bot_picks), sort gratuit (cast_free), Complice2 rejoue le sort -> regles changees.
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
@@ -2939,12 +2939,16 @@ class JokerRules:
                 if any(e.plays_as_trump(p, self) for e in live):
                     return p[0]
         best = competing[0]
+        # 0e9a (whist-4-it, report 2026-11-08) : sous inversion, si quelqu'un coupe, le plus faible ATOUT gagne
+        weakest_of = led
+        if inverted and trump is not None and any(suit_of(p[1]) == trump for p in competing):
+            weakest_of = trump
         # 592e (whist-4-it 8a6f635) : un joker qui se joue comme une carte perd l'egalite face a la
         # vraie carte (couleur apres plays_as_trump, meme rang) ; entre deux jokers, le premier pose garde le pli.
         for p in competing:
             if inverted:
-                # joker_rules.gd : la plus faible de la couleur demandee gagne
-                if suit_of(p[1]) == led and (suit_of(best[1]) != led or seen_rank(p) < seen_rank(best)):
+                # joker_rules.gd : la plus faible de la couleur demandee gagne (de l'atout si on a coupe, 0e9a)
+                if suit_of(p[1]) == weakest_of and (suit_of(best[1]) != weakest_of or seen_rank(p) < seen_rank(best)):
                     best = p
             elif beats(p[1], best[1], led, trump, seen_rank(p), seen_rank(best)):
                 best = p

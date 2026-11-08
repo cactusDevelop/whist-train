@@ -141,7 +141,9 @@ def view(hand, me):
             trumps = [rank_of(cd) for s, cd in trick if suit_of(cd) == eff]
             v["truquee_wins"] = all(rank_of(top) > r for r in trumps) and not v["best_friendly"]
         # Traitre (pli inverse : la plus faible de la demandee gagne, ma carte ne concourt pas)
-        lows = [(rank_of(cd), s) for s, cd in trick if suit_of(cd) == led]
+        # 0e9a : si quelqu'un a coupe, le plus faible atout gagne
+        weak = eff if eff is not None and any(suit_of(cd) == eff for s, cd in trick) else led
+        lows = [(rank_of(cd), s) for s, cd in trick if suit_of(cd) == weak]
         v["inverted_winner"] = min(lows)[1] if lows else trick[0][0]
     v["faux_pas_wants"] = eff is not None and J.make_effect("faux_pas", me).bot_wants(rules)
     v["merged_trumps"] = sum(1 for x in my if eff is not None and J.BLACK_TWIN.get(suit_of(x), suit_of(x)) == J.BLACK_TWIN.get(eff, eff))
