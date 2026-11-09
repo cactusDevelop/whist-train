@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Measurement only (03/11): rule search on match score, champion untouched.
-# FREE_MINUTES (input minutes) = smoke: tiny sample sizes.
+# Measurement only. 09/11 (conseil) : recherche des regles JOUEUR des jokers sur le score de match du
+# joueur, en duplicate (scripts/search_player_rules.py) ; resultat player_rules_search.json (release).
+# 03/11 : l'ancienne recherche des regles des bots = scripts/search_joker_rules.py.
+# FREE_MINUTES (input minutes) = smoke : petits echantillons.
+python -u scripts/test_jokers.py
 if [ -n "${FREE_MINUTES:-}" ]; then
-  python -u scripts/search_joker_rules.py --until "$(date -u -d "+${FREE_MINUTES} minutes" +%Y-%m-%dT%H:%M)" \
-    --workers 4 --discover 8 --screen 8 --confirm 8 --min-decisions 1
+  python -u scripts/search_player_rules.py --until "$(date -u -d "+${FREE_MINUTES} minutes" +%Y-%m-%dT%H:%M)" \
+    --workers 4 --discover 16 --screen 8 --confirm 8 --min-seen 1
 else
-  python -u scripts/search_joker_rules.py --until "${RULES_UNTIL:-$(date -u -d "+290 minutes" +%Y-%m-%dT%H:%M)}" --workers 4 --discover 500 --screen 1000 --confirm 2000
+  python -u scripts/search_player_rules.py --until "${RULES_UNTIL:-$(date -u -d "+300 minutes" +%Y-%m-%dT%H:%M)}" --workers 4 --discover 400 --screen 400 --confirm 800
 fi

@@ -202,6 +202,15 @@ SOFTEN = set()
 # Cas forces (scripts/search_joker_rules.py, recherche sur le score de match) :
 # "joker:cas" -> YES ou NO, remplace le verdict de la regle ; vide en production.
 FORCE = {}
+# 09/11 (conseil) : idem pour le JOUEUR seul (scripts/search_player_rules.py) ; vide en production.
+PLAYER_FORCE = {}
+# Diagnostic : si dict, player_trick_choice y compte {id_regle: [vus, lances]}.
+PLAYER_TRACE = None
+
+
+def player_rule(v, jid):
+    verdict, rid = rule(v, jid)
+    return PLAYER_FORCE.get(rid, verdict), rid
 
 
 def rule(v, jid):
@@ -241,6 +250,15 @@ def _embuscade(v):
         return NO, "sans_atout"
     if owned(v, "embuscade"):
         return NO, "deja_armee"  # audit : -1.17 +- 0.16
+    if v["me"] == J.PLAYER:
+        # 09/11, JOUEUR seulement (bots inchanges, port Godot) -- joker_moments 42622233773 : 700 lancers,
+        # precision 0.07, surtout le cas « tard » (OUVERT_OUI) ; utile tot dans la donne (defense
+        # d'emballage 738/2396) -> tendre le piege tot, jamais en fin de donne
+        if v["remaining"] < 6:
+            return NO, "joueur_trop_tard"
+        if v["declares"] and trumps(v) >= 5:
+            return NO, "je_tiens_l_atout"
+        return YES, "joueur_piege_tot"
     if v["remaining"] < 4:
         return OPEN_YES, "tard"
     if v["declares"] and trumps(v) >= 5:
@@ -295,7 +313,13 @@ def _hyp_win(v, jid):
 def _cameleon(v):
     if not want_trick(v) or v["best_friendly"]:
         return NO, "pas_besoin"
-    return (YES, "dame_gagne_en_dernier") if v["position"] == 3 and _hyp_win(v, "cameleon") else (NO, "ne_gagne_pas")
+    if v["position"] == 3 and _hyp_win(v, "cameleon"):
+        return YES, "dame_gagne_en_dernier"
+    # 09/11 (joker_moments 42622233773 : 579 utiles, 91 lancers) : aussi en 3e, quand le Valet gagne
+    # et que je n'ai pas de carte legale qui gagne (le Valet joker economise mes cartes)
+    if v["position"] == 2 and _hyp_win(v, "cameleon") and not v["can_win_now"]:
+        return YES, "valet_gagne_en_troisieme"
+    return NO, "ne_gagne_pas"
 
 
 def _double_valet(v):
@@ -331,15 +355,16 @@ def _lose_card(v):
 
 
 def _zero(v):
-    return (YES, "evite_le_pli_de_misere") if _lose_card(v) else (NO, "pas_besoin")
-
-
-def _miroir(v):
     if _lose_card(v):
         return YES, "evite_le_pli_de_misere"
-    # 09/11 (joker_moments 42622233773 : jamais lance hors misere, utile surtout en defense d'emballage) :
-    # la carte de joker remplace une carte de la main -> garder un honneur qu'il faudrait gacher
-    # sur un pli perdu, ou sous l'ami qui gagne deja
+    # 09/11 (joker_moments 42622233773 : 3 lancers, 55 occasions utiles manquees, surtout en emballage) :
+    # meme logique que Miroir -- ne pas gacher un honneur sur un pli perdu ou deja a l'ami
+    return _keep_honour(v)
+
+
+def _keep_honour(v):
+    """09/11 Miroir / Zero : la carte de joker remplace une carte de la main -> garder un honneur
+    qu'il faudrait gacher sur un pli perdu, ou sous l'ami qui gagne deja."""
     if not want_trick(v) or v["position"] == 0 or len(v["hand"]) <= 1:
         return NO, "pas_besoin"
     if v["can_win_now"] and not v["best_friendly"]:
@@ -347,6 +372,13 @@ def _miroir(v):
     if min(rank_of(x) for x in v["legal"]) >= QUEEN:
         return YES, "garde_un_honneur"
     return NO, "petite_carte_a_jeter"
+
+
+def _miroir(v):
+    if _lose_card(v):
+        return YES, "evite_le_pli_de_misere"
+    # 09/11 (joker_moments 42622233773 : jamais lance hors misere, utile surtout en defense d'emballage)
+    return _keep_honour(v)
 
 
 def _carte_fantome(v):
@@ -390,6 +422,10 @@ def _tournee_generale(v):
 def _gueule_de_bois(v):
     # 6c54 : les adversaires jouent leur plus FORTE carte legale -> attaque et defense d'une misere
     if not v["misere"]:
+        # 09/11 (joker_moments 42622233773 : jamais lance hors misere, 107 occasions utiles manquees,
+        # emballage et trou) : j'entame et je tiens un As hors atout -> leurs honneurs tombent dessous
+        if v["position"] == 0 and any(rank_of(x) == ACE and suit_of(x) != v["eff_trump"] for x in v["hand"]):
+            return YES, "entame_sous_l_as"
         return NO, "hors_misere"
     return (YES, "force_les_hautes") if v["position"] <= 1 else (NO, "trop_tard_dans_le_pli")
 
@@ -961,8 +997,12 @@ def player_trick_choice(hand, candidates):
     for jid in sorted(dict.fromkeys(candidates), key=lambda j: (rank.get(J.base_id(j), 999), j)):
         if eye_risk(hand.state, jid):
             continue
-        verdict, rid = rule(v, jid)
+        verdict, rid = player_rule(v, jid)
+        if PLAYER_TRACE is not None:
+            PLAYER_TRACE.setdefault(rid, [0, 0])[0] += 1
         if verdict in (YES, OPEN_YES):
+            if PLAYER_TRACE is not None:
+                PLAYER_TRACE[rid][1] += 1
             return jid, target(v, jid), rid
     return None
 
@@ -971,7 +1011,7 @@ def player_wants(hand, jid):
     """Verdict de la regle pour un joker du joueur (test de rentabilite : « bien joue »)."""
     if eye_risk(hand.state, jid):
         return False, "oeil:jauge_pleine"
-    verdict, rid = rule(view(hand, J.PLAYER), jid)
+    verdict, rid = player_rule(view(hand, J.PLAYER), jid)
     return verdict in (YES, OPEN_YES), rid
 
 
