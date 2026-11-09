@@ -32,10 +32,8 @@ from scripts.expert_bot_match import bot_player, play_out
 from scripts.train import (MEASURE_WHISTED_RATIO, declarer_role_and_seats, describe_contract,
                            dispatch_play_phase2, real_points_by_seat)
 
-VARIANTS = {  # 09/11 A/B 6 (A/B 5 : deblocage -0.12, coupe adv apres -0.16, jamais depasser -0.27 ; entame courte +0.02 z 1)
+VARIANTS = {  # 09/11 controle : defausse longue face a d'autres adversaires (--others)
     "L": {"DISCARD_LONG": True},
-    "L+solo_tire_tout": {"DISCARD_LONG": True, "SOLO_DRAW_ALL": True},
-    "L+entame_courte_def": {"DISCARD_LONG": True, "DEF_LEAD_SHORT": True},
 }
 
 def play_deal(hands, dealer, whisted, params_by_seat):
@@ -63,7 +61,9 @@ def play_deal(hands, dealer, whisted, params_by_seat):
 
 
 def worker(args):
-    seed, n = args
+    seed, n, others = args
+    from agents.expert_bot import PROFILES
+    other = dict(PROFILES[others])
     rng = random.Random(seed)
     chain = DeckChain(MEASURE_WHISTED_RATIO, rng)
     out = []  # (variante, gain, [(cle, ok, essais)] des contrats declares par la variante)
@@ -71,7 +71,7 @@ def worker(args):
     for _ in range(n):
         hands, dealer, whisted = chain.deal(rng)
         hands = [list(h) for h in hands]
-        base, bc, bgame = play_deal(hands, dealer, whisted, [{}] * 4)
+        base, bc, bgame = play_deal(hands, dealer, whisted, [other] * 4)
         if bc is not None:
             _r, decl = declarer_role_and_seats(bc)
             oks = declarer_successes(bc, bgame, decl)
@@ -80,7 +80,7 @@ def worker(args):
             gain = 0.0
             rows = []
             for seats in ((0, 2), (1, 3)):
-                pbs = [params if s in seats else {} for s in range(4)]
+                pbs = [{**other, **params} if s in seats else other for s in range(4)]
                 pts, c, game = play_deal(hands, dealer, whisted, pbs)
                 gain += sum(pts[s] - base[s] for s in seats)
                 if c is not None:
@@ -121,11 +121,12 @@ def main():
     parser.add_argument("--deals", type=int, default=20000)
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--seed", type=int, default=20261027)
+    parser.add_argument("--others", default="expert", help="profil (PROFILES) de la reference et des sieges adverses")
     args = parser.parse_args()
     t0 = time.time()
     per = args.deals // args.workers
     with mp.Pool(args.workers) as pool:
-        parts = pool.map(worker, [(args.seed * 1000 + w, per) for w in range(args.workers)])
+        parts = pool.map(worker, [(args.seed * 1000 + w, per, args.others) for w in range(args.workers)])
     n = per * args.workers
     print("=== A/B encheres ExpertBot : %d donnes, %d variantes, %.0fs ===" % (n, len(VARIANTS), time.time() - t0))
     table([r for _o, b in parts for r in b], n, "reference (4 sieges)")
