@@ -158,6 +158,8 @@ DISCARD_SHORT_WHEN_MATE = False  # coequipier gagnant le pli : defausse COURTE (
 RUFF_HIGH_IF_UNSAFE = False  # aucune coupe sure : couper avec le plus HAUT atout gagnant (eviter la surcoupe) (09/11)
 NO_OVERTAKE_POS = (2,)  # positions ou l on ne depasse jamais le coequipier gagnant en fournissant. PROMU 09/11 (2e, piste
 # PIMC) : A/B +0.062 z 7.5 (80k), +0.016..+0.068 contre 3 profils (42593678581) ; en 3e -0.30 (rejete).
+DEF_LEAD_SEQ_ANY = False  # defense, entame par defaut : tete de sequence d honneurs de N IMPORTE quelle couleur annexe d abord (09/11)
+DEF_LEAD_PASSIVE = False  # defense, entame par defaut : couleur la plus longue SANS honneur (V+) si possible (09/11)
 UNBLOCK_LAST = False  # dernier a jouer, coequipier gagnant, on fournit : la plus haute NON maitresse (deblocage) (A/B 09/11)
 DEF_LEAD_SHORT = False  # defense avec atout : entamer aussi un PETIT singleton / doubleton annexe (chercher la coupe) (A/B 09/11)
 THIRD_HAND_CHEAP = False  # 3e, pas de gagnante sure : la plus PETITE gagnante au lieu de la plus forte (A/B 09/11)
@@ -177,7 +179,7 @@ LEAD_PARTNER_SUIT = True  # defense : entamer la couleur proposee/emballee par u
 KEEP_TRUMPS_VS_VOID = True  # adversaires sans atout : encaisser ses maitresses avant de faire couper le partenaire
 DRAW_STOP_OUTSTANDING = 0  # contrat d'equipe : ne plus tirer quand il reste au plus ce nombre d'atouts adverses
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
-              "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "CASH_BEFORE_DRAW", "LAST_LEAD_MASTER", "DUCK_RUFF_SECOND", "RUFF_RISK_VOID_ONLY", "PARTNER_SUIT_TOP_SHORT", "PARTNER_SUIT_HIGH", "DISCARD_SHORT_WHEN_MATE", "RUFF_HIGH_IF_UNSAFE", "NO_OVERTAKE_POS", "DECL_LEAD_STRONG", "DISCARD_LONG_TOP", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
+              "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "CASH_BEFORE_DRAW", "LAST_LEAD_MASTER", "DUCK_RUFF_SECOND", "RUFF_RISK_VOID_ONLY", "PARTNER_SUIT_TOP_SHORT", "PARTNER_SUIT_HIGH", "DISCARD_SHORT_WHEN_MATE", "RUFF_HIGH_IF_UNSAFE", "NO_OVERTAKE_POS", "DEF_LEAD_SEQ_ANY", "DEF_LEAD_PASSIVE", "DECL_LEAD_STRONG", "DISCARD_LONG_TOP", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
               "LEAD_PARTNER_SUIT", "KEEP_TRUMPS_VS_VOID", "DRAW_STOP_OUTSTANDING")
 
 # Profils CONCURRENTS de l'ExpertBot (utilisateur 2026-10-27 : « mets les regles que je viens
@@ -1162,6 +1164,13 @@ def _lead(v):
     safe_side = side if not declaring else ([c for c in side if not ruff_risk(suit_of(c))] or side)
     if safe_side:
         not_theirs = [c for c in safe_side if not any(v.proposed_long(o, suit_of(c)) for o in opps)] or safe_side
+        if DEF_LEAD_SEQ_ANY and not declaring:
+            top = _seq_top(not_theirs, True)
+            if top is not None:
+                return top
+        if DEF_LEAD_PASSIVE and not declaring:
+            bare = [c for c in not_theirs if not any(suit_of(x) == suit_of(c) and rank_of(x) >= JACK for x in v.hand)]
+            not_theirs = bare or not_theirs
         longest = max(count[suit_of(c)] for c in not_theirs)
         pick = [c for c in not_theirs if count[suit_of(c)] == longest]
         if DECL_LEAD_STRONG and declaring:
