@@ -33,9 +33,12 @@ from scripts.train import (MEASURE_WHISTED_RATIO, declarer_role_and_seats, descr
                            dispatch_play_phase2, real_points_by_seat)
 
 VARIANTS = {  # 09/11 : pistes PIMC du jeu de la carte (defaut = ExpertBot actuel)
-    "second_petit": {"SECOND_HAND_LOW": True},
-    "second_petit_defense": {"SECOND_HAND_LOW_DEF": True},
     "defausse_longue": {"DISCARD_LONG": True},
+    "defausse_longue_defense": {"DISCARD_LONG": True, "DISCARD_SIDE": "def"},
+    "defausse_longue_declarant": {"DISCARD_LONG": True, "DISCARD_SIDE": "decl"},
+    "defausse_faible": {"DISCARD_WEAK": True},
+    "troisieme_economique": {"THIRD_HAND_CHEAP": True},
+    "longue_et_troisieme": {"DISCARD_LONG": True, "THIRD_HAND_CHEAP": True},
 }
 
 def play_deal(hands, dealer, whisted, params_by_seat):
