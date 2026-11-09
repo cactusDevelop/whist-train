@@ -44,7 +44,8 @@ def play(game, pimc_seats, score_fn, rng, samples, diffs):
     while not game.done:
         seat = game.turn
         card = expert_bot.choose_card(game, seat)
-        if seat in pimc_seats:
+        trou_lead = getattr(game, "trou_pending", lambda: False)() and seat == game.partner
+        if seat in pimc_seats and not trou_lead:  # l'entame du bouche-trou fixe le Trou (regle) : jamais PIMC
             legal = [c for c, ok in enumerate(game.legal_action_mask(seat)) if ok]
             if len(legal) > 1 and game.trump_suit is not None and dds.supported(game):
                 q = dds_values(game, seat, legal, score_fn, rng, samples)
