@@ -9,5 +9,5 @@ if [ -n "${FREE_MINUTES:-}" ]; then
   python -u scripts/search_player_rules.py --until "$(date -u -d "+${FREE_MINUTES} minutes" +%Y-%m-%dT%H:%M)" \
     --workers 4 --discover 16 --screen 8 --confirm 8 --min-seen 1 --passes 2 --screen-z -9
 else
-  python -u scripts/search_player_rules.py --until "${RULES_UNTIL:-$(date -u -d "+325 minutes" +%Y-%m-%dT%H:%M)}" --workers 4 --discover 2000 --screen 4000 --confirm 8000 --passes 3
+  python -u scripts/search_player_rules.py --until "${RULES_UNTIL:-$(date -u -d "+325 minutes" +%Y-%m-%dT%H:%M)}" --workers 4 --discover 2000 --screen 4000 --confirm 8000 --passes 3 --min-seen 100
 fi
