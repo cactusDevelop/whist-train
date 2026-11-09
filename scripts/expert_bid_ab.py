@@ -32,8 +32,7 @@ from scripts.expert_bot_match import bot_player, play_out
 from scripts.train import (MEASURE_WHISTED_RATIO, declarer_role_and_seats, describe_contract,
                            dispatch_play_phase2, real_points_by_seat)
 
-VARIANTS = {  # 09/11 A/B 9 : entames (PIMC : def/entame = 1er ecart de la defense) ; base = defausse longue + derniere maitresse
-    "risque_coupe_renonce_seule_def": {"RUFF_RISK_VOID_ONLY": "def"},
+VARIANTS = {  # 09/11 A/B 10 : confirmation risque de coupe = renonce connue (A/B 9 : tous +0.067 z 8.9, defense seule +0.028)
     "risque_coupe_renonce_seule_tous": {"RUFF_RISK_VOID_ONLY": "all"},
 }
 
