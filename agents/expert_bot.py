@@ -156,6 +156,7 @@ PARTNER_SUIT_HIGH = True  # defense, couleur du coequipier : la plus haute (hors
 # A/B +0.075 z 5.5 contre ExpertBot (60k) ; contre joueur_1027 / expert_tune1027 +0.001 / +0.014 (<= 1 % des donnes changent).
 DISCARD_SHORT_WHEN_MATE = False  # coequipier gagnant le pli : defausse COURTE (se mettre en renom), sinon longue (09/11)
 RUFF_HIGH_IF_UNSAFE = False  # aucune coupe sure : couper avec le plus HAUT atout gagnant (eviter la surcoupe) (09/11)
+NO_OVERTAKE_POS = ()  # positions (2, 3) ou l on ne depasse jamais le coequipier gagnant en fournissant (PIMC 09/11)
 UNBLOCK_LAST = False  # dernier a jouer, coequipier gagnant, on fournit : la plus haute NON maitresse (deblocage) (A/B 09/11)
 DEF_LEAD_SHORT = False  # defense avec atout : entamer aussi un PETIT singleton / doubleton annexe (chercher la coupe) (A/B 09/11)
 THIRD_HAND_CHEAP = False  # 3e, pas de gagnante sure : la plus PETITE gagnante au lieu de la plus forte (A/B 09/11)
@@ -175,7 +176,7 @@ LEAD_PARTNER_SUIT = True  # defense : entamer la couleur proposee/emballee par u
 KEEP_TRUMPS_VS_VOID = True  # adversaires sans atout : encaisser ses maitresses avant de faire couper le partenaire
 DRAW_STOP_OUTSTANDING = 0  # contrat d'equipe : ne plus tirer quand il reste au plus ce nombre d'atouts adverses
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
-              "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "CASH_BEFORE_DRAW", "LAST_LEAD_MASTER", "DUCK_RUFF_SECOND", "RUFF_RISK_VOID_ONLY", "PARTNER_SUIT_TOP_SHORT", "PARTNER_SUIT_HIGH", "DISCARD_SHORT_WHEN_MATE", "RUFF_HIGH_IF_UNSAFE", "DECL_LEAD_STRONG", "DISCARD_LONG_TOP", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
+              "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "CASH_BEFORE_DRAW", "LAST_LEAD_MASTER", "DUCK_RUFF_SECOND", "RUFF_RISK_VOID_ONLY", "PARTNER_SUIT_TOP_SHORT", "PARTNER_SUIT_HIGH", "DISCARD_SHORT_WHEN_MATE", "RUFF_HIGH_IF_UNSAFE", "NO_OVERTAKE_POS", "DECL_LEAD_STRONG", "DISCARD_LONG_TOP", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
               "LEAD_PARTNER_SUIT", "KEEP_TRUMPS_VS_VOID", "DRAW_STOP_OUTSTANDING")
 
 # Profils CONCURRENTS de l'ExpertBot (utilisateur 2026-10-27 : « mets les regles que je viens
@@ -975,7 +976,7 @@ def _follow(v):
                 s not in mates and not v.void[s][v.trump] and v.unseen_in(v.trump) for s in later):
             partner_safe = False
         if following:
-            if not partner_safe and not NO_OVERTAKE:
+            if not partner_safe and not NO_OVERTAKE and len(v.current_trick) + 1 not in NO_OVERTAKE_POS:
                 masters = [c for c in following if _wins_now(v, c) and _safe_win(v, c, later)]
                 if masters:
                     return _lowest(masters)
