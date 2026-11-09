@@ -102,7 +102,9 @@ def duel(pool, cand, base, n, seed0, workers):
     errs = [p["error"] for p in parts if isinstance(p, dict)]
     if errs:
         return None, None, errs[0]
-    return _stat([d for p in parts for d in p]) + (None,)
+    ds = [d for p in parts for d in p]
+    duel.touched = sum(1 for d in ds if d != 0.0)
+    return _stat(ds) + (None,)
 
 
 def flip(verdict):
@@ -130,6 +132,7 @@ def main():
     p.add_argument("--confirm", type=int, default=800)
     p.add_argument("--screen-z", type=float, default=1.0)
     p.add_argument("--min-seen", type=int, default=60, help="vus par le joueur pendant la decouverte")
+    p.add_argument("--passes", type=int, default=3, help="passes de descente (nouvelles graines a chaque passe)")
     p.add_argument("--no-upload", action="store_true")
     a = p.parse_args()
     deadline = datetime.datetime.strptime(a.until, "%Y-%m-%dT%H:%M")
@@ -165,38 +168,46 @@ def main():
         cases = [k for k, (n, _c) in sorted(counts.items(), key=lambda kv: -kv[1][0]) if n >= a.min_seen]
         print("%d cas >= %d vus" % (len(cases), a.min_seen), flush=True)
         base = {}
-        for rid in cases:
+        for pas in range(a.passes):
+          print("=== passe %d ===" % (pas + 1), flush=True)
+          kept_before = dict(base)
+          for rid in cases:
             if now() >= deadline:
                 print("arret : heure limite", flush=True)
                 break
             n, c = counts[rid]
             # verdict actuel du cas : lance (oui) si la regle l'a pose au moins une fois
-            current = X.YES if c > 0 else X.NO
+            current = base.get(rid, X.YES if c > 0 else X.NO)
             cand = dict(base)
             cand[rid] = flip(current)
+            if cand.get(rid) == (X.YES if c > 0 else X.NO):
+                del cand[rid]  # retour au verdict d'origine
             t1 = time.time()
             m, se, err = duel(pool, cand, base, a.screen, fresh(), a.workers)
-            row = {"case": rid, "seen": n, "cast": c, "to": cand[rid]}
+            row = {"case": rid, "seen": n, "cast": c, "to": cand.get(rid, "origine"), "pass": pas + 1}
             if err:
                 row["error"] = err
-                print("%-45s -> %s : ERREUR %s" % (rid, cand[rid], err), flush=True)
+                print("%-45s -> %s : ERREUR %s" % (rid, row["to"], err), flush=True)
             else:
                 row["screen"] = [round(m, 3), round(se, 3), a.screen]
-                print("%-45s -> %-9s criblage %+.2f +- %.2f (%.0f s)" % (rid, cand[rid], m, se, time.time() - t1),
-                      flush=True)
+                row["touched"] = duel.touched
+                print("%-45s -> %-9s criblage %+.2f +- %.2f touches %d/%d (%.0f s)" % (
+                    rid, row["to"], m, se, duel.touched, a.screen, time.time() - t1), flush=True)
                 if m > 0 and m > a.screen_z * se and now() < deadline:
                     m2, se2, err2 = duel(pool, cand, base, a.confirm, fresh(), a.workers)
                     if err2 is None:
-                        row["confirm"] = [round(m2, 3), round(se2, 3), a.confirm]
+                        row["confirm"] = [round(m2, 3), round(se2, 3), a.confirm, duel.touched]
                         ok = m2 > 0 and m2 > 2 * se2
-                        print("    confirmation %+.2f +- %.2f sur %d matchs neufs -> %s" % (
-                            m2, se2, a.confirm, "GARDE" if ok else "rejete"), flush=True)
+                        print("    confirmation %+.2f +- %.2f sur %d matchs neufs (touches %d) -> %s" % (
+                            m2, se2, a.confirm, duel.touched, "GARDE" if ok else "rejete"), flush=True)
                         if ok:
                             base = cand
                             state["kept"] = base
             state["tried"].append(row)
             if not a.no_upload:
                 upload(state)
+          if now() >= deadline or base == kept_before:
+              break
     print("FIN : %d inversions gardees : %s" % (len(base), json.dumps(base, ensure_ascii=False)), flush=True)
     if not a.no_upload:
         upload(state)
