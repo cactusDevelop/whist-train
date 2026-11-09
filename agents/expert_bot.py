@@ -147,6 +147,7 @@ CASH_BEFORE_DRAW = False  # declarant qui tire sans atout maitre : encaisser d a
 LAST_LEAD_MASTER = True  # entame par defaut sans couleur annexe (que de l atout, sans tirer) : la plus haute maitresse plutot
 # que la plus petite. PROMU 09/11 (piste PIMC) : A/B +0.088 z 16.1 (80k), +0.044..+0.102 contre 3 profils (42581856371).
 DUCK_RUFF_SECOND = False  # 2e a jouer en renonce, coequipier apres : defausser au lieu de couper (PIMC 09/11)
+RUFF_RISK_VOID_ONLY = None  # None ; "def" / "all" : risque de coupe = renonce CONNUE seulement (sans le compte d enchere) (PIMC 09/11)
 UNBLOCK_LAST = False  # dernier a jouer, coequipier gagnant, on fournit : la plus haute NON maitresse (deblocage) (A/B 09/11)
 DEF_LEAD_SHORT = False  # defense avec atout : entamer aussi un PETIT singleton / doubleton annexe (chercher la coupe) (A/B 09/11)
 THIRD_HAND_CHEAP = False  # 3e, pas de gagnante sure : la plus PETITE gagnante au lieu de la plus forte (A/B 09/11)
@@ -166,7 +167,7 @@ LEAD_PARTNER_SUIT = True  # defense : entamer la couleur proposee/emballee par u
 KEEP_TRUMPS_VS_VOID = True  # adversaires sans atout : encaisser ses maitresses avant de faire couper le partenaire
 DRAW_STOP_OUTSTANDING = 0  # contrat d'equipe : ne plus tirer quand il reste au plus ce nombre d'atouts adverses
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
-              "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "CASH_BEFORE_DRAW", "LAST_LEAD_MASTER", "DUCK_RUFF_SECOND", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
+              "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "CASH_BEFORE_DRAW", "LAST_LEAD_MASTER", "DUCK_RUFF_SECOND", "RUFF_RISK_VOID_ONLY", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
               "LEAD_PARTNER_SUIT", "KEEP_TRUMPS_VS_VOID", "DRAW_STOP_OUTSTANDING")
 
 # Profils CONCURRENTS de l'ExpertBot (utilisateur 2026-10-27 : « mets les regles que je viens
@@ -1089,6 +1090,8 @@ def _lead(v):
             return False
         if any(v.may_ruff(o, s) for o in opps):
             return True
+        if RUFF_RISK_VOID_ONLY == "all" or (RUFF_RISK_VOID_ONLY == "def" and not declaring):
+            return False
         # compte par l'enchere/les longueurs : peu de cartes restantes chez
         # les adversaires dans cette couleur -> risque de coupe
         remaining = len(v.unseen_in(s))
