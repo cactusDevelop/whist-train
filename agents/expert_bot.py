@@ -156,7 +156,8 @@ PARTNER_SUIT_HIGH = True  # defense, couleur du coequipier : la plus haute (hors
 # A/B +0.075 z 5.5 contre ExpertBot (60k) ; contre joueur_1027 / expert_tune1027 +0.001 / +0.014 (<= 1 % des donnes changent).
 DISCARD_SHORT_WHEN_MATE = False  # coequipier gagnant le pli : defausse COURTE (se mettre en renom), sinon longue (09/11)
 RUFF_HIGH_IF_UNSAFE = False  # aucune coupe sure : couper avec le plus HAUT atout gagnant (eviter la surcoupe) (09/11)
-NO_OVERTAKE_POS = ()  # positions (2, 3) ou l on ne depasse jamais le coequipier gagnant en fournissant (PIMC 09/11)
+NO_OVERTAKE_POS = (2,)  # positions ou l on ne depasse jamais le coequipier gagnant en fournissant. PROMU 09/11 (2e, piste
+# PIMC) : A/B +0.062 z 7.5 (80k), +0.016..+0.068 contre 3 profils (42593678581) ; en 3e -0.30 (rejete).
 UNBLOCK_LAST = False  # dernier a jouer, coequipier gagnant, on fournit : la plus haute NON maitresse (deblocage) (A/B 09/11)
 DEF_LEAD_SHORT = False  # defense avec atout : entamer aussi un PETIT singleton / doubleton annexe (chercher la coupe) (A/B 09/11)
 THIRD_HAND_CHEAP = False  # 3e, pas de gagnante sure : la plus PETITE gagnante au lieu de la plus forte (A/B 09/11)
@@ -212,8 +213,11 @@ PROFILES = {
     "expert_risque_coupe_compte": {"RUFF_RISK_VOID_ONLY": None},
     # ExpertBot jusqu au 09/11 : couleur du coequipier entamee par la petite
     "expert_coequipier_petite": {"PARTNER_SUIT_HIGH": False},
+    # ExpertBot jusqu au 09/11 : depasse le coequipier non sur aussi en 2e position
+    "expert_depasse_2e": {"NO_OVERTAKE_POS": ()},
     # ExpertBot du 08/11 (avant les 4 regles de jeu du 09/11) : mesure du gain cumule
-    "expert_0811": {"DISCARD_LONG": False, "LAST_LEAD_MASTER": False, "RUFF_RISK_VOID_ONLY": None, "PARTNER_SUIT_HIGH": False},
+    "expert_0811": {"DISCARD_LONG": False, "LAST_LEAD_MASTER": False, "RUFF_RISK_VOID_ONLY": None, "PARTNER_SUIT_HIGH": False,
+                    "NO_OVERTAKE_POS": ()},
 }
 # Adversaires de l'Acte I du roguelike (demande du 30/10) : difficulte, pas un concurrent de la ligue.
 # scripts/act1_bid_audit.py, run 41132837609 : joueur simule +0.892 contre -0.062 face a l'ExpertBot.
