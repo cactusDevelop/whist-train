@@ -1,1 +1,1 @@
---pairs hybride:expert --hybrid-roles piccolo,grande_misere,petite_misere,misere_etalee --seed 20261110 --bids expert
+--auto-route --hybrid-roles piccolo,grande_misere,petite_misere,misere_etalee --seed 20261111 --bids expert

@@ -14,6 +14,13 @@ HYBRIDE (2026-11-08, conseil) : joueur "hybride" = best sur les contrats de
 brancherait en jeu. --pairs choisit les lignes, --seed des donnes neuves
 (ne pas juger l'hybride sur les donnes qui ont servi a choisir ses contrats).
 
+ROUTAGE (2026-11-09, conseil) : joueur "routage" = best seulement sur les couples
+(contrat, camp) de --route (ex. piccolo,emballage:decl,solitaire:def ; un contrat
+seul = les deux camps), ExpertBot ailleurs. --auto-route : 1) best a la place
+d'ExpertBot sur --seed, par contrat ET par camp ; 2) garde les couples
+gain - 2 se > 0 (n >= 200) ; 3) mesure routage contre ExpertBot et contre
+l'hybride actuel sur --seed + 1000003 (donnes jamais vues par la selection).
+
 Usage (cloud seulement) : ci/run_free_match.sh, mode free_match de train.yml.
 """
 
@@ -49,15 +56,31 @@ NETS = {}  # herites par fork
 BIDDER = None
 HYBRID_ROLES = set()  # herite par fork
 CUR_ROLE = [None]  # contrat de la donne en cours (par processus)
+CUR_DECL = [frozenset()]  # sieges du camp declarant de la donne en cours
+ROUTE = [frozenset()]  # couples (contrat, "decl"/"def") du joueur routage, passe par match_chunk
+
+
+def parse_route(spec):
+    out = set()
+    for tok in (t for t in spec.split(",") if t):
+        role, _, side = tok.partition(":")
+        out.update([(role, side)] if side else [(role, "decl"), (role, "def")])
+    if any(side not in ("decl", "def") for _, side in out):
+        raise SystemExit("--route : camp decl ou def")
+    return frozenset(out)
 
 
 def choose(player, game, seat, rng):
     if player == "expert":
         return expert_bot.choose_card(game, seat)
-    if player == "hybride":
-        player = "best" if CUR_ROLE[0] in HYBRID_ROLES else "expert"
-        if player == "expert":
+    if player in ("hybride", "routage"):
+        if player == "hybride":
+            use = CUR_ROLE[0] in HYBRID_ROLES
+        else:
+            use = (CUR_ROLE[0], "decl" if seat in CUR_DECL[0] else "def") in ROUTE[0]
+        if not use:
             return expert_bot.choose_card(game, seat)
+        player = "best"
     if player == "hasard":
         return rng.choice([a for a, ok in enumerate(game.legal_action_mask(seat)) if ok])
     mask = ai_play_mask(game, seat) if player == "championne" else game.legal_action_mask(seat)
@@ -66,7 +89,8 @@ def choose(player, game, seat, rng):
 
 
 def match_chunk(args):
-    cand, base, bid, deals, seed = args
+    cand, base, bid, deals, seed, route = args
+    ROUTE[0] = route
     rng = random.Random(seed)
     play_rng = random.Random(seed + 1)
     chain = DeckChain(MEASURE_WHISTED_RATIO, rng)
@@ -94,6 +118,7 @@ def match_chunk(args):
             role, decl = declarer_role_and_seats(contract)
             defense = {s for s in range(4) if s not in decl}
             CUR_ROLE[0] = role
+            CUR_DECL[0] = frozenset(decl)
             ref = play(contract, role, hands, dealer, bidding, whisted, set())
             with_decl = play(contract, role, hands, dealer, bidding, whisted, set(decl))
             with_def = play(contract, role, hands, dealer, bidding, whisted, defense)
@@ -103,8 +128,9 @@ def match_chunk(args):
     return rows
 
 
-def run_pair(pool, cand, base, bid, deals, procs, seed=SEED):
-    parts = pool.map(match_chunk, [(cand, base, bid, deals // procs, seed + 10 * i) for i in range(procs)], chunksize=1)
+def run_pair(pool, cand, base, bid, deals, procs, seed=SEED, route=frozenset()):
+    parts = pool.map(match_chunk, [(cand, base, bid, deals // procs, seed + 10 * i, route) for i in range(procs)],
+                     chunksize=1)
     rows = {}
     for part in parts:
         for role, r in part.items():
@@ -119,7 +145,10 @@ def run_pair(pool, cand, base, bid, deals, procs, seed=SEED):
     by_role = {}
     for role, r in sorted(rows.items()):
         g, g_se = champion_play.mean_se([a + b for a, b in zip(r["decl"], r["def"])])
-        by_role[role] = {"n": len(r["decl"]), "gain": round(g, 2), "se": round(g_se, 2)}
+        d, d_se = champion_play.mean_se(r["decl"])
+        f, f_se = champion_play.mean_se(r["def"])
+        by_role[role] = {"n": len(r["decl"]), "gain": round(g, 2), "se": round(g_se, 2), "decl": round(d, 3),
+                         "decl_se": round(d_se, 3), "def": round(f, 3), "def_se": round(f_se, 3)}
     return {"candidat": cand, "base": base, "enchere": bid, "donnes": len(decl), "gain": round(gain, 3),
             "se": round(se, 3), "declarant": round(m_decl, 3), "declarant_se": round(se_decl, 3),
             "defense": round(m_def, 3), "defense_se": round(se_def, 3), "par_contrat": by_role}
@@ -134,7 +163,12 @@ def main():
     parser.add_argument("--bids", default=",".join(BIDS))
     parser.add_argument("--seed", type=int, default=SEED)
     parser.add_argument("--hybrid-roles", default="", help="voir HYBRIDE")
+    parser.add_argument("--route", default="", help="voir ROUTAGE")
+    parser.add_argument("--auto-route", action="store_true", help="voir ROUTAGE (enchere expert)")
     args = parser.parse_args()
+    route = parse_route(args.route)
+    if args.auto_route and not args.hybrid_roles:
+        raise SystemExit("--auto-route compare a l'hybride : donner --hybrid-roles")
     pairs = [tuple(p.split(":")) for p in args.pairs.split(",")] if args.pairs else list(PAIRS)
     HYBRID_ROLES.update(x for x in args.hybrid_roles.split(",") if x)
     if any("hybride" in p for p in pairs) and not HYBRID_ROLES:
@@ -153,15 +187,37 @@ def main():
     print("Championne : %s ; %d donnes par ligne, %d enchere(s)." % (meta, args.deals, len(BIDS)), flush=True)
 
     pool = multiprocessing.get_context("fork").Pool(args.workers, train_free.init_worker)
-    for bid in args.bids.split(","):
-        for cand, base in pairs:
-            t0 = time.time()
-            r = run_pair(pool, cand, base, bid, args.deals, args.workers, args.seed)
-            verdict = "DEVANT" if r["gain"] - 2 * r["se"] > 0 else ("DERRIERE" if r["gain"] + 2 * r["se"] < 0 else "egalite")
-            print("=== enchere %-6s %-10s a la place de %-10s : %+.2f +- %.2f (declarant %+.2f, defense %+.2f, "
-                  "%d donnes, %.0fs) -> %s ===" % (bid, cand, base, r["gain"], 2 * r["se"], r["declarant"], r["defense"],
-                                                   r["donnes"], time.time() - t0, verdict), flush=True)
-            print("RESULT " + json.dumps(r), flush=True)
+
+    def line(cand, base, bid, seed, route):
+        t0 = time.time()
+        r = run_pair(pool, cand, base, bid, args.deals, args.workers, seed, route)
+        verdict = "DEVANT" if r["gain"] - 2 * r["se"] > 0 else ("DERRIERE" if r["gain"] + 2 * r["se"] < 0 else "egalite")
+        print("=== enchere %-6s %-10s a la place de %-10s : %+.2f +- %.2f (declarant %+.2f, defense %+.2f, "
+              "%d donnes, %.0fs) -> %s ===" % (bid, cand, base, r["gain"], 2 * r["se"], r["declarant"], r["defense"],
+                                               r["donnes"], time.time() - t0, verdict), flush=True)
+        print("RESULT " + json.dumps(r), flush=True)
+        return r
+
+    if args.auto_route:
+        sel = line("best", "expert", "expert", args.seed, route)
+        picked = set()
+        for role, c in sel["par_contrat"].items():
+            for side in ("decl", "def"):
+                ok = c["n"] >= 200 and c[side] - 2 * c[side + "_se"] > 0
+                print("selection %-16s %-4s n %6d : %+.3f +- %.3f%s" % (role, side, c["n"], c[side], 2 * c[side + "_se"],
+                                                                     "  <- GARDE" if ok else ""), flush=True)
+                if ok:
+                    picked.add((role, side))
+        route = frozenset(picked)
+        print("ROUTE " + ",".join("%s:%s" % rs for rs in sorted(route)), flush=True)
+        seed2 = args.seed + 1000003
+        line("routage", "expert", "expert", seed2, route)
+        line("routage", "hybride", "expert", seed2, route)
+        line("hybride", "expert", "expert", seed2, route)
+    else:
+        for bid in args.bids.split(","):
+            for cand, base in pairs:
+                line(cand, base, bid, args.seed, route)
     pool.close()
     pool.join()
 
