@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Renom d'atout : taux apres promotion de KEEP_TRUMPS_VS_VOID. Mesure seule.
-python -u scripts/trump_renom_audit.py --deals 20000 --workers 4
+# A/B duplicate des reglages de jeu de l'ExpertBot (variantes : scripts/expert_bid_ab.py VARIANTS). Mesure seule.
+python -u scripts/expert_bid_ab.py --deals "${FREE_MINUTES:-30000}" --workers 4 --seed "$(( ${GITHUB_RUN_ID:-20261109} % 1000000007 ))"

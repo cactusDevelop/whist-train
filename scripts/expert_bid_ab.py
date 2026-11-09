@@ -32,11 +32,10 @@ from scripts.expert_bot_match import bot_player, play_out
 from scripts.train import (MEASURE_WHISTED_RATIO, declarer_role_and_seats, describe_contract,
                            dispatch_play_phase2, real_points_by_seat)
 
-VARIANTS = {
-    "entame_sequence": {"SIDE_LEAD_SEQUENCE": True},
-    "entame_couleur_partenaire": {"LEAD_PARTNER_SUIT": True},
-    "les_deux": {"SIDE_LEAD_SEQUENCE": True, "LEAD_PARTNER_SUIT": True},
+VARIANTS = {  # 09/11 : pistes PIMC du jeu de la carte (defaut = ExpertBot actuel)
     "second_petit": {"SECOND_HAND_LOW": True},
+    "second_petit_defense": {"SECOND_HAND_LOW_DEF": True},
+    "defausse_longue": {"DISCARD_LONG": True},
 }
 
 def play_deal(hands, dealer, whisted, params_by_seat):

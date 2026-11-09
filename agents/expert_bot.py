@@ -135,6 +135,8 @@ RAISE_CAP = 9  # (tune 40411623914 ; 11 avant) niveau maximal atteint par relanc
 NO_OVERTAKE = False  # coequipier gagnant, on fournit : toujours la plus petite (jamais le depasser)
 RUFF_IF_OPP_LATER = False  # renonce, coequipier gagnant hors atout, un adversaire apres peut couper : couper
 SECOND_HAND_LOW = False  # 2e a jouer, coequipier apres : petite carte meme avec une maitresse
+SECOND_HAND_LOW_DEF = False  # idem, seulement en defense (A/B 09/11, piste PIMC)
+DISCARD_LONG = False  # defausse sans coupe : dans la couleur la plus LONGUE (garder ses gardes) (A/B 09/11)
 # Deduction par l'enchere (utilisateur 2026-10-26 : « en comptant les cartes, en supposant la
 # main du coequipier [...] le proposant et l'emballant ont d'office plus d'atout ») : camp
 # declarant, quand les atouts non vus moins ceux supposes chez le partenaire = 0, les
@@ -151,7 +153,7 @@ LEAD_PARTNER_SUIT = True  # defense : entamer la couleur proposee/emballee par u
 KEEP_TRUMPS_VS_VOID = True  # adversaires sans atout : encaisser ses maitresses avant de faire couper le partenaire
 DRAW_STOP_OUTSTANDING = 0  # contrat d'equipe : ne plus tirer quand il reste au plus ce nombre d'atouts adverses
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
-              "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
+              "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
               "LEAD_PARTNER_SUIT", "KEEP_TRUMPS_VS_VOID", "DRAW_STOP_OUTSTANDING")
 
 # Profils CONCURRENTS de l'ExpertBot (utilisateur 2026-10-27 : « mets les regles que je viens
@@ -901,6 +903,8 @@ def _discard(v):
     side = [c for c in v.legal if suit_of(c) != v.trump] or v.legal
     non_master = [c for c in side if not v.is_master(c)] or side
     count = {s: sum(1 for c in v.hand if suit_of(c) == s) for s in range(NUM_SUITS)}
+    if DISCARD_LONG:
+        return min(non_master, key=lambda c: (-count[suit_of(c)], rank_of(c)))
     return min(non_master, key=lambda c: (count[suit_of(c)], rank_of(c)))
 
 
@@ -938,7 +942,8 @@ def _follow(v):
             return _lowest(following)
         if not later or all(s in mates for s in later):
             return _lowest(win_follow)
-        if SECOND_HAND_LOW and len(v.current_trick) == 1 and any(s in mates for s in later):
+        if ((SECOND_HAND_LOW or (SECOND_HAND_LOW_DEF and v.seat not in v.declarer_side))
+                and len(v.current_trick) == 1 and any(s in mates for s in later)):
             return _lowest(following)
         safe = [c for c in win_follow if _safe_win(v, c, later)]
         if safe:
