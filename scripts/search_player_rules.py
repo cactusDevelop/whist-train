@@ -146,7 +146,7 @@ def main():
         return SEARCH_SEED + counter[0] * SEED_STRIDE
 
     def now():
-        return datetime.datetime.utcnow()
+        return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
 
     state = {"spec_hash": J.JOKER_SPEC_HASH, "champion_iter": ckpt.get("iter"), "kept": {}, "tried": []}
     with Pool(a.workers, initializer=_init, initargs=(w,)) as pool:
