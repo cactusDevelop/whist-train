@@ -147,7 +147,8 @@ CASH_BEFORE_DRAW = False  # declarant qui tire sans atout maitre : encaisser d a
 LAST_LEAD_MASTER = True  # entame par defaut sans couleur annexe (que de l atout, sans tirer) : la plus haute maitresse plutot
 # que la plus petite. PROMU 09/11 (piste PIMC) : A/B +0.088 z 16.1 (80k), +0.044..+0.102 contre 3 profils (42581856371).
 DUCK_RUFF_SECOND = False  # 2e a jouer en renonce, coequipier apres : defausser au lieu de couper (PIMC 09/11)
-RUFF_RISK_VOID_ONLY = None  # None ; "def" / "all" : risque de coupe = renonce CONNUE seulement (sans le compte d enchere) (PIMC 09/11)
+RUFF_RISK_VOID_ONLY = "all"  # None ; "def" / "all" : risque de coupe a l entame = renonce CONNUE seulement (sans le compte
+# d enchere/longueurs). PROMU 09/11 ("all") : A/B +0.067 z 8.9 (80k ; "def" +0.028), +0.040..+0.046 contre 3 profils (42584813079).
 UNBLOCK_LAST = False  # dernier a jouer, coequipier gagnant, on fournit : la plus haute NON maitresse (deblocage) (A/B 09/11)
 DEF_LEAD_SHORT = False  # defense avec atout : entamer aussi un PETIT singleton / doubleton annexe (chercher la coupe) (A/B 09/11)
 THIRD_HAND_CHEAP = False  # 3e, pas de gagnante sure : la plus PETITE gagnante au lieu de la plus forte (A/B 09/11)
@@ -199,6 +200,8 @@ PROFILES = {
     "expert_defausse_courte": {"DISCARD_LONG": False},
     # ExpertBot jusqu au 09/11 matin : derniere entame = la plus petite carte meme avec une maitresse
     "expert_derniere_entame_basse": {"LAST_LEAD_MASTER": False},
+    # ExpertBot jusqu au 09/11 : risque de coupe a l entame aussi estime par le compte (enchere, longueurs)
+    "expert_risque_coupe_compte": {"RUFF_RISK_VOID_ONLY": None},
 }
 # Adversaires de l'Acte I du roguelike (demande du 30/10) : difficulte, pas un concurrent de la ligue.
 # scripts/act1_bid_audit.py, run 41132837609 : joueur simule +0.892 contre -0.062 face a l'ExpertBot.
