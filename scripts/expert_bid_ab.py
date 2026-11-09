@@ -137,6 +137,14 @@ def main():
         print("\n%s %s : gain %+.3f +- %.3f pts/donne (z %.1f), donnes changees %.1f%%"
               % (name, params, m, se, m / se if se else 0.0, 100 * changed / len(gains)))
         table(rows, n, "variante (sieges variante, 2 placements)")
+    names = list(VARIANTS)
+    by = {name: [g for o, _b in parts for v, g, _r in o if v == name] for name in names}
+    print("
+=== ecarts apparies (memes donnes) ===")
+    for i, a in enumerate(names):
+        for b in names[i + 1:]:
+            m, se = stat([x - y for x, y in zip(by[a], by[b])])
+            print("%s - %s : %+.3f +- %.3f (z %.1f)" % (a, b, m, se, m / se if se else 0.0))
     print("AB_DONE")
 
 
