@@ -136,7 +136,9 @@ NO_OVERTAKE = False  # coequipier gagnant, on fournit : toujours la plus petite 
 RUFF_IF_OPP_LATER = False  # renonce, coequipier gagnant hors atout, un adversaire apres peut couper : couper
 SECOND_HAND_LOW = False  # 2e a jouer, coequipier apres : petite carte meme avec une maitresse
 SECOND_HAND_LOW_DEF = False  # idem, seulement en defense (A/B 09/11, piste PIMC)
-DISCARD_LONG = False  # defausse sans coupe : dans la couleur la plus LONGUE (garder ses gardes) (A/B 09/11)
+DISCARD_LONG = True  # defausse sans coupe : dans la couleur la plus LONGUE (garder ses gardes). PROMU 09/11 : A/B duplicate
+# 6 runs +0.128..+0.235 (z 6.7-14.9, 100k donnes : +0.235 +-0.016), gain en defense ; contre les profils concurrents
+# +0.12..+0.21 (run 42575821221). Ancienne regle (couleur la plus courte) = profil "expert_defausse_courte".
 DISCARD_SIDE = None  # None = tous ; "def" / "decl" : DISCARD_LONG pour ce camp seulement (A/B 09/11)
 DISCARD_KEEP_MATE = False  # avec DISCARD_WEAK : ne pas defausser la couleur d un coequipier (A/B 09/11)
 DISCARD_WEAK = False  # defausse : couleur la plus pauvre en honneurs (V+), puis la plus longue (A/B 09/11)
@@ -188,6 +190,8 @@ PROFILES = {
                     "SOLO_MIN_TOP_HONOURS": 2, "RAISE_CAP": 11},
     # ExpertBot du 30/10 avant la regle du renom d'atout
     "expert_emb1027": {"KEEP_TRUMPS_VS_VOID": False},
+    # ExpertBot jusqu au 09/11 : defausse dans la couleur la plus courte (se mettre en renom)
+    "expert_defausse_courte": {"DISCARD_LONG": False},
 }
 # Adversaires de l'Acte I du roguelike (demande du 30/10) : difficulte, pas un concurrent de la ligue.
 # scripts/act1_bid_audit.py, run 41132837609 : joueur simule +0.892 contre -0.062 face a l'ExpertBot.
@@ -906,7 +910,8 @@ def _safe_win(v, card, later):
 
 def _discard(v):
     """Defausse : jamais un atout si possible, jamais une carte maitresse ;
-    la plus petite carte de la couleur la plus COURTE -> se mettre en renom."""
+    la plus petite carte de la couleur la plus LONGUE (garder ses gardes ;
+    DISCARD_LONG, 09/11 ; avant : la plus COURTE, se mettre en renom)."""
     side = [c for c in v.legal if suit_of(c) != v.trump] or v.legal
     non_master = [c for c in side if not v.is_master(c)] or side
     count = {s: sum(1 for c in v.hand if suit_of(c) == s) for s in range(NUM_SUITS)}
