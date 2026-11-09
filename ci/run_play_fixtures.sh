@@ -2,6 +2,7 @@
 set -euo pipefail
 # Cas de parite des ports GDScript. 08/11 : poids = ceux PUBLIES dans le jeu (godot_weights_ingame/ = whist-4-it/game,
 # export du 22/10), encheres 1.2.18 ; + hybride (best.pt) ; + ExpertBot complet et sequences d'enchere.
+python -u scripts/test_engine.py
 mkdir -p godot_export
 G=godot_weights_ingame
 python -u scripts/dump_play_parity_fixtures.py --godot-dir $G --out godot_export/play_parity_cases.json

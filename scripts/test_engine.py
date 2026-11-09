@@ -359,9 +359,9 @@ def test_ladder_strictly_increasing_within_each_family():
     check("Solo 6<7<8 sur l'echelle", solo_ranks == sorted(solo_ranks))
     emballage_ranks = [LADDER["emballage-%d" % lvl] for lvl in range(8, 14)]
     check("Emballage 8..13 croissant sur l'echelle", emballage_ranks == sorted(emballage_ranks))
-    misere_ranks = [LADDER["misere-%s" % k] for k in ("piccolo", "petite", "grande", "etalee")]
-    check("Misere piccolo<petite<grande<etalee sur l'echelle (87c39f4)", misere_ranks == sorted(misere_ranks))
-    order = ["emballage-8", "solo-6", "emballage-9", "solo-7", "emballage-10", "misere-piccolo", "misere-petite",
+    misere_ranks = [LADDER["misere-%s" % k] for k in ("petite", "piccolo", "grande", "etalee")]
+    check("Misere petite<piccolo<grande<etalee sur l'echelle (whist-4-it 09/11)", misere_ranks == sorted(misere_ranks))
+    order = ["emballage-8", "solo-6", "emballage-9", "solo-7", "emballage-10", "misere-petite", "misere-piccolo",
              "solo-8", "emballage-11", "emballage-12", "emballage-13", "solo-9", "trou", "misere-grande", "solo-10",
              "solo-11", "misere-etalee", "solo-12", "solo-13"]
     check("echelle complete = test_full_contracts.gd:_test_ladder_order (87c39f4)",
@@ -457,23 +457,23 @@ def test_bidding_1218_raises():
     """whist-4-it 87c39f4 (rapports user 2026-11-08), cas de tests/test_full_contracts.gd
     et tests/test_whist_rules.gd."""
     from engine.bidding import negatives_above, solo_raise_cap
-    # Piccolo declare, la Petite Misere le domine, Piccolo monte en Petite
+    # 09/11 : Petite declaree, le Piccolo la domine, la Petite monte en Piccolo
     b = Bidding(0)
-    check("piccolo", b.misere(1, "piccolo"))
-    check("petite domine piccolo (rang 7 > 6)", b.misere(2, "petite"))
-    check("piccolo domine", b._is_dominated(0))
+    check("petite", b.misere(1, "petite"))
+    check("piccolo domine petite (rang 7 > 6)", b.misere(2, "piccolo"))
+    check("petite domine", b._is_dominated(0))
     b.pass_bid(3), b.pass_bid(0)
-    check("tour au piccolo", b.turn == 1)
-    check("piccolo -> petite par +1", b.raise_contract(1))
-    check("petite verrouillee, deux declarants", b.finished and b.locked_contract["kind"] == "petite"
+    check("tour a la petite", b.turn == 1)
+    check("petite -> piccolo par +1", b.raise_contract(1))
+    check("piccolo verrouille, deux declarants", b.finished and b.locked_contract["kind"] == "piccolo"
           and b.locked_contract["declarers"] == [2, 1])
     # b3 : Petite -> Etalee directement
     b = Bidding(0)
     b.misere(1, "petite"), b.misere(2, "grande"), b.pass_bid(3), b.pass_bid(0)
     check("petite saute a l'etalee", b.turn == 1 and b.apply_raise_misere_to(1, "etalee"))
-    check("negatives_above(petite) = grande, etalee", negatives_above("petite") == ["grande", "etalee"])
-    check("negatives_above(piccolo) = petite, grande, etalee", negatives_above("piccolo") == ["petite", "grande", "etalee"])
-    check("jamais vers le bas", not Bidding(0).can_raise_misere_to(1, "piccolo"))
+    check("negatives_above(petite) = piccolo, grande, etalee", negatives_above("petite") == ["piccolo", "grande", "etalee"])
+    check("negatives_above(piccolo) = grande, etalee", negatives_above("piccolo") == ["grande", "etalee"])
+    check("jamais vers le bas", not Bidding(0).can_raise_misere_to(1, "petite"))
     # test_whist_rules.gd l.377 / l.398 : l'emballeur peut sauter ; le Solo s'arrete a 8
     b = Bidding(0)
     b.propose(1, 2), b.emballer(2, 2), b.pass_bid(3), b.propose(0, 3), b.solo(0, 3, 6)

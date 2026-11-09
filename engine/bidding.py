@@ -10,11 +10,13 @@ Echelle des contrats, du plus faible au plus fort (LADDER, source de
 verite pour savoir qui "domine" qui) -- verifiee contre
 WHIST-RULES-REFERENCE.txt (projet Godot whist-4-it) :
   Emballage 8 < Solo 6 < Emballage 9 < Solo 7 < Emballage 10 <
-  Piccolo < Petite Misere < Solo 8 < Emballage 11 < Emballage 12 <
+  Petite Misere < Piccolo < Solo 8 < Emballage 11 < Emballage 12 <
   Emballage 13 < Solo 9 < Trou < Grande Misere < Solo 10 < Solo 11 <
   Misere Etalee < Solo 12 < Solo 13.
   (1.2.18, whist-4-it 87c39f4, demande user 2026-11-08 : Piccolo juste sous
   la Petite Misere ; le site le met entre Emballage 12 et 13.)
+  (whist-4-it 2026-11-09, user : « Piccolo entre Petite misere et solo 8 » :
+  Petite Misere 6 < Piccolo 7, coherent avec MISERE_ORDER.)
 
 Surencheres (whist-4-it 87c39f4, rapports user 2026-11-08) : un Solo ne monte
 que jusqu'a 8 (solo_raise_cap) -- l'Abondance ne s'annonce qu'a son 1er tour ;
@@ -41,7 +43,7 @@ from engine.scoring import MISERE_ORDER
 
 LADDER = {
     "emballage-8": 1, "solo-6": 2, "emballage-9": 3, "solo-7": 4,
-    "emballage-10": 5, "misere-piccolo": 6, "misere-petite": 7, "solo-8": 8,
+    "emballage-10": 5, "misere-petite": 6, "misere-piccolo": 7, "solo-8": 8,
     "emballage-11": 9, "emballage-12": 10, "emballage-13": 11, "solo-9": 12,
     "trou": 13, "misere-grande": 14, "solo-10": 15, "solo-11": 16,
     "misere-etalee": 17, "solo-12": 18, "solo-13": 19,
