@@ -32,10 +32,9 @@ from scripts.expert_bot_match import bot_player, play_out
 from scripts.train import (MEASURE_WHISTED_RATIO, declarer_role_and_seats, describe_contract,
                            dispatch_play_phase2, real_points_by_seat)
 
-VARIANTS = {  # 09/11 A/B 11 (base = 3 regles promues : defausse longue, derniere maitresse, risque de coupe = renonce)
+VARIANTS = {  # 09/11 A/B 12 (A/B 11 : doubleton coequipier haut +0.045 z 4.8 ; declarant couleur forte, egalite defausse ~0)
     "doubleton_coequipier_haut": {"PARTNER_SUIT_TOP_SHORT": True},
-    "declarant_couleur_forte": {"DECL_LEAD_STRONG": True},
-    "defausse_longue_tete_basse": {"DISCARD_LONG_TOP": True},
+    "couleur_coequipier_haute": {"PARTNER_SUIT_HIGH": True},
 }
 
 def play_deal(hands, dealer, whisted, params_by_seat):

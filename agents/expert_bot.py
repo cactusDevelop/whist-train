@@ -152,6 +152,7 @@ RUFF_RISK_VOID_ONLY = "all"  # None ; "def" / "all" : risque de coupe a l entame
 PARTNER_SUIT_TOP_SHORT = False  # defense, couleur du coequipier, doubleton : entamer la plus haute (09/11)
 DECL_LEAD_STRONG = False  # declarant, entame par defaut : couleur annexe la plus riche en honneurs, puis la plus longue (09/11)
 DISCARD_LONG_TOP = False  # defausse longue, egalite de longueur : couleur a la tete la plus basse (09/11)
+PARTNER_SUIT_HIGH = False  # defense, couleur du coequipier : toujours la plus haute (hors tete de sequence) (09/11)
 UNBLOCK_LAST = False  # dernier a jouer, coequipier gagnant, on fournit : la plus haute NON maitresse (deblocage) (A/B 09/11)
 DEF_LEAD_SHORT = False  # defense avec atout : entamer aussi un PETIT singleton / doubleton annexe (chercher la coupe) (A/B 09/11)
 THIRD_HAND_CHEAP = False  # 3e, pas de gagnante sure : la plus PETITE gagnante au lieu de la plus forte (A/B 09/11)
@@ -171,7 +172,7 @@ LEAD_PARTNER_SUIT = True  # defense : entamer la couleur proposee/emballee par u
 KEEP_TRUMPS_VS_VOID = True  # adversaires sans atout : encaisser ses maitresses avant de faire couper le partenaire
 DRAW_STOP_OUTSTANDING = 0  # contrat d'equipe : ne plus tirer quand il reste au plus ce nombre d'atouts adverses
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
-              "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "CASH_BEFORE_DRAW", "LAST_LEAD_MASTER", "DUCK_RUFF_SECOND", "RUFF_RISK_VOID_ONLY", "PARTNER_SUIT_TOP_SHORT", "DECL_LEAD_STRONG", "DISCARD_LONG_TOP", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
+              "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "CASH_BEFORE_DRAW", "LAST_LEAD_MASTER", "DUCK_RUFF_SECOND", "RUFF_RISK_VOID_ONLY", "PARTNER_SUIT_TOP_SHORT", "PARTNER_SUIT_HIGH", "DECL_LEAD_STRONG", "DISCARD_LONG_TOP", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
               "LEAD_PARTNER_SUIT", "KEEP_TRUMPS_VS_VOID", "DRAW_STOP_OUTSTANDING")
 
 # Profils CONCURRENTS de l'ExpertBot (utilisateur 2026-10-27 : « mets les regles que je viens
@@ -1141,6 +1142,8 @@ def _lead(v):
                 short = [c for c in theirs if count[suit_of(c)] == 2]
                 if short:
                     return _highest(short)
+            if PARTNER_SUIT_HIGH:
+                return _seq_top(theirs, SIDE_LEAD_SEQUENCE) or _highest(theirs)
             return _seq_top(theirs, SIDE_LEAD_SEQUENCE) or _lowest(theirs)
     safe_side = side if not declaring else ([c for c in side if not ruff_risk(suit_of(c))] or side)
     if safe_side:
