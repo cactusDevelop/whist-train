@@ -32,10 +32,9 @@ from scripts.expert_bot_match import bot_player, play_out
 from scripts.train import (MEASURE_WHISTED_RATIO, declarer_role_and_seats, describe_contract,
                            dispatch_play_phase2, real_points_by_seat)
 
-VARIANTS = {  # 09/11 A/B 7 : pistes PIMC A (42569795370) cote declarant, sur la defausse longue (promue)
-    "encaisser_avant_tirer": {"CASH_BEFORE_DRAW": True},
+VARIANTS = {  # 09/11 A/B 8 (A/B 7 : derniere entame maitresse +0.088 z 16.1 ; encaisser avant tirer -0.38 rejete)
     "derniere_entame_maitresse": {"LAST_LEAD_MASTER": True},
-    "les_deux": {"CASH_BEFORE_DRAW": True, "LAST_LEAD_MASTER": True},
+    "M+2e_renonce_sans_couper": {"LAST_LEAD_MASTER": True, "DUCK_RUFF_SECOND": True},
 }
 
 def play_deal(hands, dealer, whisted, params_by_seat):
