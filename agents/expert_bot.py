@@ -144,7 +144,8 @@ DISCARD_KEEP_MATE = False  # avec DISCARD_WEAK : ne pas defausser la couleur d u
 DISCARD_WEAK = False  # defausse : couleur la plus pauvre en honneurs (V+), puis la plus longue (A/B 09/11)
 SOLO_DRAW_ALL = False  # solo : tirer l atout tant qu UN adversaire peut en avoir (au lieu de 2) (A/B 09/11)
 CASH_BEFORE_DRAW = False  # declarant qui tire sans atout maitre : encaisser d abord ses maitresses annexes sures (PIMC 09/11)
-LAST_LEAD_MASTER = False  # entame par defaut sans couleur annexe : la plus haute maitresse plutot que la plus petite (PIMC 09/11)
+LAST_LEAD_MASTER = True  # entame par defaut sans couleur annexe (que de l atout, sans tirer) : la plus haute maitresse plutot
+# que la plus petite. PROMU 09/11 (piste PIMC) : A/B +0.088 z 16.1 (80k), +0.044..+0.102 contre 3 profils (42581856371).
 DUCK_RUFF_SECOND = False  # 2e a jouer en renonce, coequipier apres : defausser au lieu de couper (PIMC 09/11)
 UNBLOCK_LAST = False  # dernier a jouer, coequipier gagnant, on fournit : la plus haute NON maitresse (deblocage) (A/B 09/11)
 DEF_LEAD_SHORT = False  # defense avec atout : entamer aussi un PETIT singleton / doubleton annexe (chercher la coupe) (A/B 09/11)
@@ -195,6 +196,8 @@ PROFILES = {
     "expert_emb1027": {"KEEP_TRUMPS_VS_VOID": False},
     # ExpertBot jusqu au 09/11 : defausse dans la couleur la plus courte (se mettre en renom)
     "expert_defausse_courte": {"DISCARD_LONG": False},
+    # ExpertBot jusqu au 09/11 matin : derniere entame = la plus petite carte meme avec une maitresse
+    "expert_derniere_entame_basse": {"LAST_LEAD_MASTER": False},
 }
 # Adversaires de l'Acte I du roguelike (demande du 30/10) : difficulte, pas un concurrent de la ligue.
 # scripts/act1_bid_audit.py, run 41132837609 : joueur simule +0.892 contre -0.062 face a l'ExpertBot.
