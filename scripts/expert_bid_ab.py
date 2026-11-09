@@ -32,13 +32,10 @@ from scripts.expert_bot_match import bot_player, play_out
 from scripts.train import (MEASURE_WHISTED_RATIO, declarer_role_and_seats, describe_contract,
                            dispatch_play_phase2, real_points_by_seat)
 
-VARIANTS = {  # 09/11 : regle de defausse (A/B 1-2 : longue +0.16..0.19, faible V+ +0.178)
+VARIANTS = {  # 09/11 A/B 4 : departage des regles de defausse sur les memes donnes (A/B 1-3 : +0.11..+0.19)
+    "defausse_longue": {"DISCARD_LONG": True},
     "defausse_faible": {"DISCARD_WEAK": True},
-    "defausse_faible_dame": {"DISCARD_WEAK": "q"},
     "defausse_plus_basse_tete": {"DISCARD_WEAK": "top"},
-    "defausse_honneurs_gardes": {"DISCARD_WEAK": "guard"},
-    "defausse_faible_coequipier": {"DISCARD_WEAK": True, "DISCARD_KEEP_MATE": True},
-    "defausse_gardes_coequipier": {"DISCARD_WEAK": "guard", "DISCARD_KEEP_MATE": True},
 }
 
 def play_deal(hands, dealer, whisted, params_by_seat):
