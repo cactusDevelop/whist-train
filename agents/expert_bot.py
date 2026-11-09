@@ -135,6 +135,17 @@ RAISE_CAP = 9  # (tune 40411623914 ; 11 avant) niveau maximal atteint par relanc
 NO_OVERTAKE = False  # coequipier gagnant, on fournit : toujours la plus petite (jamais le depasser)
 RUFF_IF_OPP_LATER = False  # renonce, coequipier gagnant hors atout, un adversaire apres peut couper : couper
 SECOND_HAND_LOW = False  # 2e a jouer, coequipier apres : petite carte meme avec une maitresse
+SECOND_HAND_LOW_DEF = False  # idem, seulement en defense (A/B 09/11, piste PIMC)
+DISCARD_LONG = True  # defausse sans coupe : dans la couleur la plus LONGUE (garder ses gardes). PROMU 09/11 : A/B duplicate
+# 6 runs +0.128..+0.235 (z 6.7-14.9, 100k donnes : +0.235 +-0.016), gain en defense ; contre les profils concurrents
+# +0.12..+0.21 (run 42575821221). Ancienne regle (couleur la plus courte) = profil "expert_defausse_courte".
+DISCARD_SIDE = None  # None = tous ; "def" / "decl" : DISCARD_LONG pour ce camp seulement (A/B 09/11)
+DISCARD_KEEP_MATE = False  # avec DISCARD_WEAK : ne pas defausser la couleur d un coequipier (A/B 09/11)
+DISCARD_WEAK = False  # defausse : couleur la plus pauvre en honneurs (V+), puis la plus longue (A/B 09/11)
+SOLO_DRAW_ALL = False  # solo : tirer l atout tant qu UN adversaire peut en avoir (au lieu de 2) (A/B 09/11)
+UNBLOCK_LAST = False  # dernier a jouer, coequipier gagnant, on fournit : la plus haute NON maitresse (deblocage) (A/B 09/11)
+DEF_LEAD_SHORT = False  # defense avec atout : entamer aussi un PETIT singleton / doubleton annexe (chercher la coupe) (A/B 09/11)
+THIRD_HAND_CHEAP = False  # 3e, pas de gagnante sure : la plus PETITE gagnante au lieu de la plus forte (A/B 09/11)
 # Deduction par l'enchere (utilisateur 2026-10-26 : « en comptant les cartes, en supposant la
 # main du coequipier [...] le proposant et l'emballant ont d'office plus d'atout ») : camp
 # declarant, quand les atouts non vus moins ceux supposes chez le partenaire = 0, les
@@ -151,7 +162,7 @@ LEAD_PARTNER_SUIT = True  # defense : entamer la couleur proposee/emballee par u
 KEEP_TRUMPS_VS_VOID = True  # adversaires sans atout : encaisser ses maitresses avant de faire couper le partenaire
 DRAW_STOP_OUTSTANDING = 0  # contrat d'equipe : ne plus tirer quand il reste au plus ce nombre d'atouts adverses
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
-              "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
+              "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
               "LEAD_PARTNER_SUIT", "KEEP_TRUMPS_VS_VOID", "DRAW_STOP_OUTSTANDING")
 
 # Profils CONCURRENTS de l'ExpertBot (utilisateur 2026-10-27 : « mets les regles que je viens
@@ -179,6 +190,8 @@ PROFILES = {
                     "SOLO_MIN_TOP_HONOURS": 2, "RAISE_CAP": 11},
     # ExpertBot du 30/10 avant la regle du renom d'atout
     "expert_emb1027": {"KEEP_TRUMPS_VS_VOID": False},
+    # ExpertBot jusqu au 09/11 : defausse dans la couleur la plus courte (se mettre en renom)
+    "expert_defausse_courte": {"DISCARD_LONG": False},
 }
 # Adversaires de l'Acte I du roguelike (demande du 30/10) : difficulte, pas un concurrent de la ligue.
 # scripts/act1_bid_audit.py, run 41132837609 : joueur simule +0.892 contre -0.062 face a l'ExpertBot.
@@ -897,10 +910,28 @@ def _safe_win(v, card, later):
 
 def _discard(v):
     """Defausse : jamais un atout si possible, jamais une carte maitresse ;
-    la plus petite carte de la couleur la plus COURTE -> se mettre en renom."""
+    la plus petite carte de la couleur la plus LONGUE (garder ses gardes ;
+    DISCARD_LONG, 09/11 ; avant : la plus COURTE, se mettre en renom)."""
     side = [c for c in v.legal if suit_of(c) != v.trump] or v.legal
     non_master = [c for c in side if not v.is_master(c)] or side
     count = {s: sum(1 for c in v.hand if suit_of(c) == s) for s in range(NUM_SUITS)}
+    if DISCARD_WEAK:
+        mine = {s: sorted((rank_of(c) for c in v.hand if suit_of(c) == s), reverse=True) for s in range(NUM_SUITS)}
+        if DISCARD_WEAK == "top":  # couleur dont la plus haute carte est la plus basse
+            hon = {s: (r[0] if r else -1) for s, r in mine.items()}
+        elif DISCARD_WEAK == "guard":  # honneurs GARDES (R second, D troisieme, V quatrieme ; As toujours)
+            hon = {s: sum(1 for x in r if x >= JACK and len(r) > ACE - x) for s, r in mine.items()}
+        else:  # True / "q" : honneurs V+ / D+
+            low = QUEEN if DISCARD_WEAK == "q" else JACK
+            hon = {s: sum(1 for x in r if x >= low) for s, r in mine.items()}
+        if DISCARD_KEEP_MATE:  # garder la couleur annoncee par un coequipier
+            for s in range(NUM_SUITS):
+                if any(v.proposed_long(m, s) for m in v.teammates(v.seat)):
+                    hon[s] += 2 if DISCARD_WEAK != "top" else 13
+        return min(non_master, key=lambda c: (hon[suit_of(c)], -count[suit_of(c)], rank_of(c)))
+    side_ok = DISCARD_SIDE is None or (DISCARD_SIDE == "def") == (v.seat not in v.declarer_side)
+    if DISCARD_LONG and side_ok:
+        return min(non_master, key=lambda c: (-count[suit_of(c)], rank_of(c)))
     return min(non_master, key=lambda c: (count[suit_of(c)], rank_of(c)))
 
 
@@ -922,6 +953,10 @@ def _follow(v):
                 masters = [c for c in following if _wins_now(v, c) and _safe_win(v, c, later)]
                 if masters:
                     return _lowest(masters)
+            if UNBLOCK_LAST and not later:
+                loose = [c for c in following if not v.is_master(c)]
+                if loose:
+                    return _highest(loose)
             return _lowest(following)
         # renom dans la couleur du partenaire qui n'est PAS sur de tenir le pli :
         # couper (signalement 2026-10-23 : « ne joue pas d'atout en renom »)
@@ -938,14 +973,15 @@ def _follow(v):
             return _lowest(following)
         if not later or all(s in mates for s in later):
             return _lowest(win_follow)
-        if SECOND_HAND_LOW and len(v.current_trick) == 1 and any(s in mates for s in later):
+        if ((SECOND_HAND_LOW or (SECOND_HAND_LOW_DEF and v.seat not in v.declarer_side))
+                and len(v.current_trick) == 1 and any(s in mates for s in later)):
             return _lowest(following)
         safe = [c for c in win_follow if _safe_win(v, c, later)]
         if safe:
             return _lowest(safe)
         if len(v.current_trick) == 1:
             return _lowest(following)  # second : petit
-        return _highest(win_follow)  # troisieme : fort, forcer l'adversaire
+        return _lowest(win_follow) if THIRD_HAND_CHEAP else _highest(win_follow)  # troisieme : fort, forcer l'adversaire
     # renom dans la couleur demandee
     ruffs = [c for c in winners if suit_of(c) == v.trump]
     if ruffs:
@@ -1007,7 +1043,7 @@ def _lead(v):
             if len(my_trumps) == 1 and len(my_trumps) < len(v.legal) and not DRAW_WITH_LAST_TRUMP:
                 keep_drawing = False
         else:  # solo : 3 adversaires, tirer tant que 2+ peuvent encore en avoir
-            keep_drawing = outstanding > 0 and len(opps_with_trumps) >= 2
+            keep_drawing = outstanding > 0 and len(opps_with_trumps) >= (1 if SOLO_DRAW_ALL else 2)
         if keep_drawing:
             masters = [c for c in my_trumps if v.is_master(c)]
             if masters:
@@ -1063,6 +1099,10 @@ def _lead(v):
                       and rank_of(c) >= JACK and not ruff_risk(suit_of(c))]
         if singletons:
             return singletons[0]
+        if DEF_LEAD_SHORT:
+            short = [c for c in side if count[suit_of(c)] <= 2 and not v.is_master(c) and not ruff_risk(suit_of(c))]
+            if short:
+                return min(short, key=lambda c: (count[suit_of(c)], -rank_of(c)))
 
     # 5. defaut : petite carte de la plus longue couleur annexe ; jamais dans
     #    la couleur annoncee par un adversaire (il y est long). Declarant :
