@@ -209,6 +209,8 @@ PROFILES = {
     "expert_risque_coupe_compte": {"RUFF_RISK_VOID_ONLY": None},
     # ExpertBot jusqu au 09/11 : couleur du coequipier entamee par la petite
     "expert_coequipier_petite": {"PARTNER_SUIT_HIGH": False},
+    # ExpertBot du 08/11 (avant les 4 regles de jeu du 09/11) : mesure du gain cumule
+    "expert_0811": {"DISCARD_LONG": False, "LAST_LEAD_MASTER": False, "RUFF_RISK_VOID_ONLY": None, "PARTNER_SUIT_HIGH": False},
 }
 # Adversaires de l'Acte I du roguelike (demande du 30/10) : difficulte, pas un concurrent de la ligue.
 # scripts/act1_bid_audit.py, run 41132837609 : joueur simule +0.892 contre -0.062 face a l'ExpertBot.
