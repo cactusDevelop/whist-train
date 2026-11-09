@@ -139,8 +139,7 @@ def main():
         table(rows, n, "variante (sieges variante, 2 placements)")
     names = list(VARIANTS)
     by = {name: [g for o, _b in parts for v, g, _r in o if v == name] for name in names}
-    print("
-=== ecarts apparies (memes donnes) ===")
+    print("\n=== ecarts apparies (memes donnes) ===")
     for i, a in enumerate(names):
         for b in names[i + 1:]:
             m, se = stat([x - y for x, y in zip(by[a], by[b])])
