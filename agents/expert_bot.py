@@ -138,6 +138,7 @@ SECOND_HAND_LOW = False  # 2e a jouer, coequipier apres : petite carte meme avec
 SECOND_HAND_LOW_DEF = False  # idem, seulement en defense (A/B 09/11, piste PIMC)
 DISCARD_LONG = False  # defausse sans coupe : dans la couleur la plus LONGUE (garder ses gardes) (A/B 09/11)
 DISCARD_SIDE = None  # None = tous ; "def" / "decl" : DISCARD_LONG pour ce camp seulement (A/B 09/11)
+DISCARD_KEEP_MATE = False  # avec DISCARD_WEAK : ne pas defausser la couleur d un coequipier (A/B 09/11)
 DISCARD_WEAK = False  # defausse : couleur la plus pauvre en honneurs (V+), puis la plus longue (A/B 09/11)
 THIRD_HAND_CHEAP = False  # 3e, pas de gagnante sure : la plus PETITE gagnante au lieu de la plus forte (A/B 09/11)
 # Deduction par l'enchere (utilisateur 2026-10-26 : « en comptant les cartes, en supposant la
@@ -156,7 +157,7 @@ LEAD_PARTNER_SUIT = True  # defense : entamer la couleur proposee/emballee par u
 KEEP_TRUMPS_VS_VOID = True  # adversaires sans atout : encaisser ses maitresses avant de faire couper le partenaire
 DRAW_STOP_OUTSTANDING = 0  # contrat d'equipe : ne plus tirer quand il reste au plus ce nombre d'atouts adverses
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
-              "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "THIRD_HAND_CHEAP", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
+              "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
               "LEAD_PARTNER_SUIT", "KEEP_TRUMPS_VS_VOID", "DRAW_STOP_OUTSTANDING")
 
 # Profils CONCURRENTS de l'ExpertBot (utilisateur 2026-10-27 : « mets les regles que je viens
@@ -907,7 +908,18 @@ def _discard(v):
     non_master = [c for c in side if not v.is_master(c)] or side
     count = {s: sum(1 for c in v.hand if suit_of(c) == s) for s in range(NUM_SUITS)}
     if DISCARD_WEAK:
-        hon = {s: sum(1 for c in v.hand if suit_of(c) == s and rank_of(c) >= JACK) for s in range(NUM_SUITS)}
+        mine = {s: sorted((rank_of(c) for c in v.hand if suit_of(c) == s), reverse=True) for s in range(NUM_SUITS)}
+        if DISCARD_WEAK == "top":  # couleur dont la plus haute carte est la plus basse
+            hon = {s: (r[0] if r else -1) for s, r in mine.items()}
+        elif DISCARD_WEAK == "guard":  # honneurs GARDES (R second, D troisieme, V quatrieme ; As toujours)
+            hon = {s: sum(1 for x in r if x >= JACK and len(r) > ACE - x) for s, r in mine.items()}
+        else:  # True / "q" : honneurs V+ / D+
+            low = QUEEN if DISCARD_WEAK == "q" else JACK
+            hon = {s: sum(1 for x in r if x >= low) for s, r in mine.items()}
+        if DISCARD_KEEP_MATE:  # garder la couleur annoncee par un coequipier
+            for s in range(NUM_SUITS):
+                if any(v.proposed_long(m, s) for m in v.teammates(v.seat)):
+                    hon[s] += 2 if DISCARD_WEAK != "top" else 13
         return min(non_master, key=lambda c: (hon[suit_of(c)], -count[suit_of(c)], rank_of(c)))
     side_ok = DISCARD_SIDE is None or (DISCARD_SIDE == "def") == (v.seat not in v.declarer_side)
     if DISCARD_LONG and side_ok:

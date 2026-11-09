@@ -32,13 +32,13 @@ from scripts.expert_bot_match import bot_player, play_out
 from scripts.train import (MEASURE_WHISTED_RATIO, declarer_role_and_seats, describe_contract,
                            dispatch_play_phase2, real_points_by_seat)
 
-VARIANTS = {  # 09/11 : pistes PIMC du jeu de la carte (defaut = ExpertBot actuel)
-    "defausse_longue": {"DISCARD_LONG": True},
-    "defausse_longue_defense": {"DISCARD_LONG": True, "DISCARD_SIDE": "def"},
-    "defausse_longue_declarant": {"DISCARD_LONG": True, "DISCARD_SIDE": "decl"},
+VARIANTS = {  # 09/11 : regle de defausse (A/B 1-2 : longue +0.16..0.19, faible V+ +0.178)
     "defausse_faible": {"DISCARD_WEAK": True},
-    "troisieme_economique": {"THIRD_HAND_CHEAP": True},
-    "longue_et_troisieme": {"DISCARD_LONG": True, "THIRD_HAND_CHEAP": True},
+    "defausse_faible_dame": {"DISCARD_WEAK": "q"},
+    "defausse_plus_basse_tete": {"DISCARD_WEAK": "top"},
+    "defausse_honneurs_gardes": {"DISCARD_WEAK": "guard"},
+    "defausse_faible_coequipier": {"DISCARD_WEAK": True, "DISCARD_KEEP_MATE": True},
+    "defausse_gardes_coequipier": {"DISCARD_WEAK": "guard", "DISCARD_KEEP_MATE": True},
 }
 
 def play_deal(hands, dealer, whisted, params_by_seat):
