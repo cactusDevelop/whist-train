@@ -143,6 +143,10 @@ DISCARD_SIDE = None  # None = tous ; "def" / "decl" : DISCARD_LONG pour ce camp 
 DISCARD_KEEP_MATE = False  # avec DISCARD_WEAK : ne pas defausser la couleur d un coequipier (A/B 09/11)
 DISCARD_WEAK = False  # defausse : couleur la plus pauvre en honneurs (V+), puis la plus longue (A/B 09/11)
 SOLO_DRAW_ALL = False  # solo : tirer l atout tant qu UN adversaire peut en avoir (au lieu de 2) (A/B 09/11)
+CASH_BEFORE_DRAW = False  # declarant qui tire sans atout maitre : encaisser d abord ses maitresses annexes sures (PIMC 09/11)
+LAST_LEAD_MASTER = True  # entame par defaut sans couleur annexe (que de l atout, sans tirer) : la plus haute maitresse plutot
+# que la plus petite. PROMU 09/11 (piste PIMC) : A/B +0.088 z 16.1 (80k), +0.044..+0.102 contre 3 profils (42581856371).
+DUCK_RUFF_SECOND = False  # 2e a jouer en renonce, coequipier apres : defausser au lieu de couper (PIMC 09/11)
 UNBLOCK_LAST = False  # dernier a jouer, coequipier gagnant, on fournit : la plus haute NON maitresse (deblocage) (A/B 09/11)
 DEF_LEAD_SHORT = False  # defense avec atout : entamer aussi un PETIT singleton / doubleton annexe (chercher la coupe) (A/B 09/11)
 THIRD_HAND_CHEAP = False  # 3e, pas de gagnante sure : la plus PETITE gagnante au lieu de la plus forte (A/B 09/11)
@@ -162,7 +166,7 @@ LEAD_PARTNER_SUIT = True  # defense : entamer la couleur proposee/emballee par u
 KEEP_TRUMPS_VS_VOID = True  # adversaires sans atout : encaisser ses maitresses avant de faire couper le partenaire
 DRAW_STOP_OUTSTANDING = 0  # contrat d'equipe : ne plus tirer quand il reste au plus ce nombre d'atouts adverses
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
-              "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
+              "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "CASH_BEFORE_DRAW", "LAST_LEAD_MASTER", "DUCK_RUFF_SECOND", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
               "LEAD_PARTNER_SUIT", "KEEP_TRUMPS_VS_VOID", "DRAW_STOP_OUTSTANDING")
 
 # Profils CONCURRENTS de l'ExpertBot (utilisateur 2026-10-27 : « mets les regles que je viens
@@ -192,6 +196,8 @@ PROFILES = {
     "expert_emb1027": {"KEEP_TRUMPS_VS_VOID": False},
     # ExpertBot jusqu au 09/11 : defausse dans la couleur la plus courte (se mettre en renom)
     "expert_defausse_courte": {"DISCARD_LONG": False},
+    # ExpertBot jusqu au 09/11 matin : derniere entame = la plus petite carte meme avec une maitresse
+    "expert_derniere_entame_basse": {"LAST_LEAD_MASTER": False},
 }
 # Adversaires de l'Acte I du roguelike (demande du 30/10) : difficulte, pas un concurrent de la ligue.
 # scripts/act1_bid_audit.py, run 41132837609 : joueur simule +0.892 contre -0.062 face a l'ExpertBot.
@@ -989,6 +995,8 @@ def _follow(v):
         mates_later = [s for s in later if s in mates]
         if mates_later and _mate_likely_wins(v, led, mates_later, later):
             return _discard(v)
+        if DUCK_RUFF_SECOND and mates_later and len(v.current_trick) == 1:
+            return _discard(v)
         safe = [c for c in ruffs if _safe_win(v, c, later)]
         return _lowest(safe) if safe else _lowest(ruffs)
     return _discard(v)
@@ -1048,6 +1056,11 @@ def _lead(v):
             masters = [c for c in my_trumps if v.is_master(c)]
             if masters:
                 return _highest(masters)
+            if CASH_BEFORE_DRAW:
+                side_masters = [c for c in v.legal if suit_of(c) != trump and v.is_master(c)
+                                and not any(v.may_ruff(o, suit_of(c)) for o in opps)]
+                if side_masters:
+                    return _highest(side_masters)
             if TRUMP_LEAD_SEQUENCE:
                 ranks = {rank_of(c): c for c in my_trumps}
                 seq = [r for r in ranks if r >= JACK and r - 1 in ranks]
@@ -1119,6 +1132,10 @@ def _lead(v):
         longest = max(count[suit_of(c)] for c in not_theirs)
         pick = [c for c in not_theirs if count[suit_of(c)] == longest]
         return (SIDE_LEAD_SEQUENCE and _seq_top(pick, True)) or _lowest(pick)
+    if LAST_LEAD_MASTER:
+        masters = [c for c in v.legal if v.is_master(c)]
+        if masters:
+            return _highest(masters)
     return _lowest(v.legal)
 
 
