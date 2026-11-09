@@ -32,6 +32,10 @@ au 1er tour d'enchere, sinon pli) ; toutes ses occasions de la donne sont mesure
 Deck : celui d'un run (joker_match.player_deck) + INJECT jokers de l'acte, pour que les
 rares aient des occasions.
 
+Fiabilite (09/11, conseil) : par contexte contrat|role|adversaire (by_ctx) et pour la regle du
+joueur : precision = part des lancers de la regle qui etaient utiles, et faux_lancer = gain
+(jouer - alt, negatif) quand la regle lance hors occasion utile. Lu par scripts/joker_report.py.
+
 Usage : python scripts/joker_moments.py --minutes 150 --workers 4 [--k 2]
 Sorties : joker_moments.json (cumul + par joker), joker_moments_summary.md.
 """
@@ -165,7 +169,12 @@ def _merge_cell(d, s):
 
 def _entry():
     return {"occasions": 0, "useful": 0, "rule_cast": 0, "rule_cast_useful": 0, "hands": 0, "hands_useful": 0,
-            "force": _cell(), "tout": _cell(), "alt": {b: 0 for b in ALTS}, "by_contract": {}}
+            "force": _cell(), "tout": _cell(), "alt": {b: 0 for b in ALTS}, "by_contract": {}, "by_ctx": {},
+            "false_cast": _cell(), "missed": _cell()}
+
+
+def _ctx_entry():
+    return {"occasions": 0, "useful": 0, "rule_cast": 0, "rule_cast_useful": 0, "force": _cell()}
 
 
 def worker(args):
@@ -179,7 +188,7 @@ def worker(args):
     def entry(jid):
         return data["jokers"].setdefault(J.base_id(jid), _entry())
 
-    def record(jid, runs, rule_cast, contract, hand_marks):
+    def record(jid, runs, rule_cast, contract, hand_marks, ctx_hand=None):
         useful, gain, alt = _judge(runs, k)
         e = entry(jid)
         e["occasions"] += 1
@@ -188,6 +197,20 @@ def worker(args):
         e["rule_cast"] += bool(rule_cast)
         bc = e["by_contract"].setdefault(contract, {"occasions": 0, "useful": 0, "force": _cell()})
         bc["occasions"] += 1
+        if ctx_hand is not None:
+            role = "declarant" if J._declares(PLAYER, ctx_hand.contract) else "defenseur"
+            adv = cfg.get("boss") or "elite_acte%d" % cfg["act"]
+            cx = e["by_ctx"].setdefault("%s|%s|%s" % (contract, role, adv), _ctx_entry())
+            cx["occasions"] += 1
+            cx["rule_cast"] += bool(rule_cast)
+            if useful:
+                cx["useful"] += 1
+                cx["rule_cast_useful"] += bool(rule_cast)
+                _add(cx["force"], gain)
+        if rule_cast and not useful:
+            _add(e["false_cast"], gain)
+        if useful and not rule_cast:
+            _add(e["missed"], gain)
         if useful:
             e["useful"] += 1
             e["rule_cast_useful"] += bool(rule_cast)
@@ -228,7 +251,7 @@ def worker(args):
                             verdict = X.bid_rule(bv, focus)[0] if bv else X.NO
                             cast = verdict in (X.YES, X.OPEN_YES) and not X.eye_risk(probe_h.state, focus)
                             marks = {"useful": False}
-                            record(focus, runs, cast, contract_key(probe_h.contract), marks)
+                            record(focus, runs, cast, contract_key(probe_h.contract), marks, probe_h)
                             e = entry(focus)
                             e["hands"] += 1
                             e["hands_useful"] += marks["useful"]
@@ -273,7 +296,7 @@ def worker(args):
                         return
                     cast = X.player_wants(h_now, focus)[0]
                     marks["seen"] = True
-                    record(focus, runs, cast, ckey, marks)
+                    record(focus, runs, cast, ckey, marks, h_now)
 
                 jm.play_out(hand, policy, before_player=before_player)
                 if marks["seen"]:
@@ -305,8 +328,13 @@ def merge(dst, src):
         d = dst["jokers"].setdefault(jid, _entry())
         for key in ("occasions", "useful", "rule_cast", "rule_cast_useful", "hands", "hands_useful"):
             d[key] += e[key]
-        for key in ("force", "tout"):
+        for key in ("force", "tout", "false_cast", "missed"):
             _merge_cell(d[key], e[key])
+        for c, cx in e["by_ctx"].items():
+            dc = d["by_ctx"].setdefault(c, _ctx_entry())
+            for key in ("occasions", "useful", "rule_cast", "rule_cast_useful"):
+                dc[key] += cx[key]
+            _merge_cell(dc["force"], cx["force"])
         for key in ALTS:
             d["alt"][key] += e["alt"].get(key, 0)
         for c, bc in e["by_contract"].items():
@@ -324,6 +352,11 @@ def stat(c):
     return m, math.sqrt(var / c["n"]) if c["n"] > 1 else None
 
 
+def _ms(c):
+    m, se = stat(c)
+    return {"n": c["n"], "mean": None if m is None else round(m, 3), "se": None if se is None else round(se, 3)}
+
+
 def table(agg):
     rows = []
     for jid, e in sorted(agg["jokers"].items()):
@@ -339,6 +372,12 @@ def table(agg):
                      "gain_tout": None if g is None else round(g, 3), "gain_tout_se": None if gse is None else round(gse, 3),
                      "alt": {b: round(e["alt"].get(b, 0) / e["occasions"], 3) for b in ALTS} if e["occasions"] else None,
                      "fiable": e["useful"] >= MIN_N,
+                     "rule_casts": e["rule_cast"],
+                     "precision": round(e["rule_cast_useful"] / e["rule_cast"], 3) if e["rule_cast"] else None,
+                     "false_cast": _ms(e["false_cast"]), "missed": _ms(e["missed"]),
+                     "by_ctx": {c: {"occasions": cx["occasions"], "useful": cx["useful"], "rule_cast": cx["rule_cast"],
+                                    "rule_cast_useful": cx["rule_cast_useful"], "force": _ms(cx["force"])}
+                                for c, cx in sorted(e["by_ctx"].items())},
                      "by_contract": {c: {"occasions": bc["occasions"], "useful": bc["useful"],
                                          "force": None if stat(bc["force"])[0] is None else round(stat(bc["force"])[0], 2)}
                                      for c, bc in sorted(e["by_contract"].items())}})
