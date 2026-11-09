@@ -140,6 +140,7 @@ DISCARD_LONG = False  # defausse sans coupe : dans la couleur la plus LONGUE (ga
 DISCARD_SIDE = None  # None = tous ; "def" / "decl" : DISCARD_LONG pour ce camp seulement (A/B 09/11)
 DISCARD_KEEP_MATE = False  # avec DISCARD_WEAK : ne pas defausser la couleur d un coequipier (A/B 09/11)
 DISCARD_WEAK = False  # defausse : couleur la plus pauvre en honneurs (V+), puis la plus longue (A/B 09/11)
+SOLO_DRAW_ALL = False  # solo : tirer l atout tant qu UN adversaire peut en avoir (au lieu de 2) (A/B 09/11)
 UNBLOCK_LAST = False  # dernier a jouer, coequipier gagnant, on fournit : la plus haute NON maitresse (deblocage) (A/B 09/11)
 DEF_LEAD_SHORT = False  # defense avec atout : entamer aussi un PETIT singleton / doubleton annexe (chercher la coupe) (A/B 09/11)
 THIRD_HAND_CHEAP = False  # 3e, pas de gagnante sure : la plus PETITE gagnante au lieu de la plus forte (A/B 09/11)
@@ -159,7 +160,7 @@ LEAD_PARTNER_SUIT = True  # defense : entamer la couleur proposee/emballee par u
 KEEP_TRUMPS_VS_VOID = True  # adversaires sans atout : encaisser ses maitresses avant de faire couper le partenaire
 DRAW_STOP_OUTSTANDING = 0  # contrat d'equipe : ne plus tirer quand il reste au plus ce nombre d'atouts adverses
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
-              "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
+              "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
               "LEAD_PARTNER_SUIT", "KEEP_TRUMPS_VS_VOID", "DRAW_STOP_OUTSTANDING")
 
 # Profils CONCURRENTS de l'ExpertBot (utilisateur 2026-10-27 : « mets les regles que je viens
@@ -1037,7 +1038,7 @@ def _lead(v):
             if len(my_trumps) == 1 and len(my_trumps) < len(v.legal) and not DRAW_WITH_LAST_TRUMP:
                 keep_drawing = False
         else:  # solo : 3 adversaires, tirer tant que 2+ peuvent encore en avoir
-            keep_drawing = outstanding > 0 and len(opps_with_trumps) >= 2
+            keep_drawing = outstanding > 0 and len(opps_with_trumps) >= (1 if SOLO_DRAW_ALL else 2)
         if keep_drawing:
             masters = [c for c in my_trumps if v.is_master(c)]
             if masters:

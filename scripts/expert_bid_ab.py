@@ -32,12 +32,10 @@ from scripts.expert_bot_match import bot_player, play_out
 from scripts.train import (MEASURE_WHISTED_RATIO, declarer_role_and_seats, describe_contract,
                            dispatch_play_phase2, real_points_by_seat)
 
-VARIANTS = {  # 09/11 A/B 5 : pistes empilees sur la defausse longue (A/B 4 : +0.178 z 10.3, retenue)
+VARIANTS = {  # 09/11 A/B 6 (A/B 5 : deblocage -0.12, coupe adv apres -0.16, jamais depasser -0.27 ; entame courte +0.02 z 1)
     "L": {"DISCARD_LONG": True},
-    "L+deblocage_4e": {"DISCARD_LONG": True, "UNBLOCK_LAST": True},
+    "L+solo_tire_tout": {"DISCARD_LONG": True, "SOLO_DRAW_ALL": True},
     "L+entame_courte_def": {"DISCARD_LONG": True, "DEF_LEAD_SHORT": True},
-    "L+coupe_si_adv_apres": {"DISCARD_LONG": True, "RUFF_IF_OPP_LATER": True},
-    "L+jamais_depasser": {"DISCARD_LONG": True, "NO_OVERTAKE": True},
 }
 
 def play_deal(hands, dealer, whisted, params_by_seat):
