@@ -32,8 +32,9 @@ from scripts.expert_bot_match import bot_player, play_out
 from scripts.train import (MEASURE_WHISTED_RATIO, declarer_role_and_seats, describe_contract,
                            dispatch_play_phase2, real_points_by_seat)
 
-VARIANTS = {  # 09/11 bilan : ExpertBot du 09/11 (4 regles promues) contre celui du 08/11 (--others expert_0811)
-    "expert_0911": {"DISCARD_LONG": True, "LAST_LEAD_MASTER": True, "RUFF_RISK_VOID_ONLY": "all", "PARTNER_SUIT_HIGH": True},
+VARIANTS = {  # 09/11 A/B 13 (base = ExpertBot 09/11, 4 regles promues)
+    "defausse_courte_si_coequipier_gagne": {"DISCARD_SHORT_WHEN_MATE": True},
+    "coupe_haute_si_pas_sure": {"RUFF_HIGH_IF_UNSAFE": True},
 }
 
 def play_deal(hands, dealer, whisted, params_by_seat):
