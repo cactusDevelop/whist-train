@@ -152,7 +152,8 @@ RUFF_RISK_VOID_ONLY = "all"  # None ; "def" / "all" : risque de coupe a l entame
 PARTNER_SUIT_TOP_SHORT = False  # defense, couleur du coequipier, doubleton : entamer la plus haute (09/11)
 DECL_LEAD_STRONG = False  # declarant, entame par defaut : couleur annexe la plus riche en honneurs, puis la plus longue (09/11)
 DISCARD_LONG_TOP = False  # defausse longue, egalite de longueur : couleur a la tete la plus basse (09/11)
-PARTNER_SUIT_HIGH = False  # defense, couleur du coequipier : toujours la plus haute (hors tete de sequence) (09/11)
+PARTNER_SUIT_HIGH = True  # defense, couleur du coequipier : la plus haute (hors tete de sequence). PROMU 09/11 :
+# A/B +0.075 z 5.5 contre ExpertBot (60k) ; contre joueur_1027 / expert_tune1027 +0.001 / +0.014 (<= 1 % des donnes changent).
 UNBLOCK_LAST = False  # dernier a jouer, coequipier gagnant, on fournit : la plus haute NON maitresse (deblocage) (A/B 09/11)
 DEF_LEAD_SHORT = False  # defense avec atout : entamer aussi un PETIT singleton / doubleton annexe (chercher la coupe) (A/B 09/11)
 THIRD_HAND_CHEAP = False  # 3e, pas de gagnante sure : la plus PETITE gagnante au lieu de la plus forte (A/B 09/11)
@@ -206,6 +207,8 @@ PROFILES = {
     "expert_derniere_entame_basse": {"LAST_LEAD_MASTER": False},
     # ExpertBot jusqu au 09/11 : risque de coupe a l entame aussi estime par le compte (enchere, longueurs)
     "expert_risque_coupe_compte": {"RUFF_RISK_VOID_ONLY": None},
+    # ExpertBot jusqu au 09/11 : couleur du coequipier entamee par la petite
+    "expert_coequipier_petite": {"PARTNER_SUIT_HIGH": False},
 }
 # Adversaires de l'Acte I du roguelike (demande du 30/10) : difficulte, pas un concurrent de la ligue.
 # scripts/act1_bid_audit.py, run 41132837609 : joueur simule +0.892 contre -0.062 face a l'ExpertBot.
