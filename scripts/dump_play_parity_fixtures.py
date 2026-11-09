@@ -40,6 +40,9 @@ from scripts.train import (DECLARER_FAMILIES, POPULATION_FILE_DEFAULT, build_gam
 CASES_PER_ROLE = 40
 SAMPLE_PROB = 0.15
 GUARD_CASES = 40  # cas ou le garde-fou de jeu retire des cartes (agents/play_guards.py)
+# 09/11 : --free-best seulement -- entames du bouche-trou (atout/niveau encore inconnus), jouees
+# par le reseau libre en jeu depuis whist-4-it 18a8be4 (routage trou declarant)
+OPENING_CASES = 40
 
 
 LEGAL_ONLY = [False]  # --free-best : l'hybride joue cartes legales seules (pas de garde-fous)
@@ -85,6 +88,10 @@ def play_and_sample(game, nets, rng, bid_log, hands_at_deal, phase, counts, case
         if counts.get(role, 0) < CASES_PER_ROLE and rng.random() < SAMPLE_PROB:
             cases.append(case_from(game, seat, nets, bid_log, hands_at_deal, phase))
             counts[role] = counts.get(role, 0) + 1
+        elif (LEGAL_ONLY[0] and counts.get("_entame_trou", 0) < OPENING_CASES
+              and getattr(game, "trou_pending", lambda: False)() and seat == game.partner):
+            cases.append(case_from(game, seat, nets, bid_log, hands_at_deal, phase))
+            counts["_entame_trou"] = counts.get("_entame_trou", 0) + 1
         elif counts.get("_garde", 0) < GUARD_CASES and ai_play_mask(game, seat) != game.legal_action_mask(seat):
             cases.append(case_from(game, seat, nets, bid_log, hands_at_deal, phase))
             counts["_garde"] = counts.get("_garde", 0) + 1
@@ -120,7 +127,8 @@ def main():
     counts, cases = {}, {}
     cases = []
     deals = 0
-    while (any(counts.get(r, 0) < CASES_PER_ROLE for r in PLAY_ROLES) or counts.get("_garde", 0) < GUARD_CASES)             and deals < 60000:
+    while (any(counts.get(r, 0) < CASES_PER_ROLE for r in PLAY_ROLES) or counts.get("_garde", 0) < GUARD_CASES
+           or (LEGAL_ONLY[0] and counts.get("_entame_trou", 0) < OPENING_CASES))             and deals < 60000:
         deals += 1
         hands, dealer, whisted = chain.deal(rng)
         hands_at_deal = [sorted(h) for h in hands]
@@ -141,6 +149,8 @@ def main():
     missing = [r for r in PLAY_ROLES if counts.get(r, 0) < CASES_PER_ROLE]
     if counts.get("_garde", 0) < GUARD_CASES:
         missing.append("_garde")
+    if LEGAL_ONLY[0] and counts.get("_entame_trou", 0) < OPENING_CASES:
+        missing.append("_entame_trou")
     if missing:
         raise SystemExit("roles sans assez de cas apres %d donnes : %r" % (deals, missing))
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)

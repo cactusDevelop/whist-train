@@ -32,7 +32,7 @@ from scripts.expert_bot_match import bot_player, play_out
 from scripts.train import (MEASURE_WHISTED_RATIO, declarer_role_and_seats, describe_contract,
                            dispatch_play_phase2, real_points_by_seat)
 
-VARIANTS = {  # 09/11 A/B 17 (bilan 5 regles : +0.481 z 25.0 contre 08/11)
+VARIANTS = {  # 09/11 A/B 17 : NO_RUFF_PARTNER_2ND -0.011 z -1.7 (42596921310), rejete
     "pas_couper_coequipier_2e": {"NO_RUFF_PARTNER_2ND": True},
 }
 

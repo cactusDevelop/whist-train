@@ -35,7 +35,11 @@ def main():
 
     def spy(hand, seat):
         seen = original(hand, seat)
-        if seen is not None:
+        g0 = hand.game
+        # 08/11 (whist-4-it) : l'entame du bouche-trou sans atout passe par WhistTable._bot_trou_opening_card
+        # a la vraie table, jamais par choose_card_id -> pas de cas
+        trou_opening = g0.public_contract()["type"] == "trou" and g0.public_contract().get("trump") is None and not g0.play_log
+        if seen is not None and not trou_opening:
             kind = kind_of(seen, hand.game)
             if counts.get(kind, 0) < PER_KIND:
                 g = hand.game

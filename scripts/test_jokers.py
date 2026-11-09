@@ -170,7 +170,11 @@ def v2_tests():
     _, rules = trick_with("double_valet", 0, [(1, card(H, 9)), (0, card(H, 11))])
     oks.append(check("double valet : pli a 2 pour son proprietaire", rules.trick_value(0, [(0, card(H, 11))]), 2))
     w, _ = trick_with("inversion", 1, [(1, card(H, 9)), (2, card(H, 3)), (3, card(S, 4)), (0, card(H, 2))])
-    oks.append(check("inversion : la plus faible de la couleur demandee", w, 0))
+    oks.append(check("inversion (0e9a) : une coupe -> le plus faible atout", w, 3))
+    w, _ = trick_with("inversion", 1, [(1, card(H, 9)), (2, card(S, 3)), (3, card(S, 4)), (0, card(H, 2))])
+    oks.append(check("inversion (0e9a) : deux coupes -> le plus petit atout", w, 2))
+    w, _ = trick_with("inversion", 1, [(1, card(H, 9)), (2, card(H, 3)), (3, card(C, 4)), (0, card(H, 2))])
+    oks.append(check("inversion : sans coupe, la plus faible de la couleur demandee", w, 0))
     # JokerHand.step_joker_card : la main ne diminue pas, le pli se resout.
     state, rules, game = setup(trump=S)
     hand = J.JokerHand(game, contract, state, rules)
