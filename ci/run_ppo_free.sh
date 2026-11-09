@@ -12,6 +12,9 @@ fi
 # 06/11 soir (diag free_emb_diag) : emballage = FOCUS (entames + prises a plusieurs cartes gagnantes, les deux camps, prob 0.5) ; solitaire garde la defense dds 0.3
 # 08/11 (diag misere 42465520905, defense -7.46) : misere etalee = entames+defausses de defense notees par suites ExpertBot (toutes, 6 mondes, marge 4 pts)
 # 07/11 : FOCUS retire (35 portes refusees, emballage -3.67 inchange) ; porte a deux temps (+30000 donnes si positif sous le bruit)
-python -u scripts/train_free.py --until "$(date -u -d "+${MIN:-320} minutes" +%Y-%m-%dT%H:%M)" $EXTRA \
+# ci/ppo_free_stop_at (UTC AAAA-MM-JJTHH:MM) : le bloc s'arrete au plus tard a cette heure
+UNTIL=$(date -u -d "+${MIN:-320} minutes" +%Y-%m-%dT%H:%M)
+if [ -f ci/ppo_free_stop_at ] && [[ "$UNTIL" > "$(cat ci/ppo_free_stop_at)" ]]; then UNTIL=$(cat ci/ppo_free_stop_at); fi
+python -u scripts/train_free.py --until "$UNTIL" $EXTRA \
   --defense-rollout-prob 0.3 --defense-rollout-samples 4 --defense-rollout-margin 0.5 --defense-rollout-share 0.75 \
   --defense-rollout-roles solitaire   --misere-rollout-prob 1.0 --misere-rollout-samples 6 --misere-rollout-margin 4
