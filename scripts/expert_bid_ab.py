@@ -32,10 +32,8 @@ from scripts.expert_bot_match import bot_player, play_out
 from scripts.train import (MEASURE_WHISTED_RATIO, declarer_role_and_seats, describe_contract,
                            dispatch_play_phase2, real_points_by_seat)
 
-VARIANTS = {  # 09/11 A/B 14 (A/B 13 : defausse courte si coequipier -0.018, coupe haute +0.008 : rejetes) ; pistes PIMC B
+VARIANTS = {  # 09/11 A/B 15 : confirmation profils (A/B 14 : pas depasser en 2e +0.062 z 7.5 ; en 3e -0.30)
     "pas_depasser_2e": {"NO_OVERTAKE_POS": (2,)},
-    "pas_depasser_3e": {"NO_OVERTAKE_POS": (3,)},
-    "pas_depasser_2e_3e": {"NO_OVERTAKE_POS": (2, 3)},
 }
 
 def play_deal(hands, dealer, whisted, params_by_seat):
