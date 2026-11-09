@@ -149,6 +149,9 @@ LAST_LEAD_MASTER = True  # entame par defaut sans couleur annexe (que de l atout
 DUCK_RUFF_SECOND = False  # 2e a jouer en renonce, coequipier apres : defausser au lieu de couper (PIMC 09/11)
 RUFF_RISK_VOID_ONLY = "all"  # None ; "def" / "all" : risque de coupe a l entame = renonce CONNUE seulement (sans le compte
 # d enchere/longueurs). PROMU 09/11 ("all") : A/B +0.067 z 8.9 (80k ; "def" +0.028), +0.040..+0.046 contre 3 profils (42584813079).
+PARTNER_SUIT_TOP_SHORT = False  # defense, couleur du coequipier, doubleton : entamer la plus haute (09/11)
+DECL_LEAD_STRONG = False  # declarant, entame par defaut : couleur annexe la plus riche en honneurs, puis la plus longue (09/11)
+DISCARD_LONG_TOP = False  # defausse longue, egalite de longueur : couleur a la tete la plus basse (09/11)
 UNBLOCK_LAST = False  # dernier a jouer, coequipier gagnant, on fournit : la plus haute NON maitresse (deblocage) (A/B 09/11)
 DEF_LEAD_SHORT = False  # defense avec atout : entamer aussi un PETIT singleton / doubleton annexe (chercher la coupe) (A/B 09/11)
 THIRD_HAND_CHEAP = False  # 3e, pas de gagnante sure : la plus PETITE gagnante au lieu de la plus forte (A/B 09/11)
@@ -168,7 +171,7 @@ LEAD_PARTNER_SUIT = True  # defense : entamer la couleur proposee/emballee par u
 KEEP_TRUMPS_VS_VOID = True  # adversaires sans atout : encaisser ses maitresses avant de faire couper le partenaire
 DRAW_STOP_OUTSTANDING = 0  # contrat d'equipe : ne plus tirer quand il reste au plus ce nombre d'atouts adverses
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
-              "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "CASH_BEFORE_DRAW", "LAST_LEAD_MASTER", "DUCK_RUFF_SECOND", "RUFF_RISK_VOID_ONLY", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
+              "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "CASH_BEFORE_DRAW", "LAST_LEAD_MASTER", "DUCK_RUFF_SECOND", "RUFF_RISK_VOID_ONLY", "PARTNER_SUIT_TOP_SHORT", "DECL_LEAD_STRONG", "DISCARD_LONG_TOP", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
               "LEAD_PARTNER_SUIT", "KEEP_TRUMPS_VS_VOID", "DRAW_STOP_OUTSTANDING")
 
 # Profils CONCURRENTS de l'ExpertBot (utilisateur 2026-10-27 : « mets les regles que je viens
@@ -941,6 +944,9 @@ def _discard(v):
         return min(non_master, key=lambda c: (hon[suit_of(c)], -count[suit_of(c)], rank_of(c)))
     side_ok = DISCARD_SIDE is None or (DISCARD_SIDE == "def") == (v.seat not in v.declarer_side)
     if DISCARD_LONG and side_ok:
+        if DISCARD_LONG_TOP:
+            top = {s: max((rank_of(c) for c in v.hand if suit_of(c) == s), default=-1) for s in range(NUM_SUITS)}
+            return min(non_master, key=lambda c: (-count[suit_of(c)], top[suit_of(c)], rank_of(c)))
         return min(non_master, key=lambda c: (-count[suit_of(c)], rank_of(c)))
     return min(non_master, key=lambda c: (count[suit_of(c)], rank_of(c)))
 
@@ -1131,12 +1137,20 @@ def _lead(v):
     if LEAD_PARTNER_SUIT and not declaring:
         theirs = [c for c in side if any(v.proposed_long(m, suit_of(c)) for m in mates)]
         if theirs:
+            if PARTNER_SUIT_TOP_SHORT:
+                short = [c for c in theirs if count[suit_of(c)] == 2]
+                if short:
+                    return _highest(short)
             return _seq_top(theirs, SIDE_LEAD_SEQUENCE) or _lowest(theirs)
     safe_side = side if not declaring else ([c for c in side if not ruff_risk(suit_of(c))] or side)
     if safe_side:
         not_theirs = [c for c in safe_side if not any(v.proposed_long(o, suit_of(c)) for o in opps)] or safe_side
         longest = max(count[suit_of(c)] for c in not_theirs)
         pick = [c for c in not_theirs if count[suit_of(c)] == longest]
+        if DECL_LEAD_STRONG and declaring:
+            hon = {s: sum(1 for c in v.hand if suit_of(c) == s and rank_of(c) >= JACK) for s in range(NUM_SUITS)}
+            best = max((hon[suit_of(c)], count[suit_of(c)]) for c in not_theirs)
+            pick = [c for c in not_theirs if (hon[suit_of(c)], count[suit_of(c)]) == best]
         return (SIDE_LEAD_SEQUENCE and _seq_top(pick, True)) or _lowest(pick)
     if LAST_LEAD_MASTER:
         masters = [c for c in v.legal if v.is_master(c)]
