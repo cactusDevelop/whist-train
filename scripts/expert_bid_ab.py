@@ -33,11 +33,24 @@ from scripts.expert_bot_match import bot_player, play_out
 from scripts.train import (MEASURE_WHISTED_RATIO, declarer_role_and_seats, describe_contract,
                            dispatch_play_phase2, real_points_by_seat)
 
-VARIANTS = {  # 10/11 A/B 22 ; A/B 21 (graines neuves) : NO_OVERTAKE_POS=() +1.31 z 32 (4 profils, meilleur), A1 +0.81, A1+A2 +0.90
-    "sans_NO_OVERTAKE_POS": {"NO_OVERTAKE_POS": ()},
-    "sans_NOP+A2": {"NO_OVERTAKE_POS": (), "DECL_2ND_TAKE_SAFE": True},
-    "sans_NOP+ruff_risk_None": {"NO_OVERTAKE_POS": (), "RUFF_RISK_VOID_ONLY": None},
-    "sans_NOP+partner_suit_high_off": {"NO_OVERTAKE_POS": (), "PARTNER_SUIT_HIGH": False},
+VARIANTS = {  # 10/11 A/B 23 : RE-AUDIT sous placements par camp (promotions/rejets anterieurs mesures sous (0,2)/(1,3))
+    # promues -> retirees une a une (gain < 0 = la regle est bonne)
+    "retire_DISCARD_LONG": {"DISCARD_LONG": False},
+    "retire_LAST_LEAD_MASTER": {"LAST_LEAD_MASTER": False},
+    "retire_INFER_OPP_TRUMPS": {"INFER_OPP_TRUMPS": False},
+    "retire_TRUMP_LEAD_SEQUENCE": {"TRUMP_LEAD_SEQUENCE": False},
+    "retire_SIDE_LEAD_SEQUENCE": {"SIDE_LEAD_SEQUENCE": False},
+    "retire_LEAD_PARTNER_SUIT": {"LEAD_PARTNER_SUIT": False},
+    "retire_KEEP_TRUMPS_VS_VOID": {"KEEP_TRUMPS_VS_VOID": False},
+    "retire_DECL_2ND_TAKE_SAFE": {"DECL_2ND_TAKE_SAFE": False},
+    # rejetees autrefois, jeu en equipe -> re-testees
+    "SECOND_HAND_LOW": {"SECOND_HAND_LOW": True},
+    "RUFF_IF_OPP_LATER": {"RUFF_IF_OPP_LATER": True},
+    "NO_RUFF_PARTNER_2ND": {"NO_RUFF_PARTNER_2ND": True},
+    "DUCK_RUFF_SECOND": {"DUCK_RUFF_SECOND": True},
+    "UNBLOCK_LAST": {"UNBLOCK_LAST": True},
+    "THIRD_HAND_CHEAP": {"THIRD_HAND_CHEAP": True},
+    "CASH_BEFORE_DRAW": {"CASH_BEFORE_DRAW": True},
 }
 
 def play_deal(hands, dealer, whisted, params_by_seat):
