@@ -10,10 +10,11 @@ python -u scripts/dump_bid_parity_fixtures.py --godot-dir $G --out godot_export/
 python -u scripts/dump_bid_rules_fixtures.py --out godot_export/bid_rules_cases.json
 python -u scripts/dump_expert_bot_fixtures.py --out godot_export/expert_bot_parity.json
 python -u scripts/dump_bid_cross_check_sequences.py
+python -u scripts/dump_expert_seen_fixtures.py --out godot_export/expert_seen_cases.json  # 10/11 : avant seulement dans jokers_test
 mkdir -p /tmp/ppofree
 gh release download checkpoint-latest -p "state-ppo_free.tar.gz.enc" -D /tmp/ppofree --clobber
 openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass env:STATE_KEY -in /tmp/ppofree/state-ppo_free.tar.gz.enc | tar xz -C /tmp/ppofree
 python -u scripts/dump_play_parity_fixtures.py --free-best /tmp/ppofree/checkpoints_free/best.pt --out godot_export/play_parity_cases_libre.json
-for f in play_parity_cases bid_parity_cases bid_rules_cases expert_bot_parity bid_cross_check_sequences play_parity_cases_libre; do
+for f in play_parity_cases bid_parity_cases bid_rules_cases expert_bot_parity bid_cross_check_sequences play_parity_cases_libre expert_seen_cases; do
   gh release upload checkpoint-latest "godot_export/$f.json" --clobber
 done
