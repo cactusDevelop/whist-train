@@ -27,7 +27,7 @@ sys.path.insert(0, ".")
 from agents import expert_bot
 from agents.rollouts import dds_values
 from engine import dds
-from engine.cards import NUM_PLAYERS
+from engine.cards import NUM_PLAYERS, suit_of
 from engine.whisted import DeckChain
 from scripts.expert_bot_match import run_bot_bidding
 from scripts.expert_play_audit import card_txt, describe, situation
@@ -55,7 +55,7 @@ def play(game, pimc_seats, score_fn, rng, samples, diffs):
                     qe = q[legal.index(card)]
                     if best - qe > 1e-6:  # ExpertBot garde la main a egalite
                         pick = legal[q.index(best)]
-                        diffs.append((situation(game, seat, card), best - qe,
+                        diffs.append((sit_key(game, seat, card), best - qe,
                                       "%s | siege %d | pli %s | main %s | expert %s (%.1f) pimc %s (%.1f)" % (
                                           describe(game.public_contract()), seat,
                                           " ".join("%d:%s" % (s, card_txt(c)) for s, c in game.current_trick) or "-",
@@ -64,6 +64,17 @@ def play(game, pimc_seats, score_fn, rng, samples, diffs):
                         card = pick
         game.step(seat, card)
     return n
+
+
+def sit_key(game, seat, card):
+    """10/11 (conseil) : situation + type de contrat ; entames : atouts en main et numero du pli."""
+    sit = situation(game, seat, card)
+    typ = game.public_contract().get("type", "?") if hasattr(game, "public_contract") else "?"
+    if not game.current_trick:
+        nt = sum(1 for c in game.hands[seat] if suit_of(c) == game.trump_suit)
+        pli = 13 - len(game.hands[seat]) + 1
+        sit += " atouts%s pli%s" % (min(nt, 4) if nt < 4 else "4+", "1" if pli == 1 else ("2-5" if pli <= 5 else "6+"))
+    return "%s %s" % (typ, sit)
 
 
 def worker(args):
@@ -141,9 +152,9 @@ def main():
             if len(a["ex"]) < 4 and gap >= 1.0:
                 a["ex"].append(ex)
         print("\n=== %s : ecarts PIMC / ExpertBot par situation (Q gap cumule) ===" % name)
-        for sit in sorted(agg, key=lambda k: -agg[k]["gap"])[:12]:
+        for sit in sorted(agg, key=lambda k: -agg[k]["gap"])[:30]:
             a = agg[sit]
-            print("%-42s n %5d  gap moyen %.2f  cumul %.1f" % (sit, a["n"], a["gap"] / a["n"], a["gap"]))
+            print("%-62s n %5d  gap moyen %.2f  cumul %.1f" % (sit, a["n"], a["gap"] / a["n"], a["gap"]))
             for ex in a["ex"]:
                 print("     " + ex)
     print("PIMC_VS_EXPERT_DONE")
