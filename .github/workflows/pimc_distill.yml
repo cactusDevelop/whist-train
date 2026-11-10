@@ -1,0 +1,125 @@
+name: pimc_distill
+
+# Defenseur d'emballage distille de PIMC (9e conseil 10/11, scripts/distill_def_pimc.py).
+# 6 generateurs paralleles (cibles PIMC) -> entrainement supervise -> mesure duplicate vs ExpertBot (4 profils).
+# dagger=true : les generateurs jouent aussi l'eleve precedent (release pimc_def_student.pt.enc) et
+# l'entrainement agrege les donnees precedentes (pimc_def_data.tar.enc).
+
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "duree de generation par shard (minutes)"
+        type: string
+        default: "150"
+      dagger:
+        type: boolean
+        default: false
+      measure_deals:
+        type: string
+        default: "200000"
+
+permissions:
+  contents: write
+  actions: write
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  STATE_KEY: ${{ secrets.STATE_KEY }}
+
+jobs:
+  gen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Restore student (DAgger)
+        if: inputs.dagger
+        run: |
+          gh release download checkpoint-latest -p pimc_def_student.pt.enc -D .
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass env:STATE_KEY -in pimc_def_student.pt.enc -out student_prev.pt
+      - name: Generate
+        run: |
+          STUDENT=""
+          [ -f student_prev.pt ] && STUDENT="--student student_prev.pt --student-prob 0.5"
+          python -u scripts/distill_def_pimc.py gen --minutes "${{ inputs.minutes }}" --workers 4 --samples 8 \
+            --seed "$(( (${GITHUB_RUN_ID} * 10 + ${{ matrix.shard }}) % 1000000007 ))" $STUDENT \
+            --out "data_${{ matrix.shard }}.pt" 2>&1 | tee "gen_${{ matrix.shard }}.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: data-${{ matrix.shard }}
+          path: |
+            data_${{ matrix.shard }}.pt
+            gen_${{ matrix.shard }}.txt
+          retention-days: 7
+
+  train:
+    needs: gen
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Restore best.pt (ppo_free)
+        run: |
+          gh release download checkpoint-latest -p state-ppo_free.tar.gz.enc -D .
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass env:STATE_KEY -in state-ppo_free.tar.gz.enc | tar xz
+          rm state-ppo_free.tar.gz.enc
+          ls -la checkpoints_free/best.pt
+      - uses: actions/download-artifact@v4
+        with:
+          path: shards
+          pattern: data-*
+          merge-multiple: true
+      - name: Previous data (DAgger)
+        if: inputs.dagger
+        run: |
+          gh release download checkpoint-latest -p pimc_def_data.tar.gz.enc -D .
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass env:STATE_KEY -in pimc_def_data.tar.gz.enc | tar xz
+      - name: Train + measure
+        run: |
+          set -o pipefail
+          {
+            cat shards/gen_*.txt
+            mkdir -p pimc_def_data
+            for f in shards/data_*.pt; do cp "$f" "pimc_def_data/run${GITHUB_RUN_ID}_$(basename "$f")"; done
+            python -u scripts/distill_def_pimc.py train --data "pimc_def_data/*.pt" --out student.pt
+            echo "=== reference : defenseur de best.pt (IA libre), meme mesure ==="
+            python -u scripts/distill_def_pimc.py measure --student checkpoints_free/best.pt --deals 50000 --others expert
+            echo "=== eleve ==="
+            python -u scripts/distill_def_pimc.py measure --student student.pt --deals "${{ inputs.measure_deals }}" \
+              --others expert,joueur_1027,expert_tune1027,joueur_0927 --seed "$(( ${GITHUB_RUN_ID} % 1000000007 ))"
+            echo PIMC_DISTILL_DONE
+          } 2>&1 | tee log-pimc_distill.txt
+      - name: Save student + data
+        if: always()
+        run: |
+          gh release upload checkpoint-latest log-pimc_distill.txt --clobber || true
+          if [ -f student.pt ]; then
+            openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass env:STATE_KEY -in student.pt -out pimc_def_student.pt.enc
+            gh release upload checkpoint-latest pimc_def_student.pt.enc --clobber
+          fi
+          if [ -d pimc_def_data ]; then
+            tar cz pimc_def_data | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass env:STATE_KEY -out pimc_def_data.tar.gz.enc
+            gh release upload checkpoint-latest pimc_def_data.tar.gz.enc --clobber
+          fi
