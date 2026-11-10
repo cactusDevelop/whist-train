@@ -104,7 +104,7 @@ jobs:
             mkdir -p pimc_def_data
             for f in shards/data_*.pt; do cp "$f" "pimc_def_data/run${GITHUB_RUN_ID}_$(basename "$f")"; done
             echo "=== eleve ADV (avantage sur la carte ExpertBot, repli expert sous la marge) ==="
-            python -u scripts/distill_def_pimc.py train --data "pimc_def_data/*.pt" --objective adv --lr 1e-3 --epochs 40 --out student.pt
+            python -u scripts/distill_def_pimc.py train --data "pimc_def_data/*.pt" --objective adv --lr 1e-3 --epochs 40 --margins 0,0.5,1,1.5,2,3 --out student.pt
             echo "=== eleve CE (imitation softmax(Q/tau), joue seul) ==="
             python -u scripts/distill_def_pimc.py train --data "pimc_def_data/*.pt" --objective ce --epochs 30 --out student_ce.pt
             SEED="$(( ${GITHUB_RUN_ID} % 1000000007 ))"
