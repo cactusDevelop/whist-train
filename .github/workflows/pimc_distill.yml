@@ -18,6 +18,10 @@ on:
       measure_deals:
         type: string
         default: "200000"
+      rounds:
+        description: "tours DAgger a enchainer apres celui-ci (borne par ci/pimc_distill_stop_at)"
+        type: string
+        default: "0"
 
 permissions:
   contents: write
@@ -127,3 +131,17 @@ jobs:
             tar cz pimc_def_data | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass env:STATE_KEY -out pimc_def_data.tar.gz.enc
             gh release upload checkpoint-latest pimc_def_data.tar.gz.enc --clobber
           fi
+      # Chainage cloud (user 10/11 : le PC doit pouvoir etre eteint) : tour DAgger suivant si rounds > 0,
+      # si l'eleve adv ne perd > 3 SE sur aucun profil, et s'il finit avant ci/pimc_distill_stop_at (UTC).
+      - name: Chain DAgger round
+        if: success() && inputs.rounds != '0' && inputs.rounds != ''
+        run: |
+          STOP=$(cat ci/pimc_distill_stop_at 2>/dev/null || echo 9999)
+          if [[ "$(date -u -d '+210 minutes' +%Y-%m-%dT%H:%M)" > "$STOP" ]]; then echo "arret : stop_at $STOP"; exit 0; fi
+          grep -q PIMC_DISTILL_DONE log-pimc_distill.txt || { echo "mesure incomplete : pas de chainage"; exit 0; }
+          BAD=$(awk '/=== mesure student.pt ===/{f=1;next} /=== mesure/{f=0} f && /^MEASURE/' log-pimc_distill.txt \
+                | grep -oP 'z \K[-+][0-9.]+' | awk '$1 < -3' | wc -l)
+          if [ "$BAD" -gt 0 ]; then echo "eleve adv < -3 SE sur $BAD profil(s) : pas de tour DAgger"; exit 0; fi
+          gh workflow run pimc_distill.yml -f minutes="${{ inputs.minutes }}" -f measure_deals="${{ inputs.measure_deals }}" \
+            -f dagger=true -f rounds="$(( ${{ inputs.rounds }} - 1 ))"
+          echo "tour DAgger lance (rounds restants $(( ${{ inputs.rounds }} - 1 )))"
