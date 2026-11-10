@@ -170,6 +170,7 @@ UNBLOCK_2ND = None  # "decl" / "all" : 2e, coequipier gagnant SUR, <= 2 cartes f
 DEF_LEAD_SEQ_ANY = False  # defense, entame par defaut : tete de sequence d honneurs de N IMPORTE quelle couleur annexe d abord (09/11)
 DEF_LEAD_PASSIVE = False  # defense, entame par defaut : couleur la plus longue SANS honneur (V+) si possible (09/11)
 NO_RUFF_PARTNER_2ND = False  # 2e en renonce, coequipier gagnant non sur : ne pas couper son pli (09/11)
+DEF_NT_KEEP_MASTERS = None  # defense SANS atout en main (contrat a atout) : ne pas encaisser ses maitresses a l entame ; None / "all" / "late" (8 cartes ou moins) / "late_team" (idem, contrats d equipe) -- piste PIMC 10/11 (entame atouts0 pli6+)
 UNBLOCK_LAST = False  # dernier a jouer, coequipier gagnant, on fournit : la plus haute NON maitresse (deblocage) (A/B 09/11)
 DEF_LEAD_SHORT = False  # defense avec atout : entamer aussi un PETIT singleton / doubleton annexe (chercher la coupe) (A/B 09/11)
 THIRD_HAND_CHEAP = False  # 3e, pas de gagnante sure : la plus PETITE gagnante au lieu de la plus forte (A/B 09/11)
@@ -191,7 +192,7 @@ DRAW_STOP_OUTSTANDING = 0  # contrat d'equipe : ne plus tirer quand il reste au 
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
               "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "CASH_BEFORE_DRAW", "LAST_LEAD_MASTER", "DUCK_RUFF_SECOND", "RUFF_RISK_VOID_ONLY", "PARTNER_SUIT_TOP_SHORT", "PARTNER_SUIT_HIGH", "DISCARD_SHORT_WHEN_MATE", "RUFF_HIGH_IF_UNSAFE", "NO_OVERTAKE_POS", "DEF_LEAD_SEQ_ANY", "DEF_LEAD_PASSIVE", "NO_RUFF_PARTNER_2ND", "DECL_LEAD_STRONG", "DISCARD_LONG_TOP", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
               "LEAD_PARTNER_SUIT", "KEEP_TRUMPS_VS_VOID", "DRAW_STOP_OUTSTANDING",
-              "NO_OVERTAKE_POS_SIDE", "DECL_2ND_TAKE_SAFE", "DRAW_NEED_MASTER", "UNBLOCK_2ND")
+              "NO_OVERTAKE_POS_SIDE", "DECL_2ND_TAKE_SAFE", "DRAW_NEED_MASTER", "UNBLOCK_2ND", "DEF_NT_KEEP_MASTERS")
 
 # Profils CONCURRENTS de l'ExpertBot (utilisateur 2026-10-27 : « mets les regles que je viens
 # de te donner en concurrent a l'ExpertBot, pas en remplacement, idem pour toutes les autres
@@ -1158,6 +1159,10 @@ def _lead(v):
         return remaining < len(opps) and any(v.may_hold(o, trump) for o in opps)
 
     masters = [c for c in v.legal if suit_of(c) != trump and v.is_master(c) and not ruff_risk(suit_of(c))]
+    if (DEF_NT_KEEP_MASTERS and not declaring and trump is not None and not my_trumps
+            and (DEF_NT_KEEP_MASTERS == "all" or len(v.hand) <= 8)
+            and (DEF_NT_KEEP_MASTERS != "late_team" or v.team_contract)):
+        masters = []
     if masters:
         return _highest(masters)
 
