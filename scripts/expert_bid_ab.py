@@ -32,11 +32,9 @@ from scripts.expert_bot_match import bot_player, play_out
 from scripts.train import (MEASURE_WHISTED_RATIO, declarer_role_and_seats, describe_contract,
                            dispatch_play_phase2, real_points_by_seat)
 
-VARIANTS = {  # 10/11 A/B 18 (conseil, desaccords PIMC emballage declarant) ; 09/11 A/B 17 NO_RUFF_PARTNER_2ND rejete
-    "A1_depasser_2e_decl": {"NO_OVERTAKE_POS_SIDE": "def"},
-    "A2_prendre_sur_2e_decl": {"DECL_2ND_TAKE_SAFE": True},
-    "A1+A2": {"NO_OVERTAKE_POS_SIDE": "def", "DECL_2ND_TAKE_SAFE": True},
-    "B2_tirer_avec_maitre": {"DRAW_NEED_MASTER": True},
+VARIANTS = {  # 10/11 A/B 19 (conseil : deblocage 2e partenaire sur) ; A/B 18 A1/A2 0 %, B2 -0.159 rejetes
+    "A3_debloquer_2e_decl": {"UNBLOCK_2ND": "decl"},
+    "A3b_debloquer_2e_tous": {"UNBLOCK_2ND": "all"},
 }
 
 def play_deal(hands, dealer, whisted, params_by_seat):

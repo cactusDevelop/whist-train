@@ -162,6 +162,8 @@ NO_OVERTAKE_POS = (2,)  # positions ou l on ne depasse jamais le coequipier gagn
 NO_OVERTAKE_POS_SIDE = None  # "def" : NO_OVERTAKE_POS ne s applique qu en defense (le declarant 2e peut prendre avec une maitresse sure)
 DECL_2ND_TAKE_SAFE = False  # declarant 2e, coequipier gagnant, toutes mes cartes fournies le battent : prendre avec la plus petite SURE, sinon la plus haute
 DRAW_NEED_MASTER = False  # contrat d equipe : ne tirer l atout qu avec un atout maitre en main
+# 10/11 (conseil apres A/B 18 : PIMC PREND en 2e = partenaire SUR -> deblocage) -- A/B, defaut inchange :
+UNBLOCK_2ND = None  # "decl" / "all" : 2e, coequipier gagnant SUR, <= 2 cartes fournies dont une maitresse : jouer la maitresse
 DEF_LEAD_SEQ_ANY = False  # defense, entame par defaut : tete de sequence d honneurs de N IMPORTE quelle couleur annexe d abord (09/11)
 DEF_LEAD_PASSIVE = False  # defense, entame par defaut : couleur la plus longue SANS honneur (V+) si possible (09/11)
 NO_RUFF_PARTNER_2ND = False  # 2e en renonce, coequipier gagnant non sur : ne pas couper son pli (09/11)
@@ -186,7 +188,7 @@ DRAW_STOP_OUTSTANDING = 0  # contrat d'equipe : ne plus tirer quand il reste au 
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
               "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "CASH_BEFORE_DRAW", "LAST_LEAD_MASTER", "DUCK_RUFF_SECOND", "RUFF_RISK_VOID_ONLY", "PARTNER_SUIT_TOP_SHORT", "PARTNER_SUIT_HIGH", "DISCARD_SHORT_WHEN_MATE", "RUFF_HIGH_IF_UNSAFE", "NO_OVERTAKE_POS", "DEF_LEAD_SEQ_ANY", "DEF_LEAD_PASSIVE", "NO_RUFF_PARTNER_2ND", "DECL_LEAD_STRONG", "DISCARD_LONG_TOP", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
               "LEAD_PARTNER_SUIT", "KEEP_TRUMPS_VS_VOID", "DRAW_STOP_OUTSTANDING",
-              "NO_OVERTAKE_POS_SIDE", "DECL_2ND_TAKE_SAFE", "DRAW_NEED_MASTER")
+              "NO_OVERTAKE_POS_SIDE", "DECL_2ND_TAKE_SAFE", "DRAW_NEED_MASTER", "UNBLOCK_2ND")
 
 # Profils CONCURRENTS de l'ExpertBot (utilisateur 2026-10-27 : « mets les regles que je viens
 # de te donner en concurrent a l'ExpertBot, pas en remplacement, idem pour toutes les autres
@@ -994,6 +996,11 @@ def _follow(v):
                     and all(_wins_now(v, c) for c in following)):
                 safe = [c for c in following if _safe_win(v, c, later)]
                 return _lowest(safe) if safe else _highest(following)
+            if (UNBLOCK_2ND and pos == 2 and partner_safe and len(following) <= 2
+                    and (UNBLOCK_2ND == "all" or declaring)):
+                tops = [c for c in following if v.is_master(c)]
+                if tops:
+                    return _highest(tops)
             no_pos = pos in NO_OVERTAKE_POS and not (NO_OVERTAKE_POS_SIDE == "def" and declaring)
             if not partner_safe and not NO_OVERTAKE and not no_pos:
                 masters = [c for c in following if _wins_now(v, c) and _safe_win(v, c, later)]
