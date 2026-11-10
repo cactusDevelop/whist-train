@@ -160,7 +160,7 @@ def main():
                 print("    %-22s n %6d  %+.3f +- %.3f  z %+5.1f  %+.4f/donne" % (
                     k, len(xs), cm, cse, cm / cse if cse else 0.0, sum(xs) / n))
     names = list(VARIANTS)
-    by = {name: [g for o, _b in parts for v, g, _r in o if v == name] for name in names}
+    by = {name: [g for o, _b in parts for v, g, _r, _c in o if v == name] for name in names}
     print("\n=== ecarts apparies (memes donnes) ===")
     for i, a in enumerate(names):
         for b in names[i + 1:]:
