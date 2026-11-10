@@ -103,12 +103,16 @@ jobs:
             cat shards/gen_*.txt
             mkdir -p pimc_def_data
             for f in shards/data_*.pt; do cp "$f" "pimc_def_data/run${GITHUB_RUN_ID}_$(basename "$f")"; done
-            python -u scripts/distill_def_pimc.py train --data "pimc_def_data/*.pt" --out student.pt
-            echo "=== reference : defenseur de best.pt (IA libre), meme mesure ==="
-            python -u scripts/distill_def_pimc.py measure --student checkpoints_free/best.pt --deals 50000 --others expert
-            echo "=== eleve ==="
-            python -u scripts/distill_def_pimc.py measure --student student.pt --deals "${{ inputs.measure_deals }}" \
-              --others expert,joueur_1027,expert_tune1027,joueur_0927 --seed "$(( ${GITHUB_RUN_ID} % 1000000007 ))"
+            echo "=== eleve ADV (avantage sur la carte ExpertBot, repli expert sous la marge) ==="
+            python -u scripts/distill_def_pimc.py train --data "pimc_def_data/*.pt" --objective adv --lr 1e-3 --epochs 40 --out student.pt
+            echo "=== eleve CE (imitation softmax(Q/tau), joue seul) ==="
+            python -u scripts/distill_def_pimc.py train --data "pimc_def_data/*.pt" --objective ce --epochs 30 --out student_ce.pt
+            SEED="$(( ${GITHUB_RUN_ID} % 1000000007 ))"
+            for S in student.pt student_ce.pt; do
+              echo "=== mesure $S ==="
+              python -u scripts/distill_def_pimc.py measure --student "$S" --deals "${{ inputs.measure_deals }}" \
+                --others expert,joueur_1027,expert_tune1027,joueur_0927 --seed "$SEED"
+            done
             echo PIMC_DISTILL_DONE
           } 2>&1 | tee log-pimc_distill.txt
       - name: Save student + data

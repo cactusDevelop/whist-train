@@ -67,9 +67,21 @@ def load_net(path, key=ROLE):
     return net
 
 
-def student_card(net, game, seat):
+def student_card(net, game, seat, margin=None, expert=None):
+    """margin None : argmax du reseau (eleve pur). Sinon (objectif "adv", sorties = avantage predit de chaque
+    carte sur la carte ExpertBot) : la meilleure carte du reseau seulement si son avantage predit sur la carte
+    ExpertBot depasse `margin` points, sinon la carte ExpertBot (repli au niveau de la decision)."""
     obs = torch.tensor(game.observation(seat), dtype=torch.float32)
-    return net.act_greedy(obs, torch.tensor(game.legal_action_mask(seat), dtype=torch.bool))
+    mask = torch.tensor(game.legal_action_mask(seat), dtype=torch.bool)
+    if margin is None:
+        return net.act_greedy(obs, mask)
+    if expert is None:
+        expert = expert_bot.choose_card(game, seat)
+    with torch.no_grad():
+        out, _ = net(obs.unsqueeze(0))
+        out = out.squeeze(0).masked_fill(~mask, -1e9)
+    best = int(out.argmax().item())
+    return best if out[best].item() - out[expert].item() > margin else expert
 
 
 # ---------------------------------------------------------------- gen
@@ -79,6 +91,8 @@ def gen_worker(args):
     torch.set_num_threads(1)
     expert_bot.set_bid_params(dict(expert_bot.PROFILES[others]))
     net = load_net(student_path) if student_path else None
+    margin = (torch.load(student_path, map_location="cpu", weights_only=False).get("meta", {}).get("margin")
+              if student_path else None)
     rng = random.Random(seed)
     play_rng = random.Random(seed + 1)
     chain = DeckChain(MEASURE_WHISTED_RATIO, rng)
@@ -114,7 +128,7 @@ def gen_worker(args):
                             rows.append((list(game.observation(seat)), list(game.legal_action_mask(seat)), qq,
                                          card, sit_key(game, seat, card)))
                     if use_student:
-                        card = student_card(net, game, seat)
+                        card = student_card(net, game, seat, margin, card)
                 game.step(seat, card)
         chain.finish_played(game, dealer, contract["type"])
         deals += 1
@@ -162,10 +176,17 @@ def regret(d, choice):
     return (q.max(1).values - q.gather(1, choice.unsqueeze(1)).squeeze(1))
 
 
-def report(net, d, label):
+def gated_pick(out, d, margin):
+    out = out.masked_fill(~d["mask"], -1e9)
+    best = out.argmax(1)
+    adv = out.gather(1, best.unsqueeze(1)).squeeze(1) - out.gather(1, d["expert"].unsqueeze(1)).squeeze(1)
+    return torch.where(adv > margin, best, d["expert"])
+
+
+def report(net, d, label, margin=None):
     with torch.no_grad():
         logits, _ = net(d["obs"])
-        pick = logits.masked_fill(~d["mask"], -1e9).argmax(1)
+        pick = logits.masked_fill(~d["mask"], -1e9).argmax(1) if margin is None else gated_pick(logits, d, margin)
     q = masked_q(d)
     best = q.max(1).values
     r_net, r_exp = regret(d, pick), regret(d, d["expert"])
@@ -174,6 +195,7 @@ def report(net, d, label):
     se = diff.std().item() / math.sqrt(max(1, n))
     agree = (q.gather(1, pick.unsqueeze(1)).squeeze(1) >= best - 1e-6).float().mean().item()
     agree_e = (q.gather(1, d["expert"].unsqueeze(1)).squeeze(1) >= best - 1e-6).float().mean().item()
+    label = label if margin is None else "%s m%.1f" % (label, margin)
     print("%-6s n %6d | carte PIMC-optimale : eleve %.3f expert %.3f | regret/decision : eleve %.3f expert %.3f"
           " | gain estime %+.3f +- %.3f pts/decision" % (label, n, agree, agree_e, r_net.mean().item(),
                                                          r_exp.mean().item(), diff.mean().item(), se), flush=True)
@@ -190,33 +212,52 @@ def cmd_train(a):
     sub = lambda idx: {**{k: d[k][idx] for k in ("obs", "mask", "q", "expert")}}
     val, tr = sub(vi), sub(ti)
     net = load_net(a.init)
-    report(net, val, "init")
-    target = F.softmax(masked_q(tr) / a.tau, dim=1)
+    adv = a.objective == "adv"
+    margins = [float(x) for x in a.margins.split(",")] if adv else [None]
+    if adv:  # sorties = avantage (points) de chaque carte sur la carte ExpertBot ; tete repartie de zero
+        torch.nn.init.zeros_(net.policy_head.weight)
+        torch.nn.init.zeros_(net.policy_head.bias)
+        target = tr["q"] - tr["q"].gather(1, tr["expert"].unsqueeze(1))
+    else:
+        report(net, val, "init")
+        target = F.softmax(masked_q(tr) / a.tau, dim=1)
     opt = torch.optim.Adam(net.parameters(), lr=a.lr)
-    best_gain, best_state = report(net, val, "ep 0"), {k: v.clone() for k, v in net.state_dict().items()}
+
+    def evaluate(label):
+        gains = {m: report(net, val, label, m) for m in margins}
+        m = max(gains, key=lambda k: gains[k])
+        return gains[m], m
+    (best_gain, best_margin), best_state = evaluate("ep 0"), {k: v.clone() for k, v in net.state_dict().items()}
     for ep in range(1, a.epochs + 1):
         net.train()
         order = torch.randperm(len(ti))
         for i in range(0, len(order), a.batch):
             b = order[i:i + a.batch]
-            logits, _ = net(tr["obs"][b])
-            logp = F.log_softmax(logits.masked_fill(~tr["mask"][b], -1e9), dim=1)
-            loss = -(target[b] * logp).sum(1).mean()
+            out, _ = net(tr["obs"][b])
+            mb = tr["mask"][b]
+            if adv:
+                loss = F.smooth_l1_loss(out[mb], target[b][mb])
+            else:
+                logp = F.log_softmax(out.masked_fill(~mb, -1e9), dim=1)
+                loss = -(target[b] * logp).sum(1).mean()
             opt.zero_grad()
             loss.backward()
             opt.step()
         net.eval()
-        g = report(net, val, "ep %d" % ep)
+        g, m = evaluate("ep %d" % ep)
         if g > best_gain:
-            best_gain, best_state = g, {k: v.clone() for k, v in net.state_dict().items()}
+            best_gain, best_margin, best_state = g, m, {k: v.clone() for k, v in net.state_dict().items()}
     net.load_state_dict(best_state)
-    torch.save({ROLE: net.state_dict(), "meta": {"tau": a.tau, "lr": a.lr, "epochs": a.epochs, "n": n,
-                                                  "val_gain": best_gain}}, a.out)
-    print("TRAIN -> %s (meilleur gain hors echantillon %+.3f pts/decision)" % (a.out, best_gain), flush=True)
+    torch.save({ROLE: net.state_dict(), "meta": {"objective": a.objective, "margin": best_margin, "tau": a.tau,
+                                                  "lr": a.lr, "epochs": a.epochs, "n": n, "val_gain": best_gain}},
+               a.out)
+    print("TRAIN %s -> %s (meilleur gain hors echantillon %+.3f pts/decision, marge %s)" % (
+        a.objective, a.out, best_gain, best_margin), flush=True)
     # par situation (hors echantillon) : ou l'eleve gagne / perd du Q face a l'ExpertBot
     with torch.no_grad():
         logits, _ = net(val["obs"])
-        pick = logits.masked_fill(~val["mask"], -1e9).argmax(1)
+        pick = (logits.masked_fill(~val["mask"], -1e9).argmax(1) if best_margin is None
+                else gated_pick(logits, val, best_margin))
     diff = regret(val, val["expert"]) - regret(val, pick)
     sits = [d["sit"][i] for i in vi.tolist()]
     agg = {}
@@ -236,6 +277,7 @@ def measure_worker(args):
     torch.set_num_threads(1)
     expert_bot.set_bid_params(dict(expert_bot.PROFILES[others]))
     net = load_net(student_path)
+    margin = torch.load(student_path, map_location="cpu", weights_only=False).get("meta", {}).get("margin")
     rng = random.Random(seed)
     chain = DeckChain(MEASURE_WHISTED_RATIO, rng)
     gains, played = [], 0
@@ -259,7 +301,7 @@ def measure_worker(args):
             g = new_game(contract, hands, dealer, bidding, whisted)
             while not g.done:
                 s = g.turn
-                g.step(s, student_card(net, g, s) if s in defense else expert_bot.choose_card(g, s))
+                g.step(s, student_card(net, g, s, margin) if s in defense else expert_bot.choose_card(g, s))
             pb, pv = real_points_by_seat(role, base, contract), real_points_by_seat(role, g, contract)
             gains.append(sum(pv[s] - pb[s] for s in defense) / len(defense))
     return gains, played
@@ -305,6 +347,9 @@ def main():
     t.add_argument("--batch", type=int, default=256)
     t.add_argument("--val", type=float, default=0.15)
     t.add_argument("--seed", type=int, default=0)
+    t.add_argument("--objective", choices=("ce", "adv"), default="ce",
+                   help="ce : imiter softmax(Q/tau) ; adv : predire l avantage sur la carte ExpertBot, repli expert")
+    t.add_argument("--margins", default="0,0.5,1,2", help="adv : marges (points) essayees, la meilleure est gardee")
     m = sp.add_parser("measure")
     m.add_argument("--student", required=True)
     m.add_argument("--deals", type=int, default=100000)
