@@ -33,10 +33,9 @@ from scripts.expert_bot_match import bot_player, play_out
 from scripts.train import (MEASURE_WHISTED_RATIO, declarer_role_and_seats, describe_contract,
                            dispatch_play_phase2, real_points_by_seat)
 
-VARIANTS = {  # 10/11 A/B 24 : piste PIMC vs nouvel ExpertBot -- defense sans atout, entame tardive : garder ses maitresses
-    "DEF_NT_KEEP_all": {"DEF_NT_KEEP_MASTERS": "all"},
-    "DEF_NT_KEEP_late": {"DEF_NT_KEEP_MASTERS": "late"},
-    "DEF_NT_KEEP_late_team": {"DEF_NT_KEEP_MASTERS": "late_team"},
+VARIANTS = {  # 10/11 A/B 25 : piste PIMC (def emballage 2e, adversaire gagne : PIMC joue petit) -- re-test sous placements par camp
+    "SECOND_HAND_LOW_DEF": {"SECOND_HAND_LOW_DEF": True},
+    "SECOND_HAND_LOW_DEF_team": {"SECOND_HAND_LOW_DEF": "team"},
 }
 
 def play_deal(hands, dealer, whisted, params_by_seat):

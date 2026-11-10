@@ -135,7 +135,7 @@ RAISE_CAP = 9  # (tune 40411623914 ; 11 avant) niveau maximal atteint par relanc
 NO_OVERTAKE = False  # coequipier gagnant, on fournit : toujours la plus petite (jamais le depasser)
 RUFF_IF_OPP_LATER = False  # renonce, coequipier gagnant hors atout, un adversaire apres peut couper : couper
 SECOND_HAND_LOW = False  # 2e a jouer, coequipier apres : petite carte meme avec une maitresse
-SECOND_HAND_LOW_DEF = False  # idem, seulement en defense (A/B 09/11, piste PIMC)
+SECOND_HAND_LOW_DEF = False  # idem, seulement en defense (A/B 09/11, piste PIMC) ; "team" = contrats d equipe seulement (A/B 25)
 DISCARD_LONG = True  # defausse sans coupe : dans la couleur la plus LONGUE (garder ses gardes). PROMU 09/11 : A/B duplicate
 # 6 runs +0.128..+0.235 (z 6.7-14.9, 100k donnes : +0.235 +-0.016), gain en defense ; contre les profils concurrents
 # +0.12..+0.21 (run 42575821221). Ancienne regle (couleur la plus courte) = profil "expert_defausse_courte".
@@ -1036,7 +1036,8 @@ def _follow(v):
             return _lowest(following)
         if not later or all(s in mates for s in later):
             return _lowest(win_follow)
-        if ((SECOND_HAND_LOW or (SECOND_HAND_LOW_DEF and v.seat not in v.declarer_side))
+        if ((SECOND_HAND_LOW or (SECOND_HAND_LOW_DEF and v.seat not in v.declarer_side
+                                 and (SECOND_HAND_LOW_DEF != "team" or v.team_contract)))
                 and len(v.current_trick) == 1 and any(s in mates for s in later)):
             return _lowest(following)
         safe = [c for c in win_follow if _safe_win(v, c, later)]
