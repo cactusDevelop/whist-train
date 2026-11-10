@@ -163,6 +163,7 @@ NO_OVERTAKE_POS_SIDE = None  # "def" : NO_OVERTAKE_POS ne s applique qu en defen
 DECL_2ND_TAKE_SAFE = False  # declarant 2e, coequipier gagnant, toutes mes cartes fournies le battent : prendre avec la plus petite SURE, sinon la plus haute
 DRAW_NEED_MASTER = False  # contrat d equipe : ne tirer l atout qu avec un atout maitre en main
 # 10/11 (conseil apres A/B 18 : PIMC PREND en 2e = partenaire SUR -> deblocage) -- A/B, defaut inchange :
+FOLLOW_TRACE = None  # diagnostic 10/11 : dict -> compte les branches "coequipier gagnant, on fournit" (mesure seule)
 UNBLOCK_2ND = None  # "decl" / "all" : 2e, coequipier gagnant SUR, <= 2 cartes fournies dont une maitresse : jouer la maitresse
 DEF_LEAD_SEQ_ANY = False  # defense, entame par defaut : tete de sequence d honneurs de N IMPORTE quelle couleur annexe d abord (09/11)
 DEF_LEAD_PASSIVE = False  # defense, entame par defaut : couleur la plus longue SANS honneur (V+) si possible (09/11)
@@ -996,6 +997,11 @@ def _follow(v):
                     and all(_wins_now(v, c) for c in following)):
                 safe = [c for c in following if _safe_win(v, c, later)]
                 return _lowest(safe) if safe else _highest(following)
+            if FOLLOW_TRACE is not None:
+                k = (v.contract["type"], "decl" if declaring else "def", pos, "sur" if partner_safe else "pas_sur",
+                     "maitre_sure" if any(_wins_now(v, c) and _safe_win(v, c, later) for c in following) else "-",
+                     "gagne" if any(_wins_now(v, c) for c in following) else "-", min(len(following), 3))
+                FOLLOW_TRACE[k] = FOLLOW_TRACE.get(k, 0) + 1
             if (UNBLOCK_2ND and pos == 2 and partner_safe and len(following) <= 2
                     and (UNBLOCK_2ND == "all" or declaring)):
                 tops = [c for c in following if v.is_master(c)]

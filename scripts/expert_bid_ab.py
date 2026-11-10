@@ -17,6 +17,7 @@ Usage : python -u scripts/expert_bid_ab.py --deals 20000 --workers 4
 import argparse
 import math
 import multiprocessing as mp
+import os
 import random
 import sys
 import time
@@ -32,8 +33,8 @@ from scripts.expert_bot_match import bot_player, play_out
 from scripts.train import (MEASURE_WHISTED_RATIO, declarer_role_and_seats, describe_contract,
                            dispatch_play_phase2, real_points_by_seat)
 
-VARIANTS = {  # 10/11 A/B 19 (conseil : deblocage 2e partenaire sur) ; A/B 18 A1/A2 0 %, B2 -0.159 rejetes
-    "A3_debloquer_2e_decl": {"UNBLOCK_2ND": "decl"},
+VARIANTS = {  # 10/11 A/B 19 bis : diagnostic (--trace) ; A3 decl 0 %, A3b +0.00 (solo def seul) ; A/B 18 A1/A2 0 %, B2 rejete
+    "A1_depasser_2e_decl": {"NO_OVERTAKE_POS_SIDE": "def"},
     "A3b_debloquer_2e_tous": {"UNBLOCK_2ND": "all"},
 }
 
@@ -65,6 +66,8 @@ def worker(args):
     seed, n, others = args
     from agents.expert_bot import PROFILES
     other = dict(PROFILES[others])
+    if os.environ.get("FOLLOW_TRACE"):
+        expert_bot.FOLLOW_TRACE = {}
     rng = random.Random(seed)
     chain = DeckChain(MEASURE_WHISTED_RATIO, rng)
     out = []  # (variante, gain, [(cle, ok, essais)] des contrats declares par la variante)
@@ -99,6 +102,9 @@ def worker(args):
             chain.finish_unplayed(hands, dealer)
         else:
             chain.finish_played(bgame, dealer, bc["type"])
+    if expert_bot.FOLLOW_TRACE is not None:  # diagnostic 10/11 : branches "coequipier gagnant, on fournit"
+        for k, c in sorted(expert_bot.FOLLOW_TRACE.items(), key=lambda kv: -kv[1])[:60]:
+            print("TRACE %d %s %d" % (seed, " ".join(map(str, k)), c), flush=True)
     return out, base_rows
 
 
@@ -128,7 +134,10 @@ def main():
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--seed", type=int, default=20261027)
     parser.add_argument("--others", default="expert", help="profil (PROFILES) de la reference et des sieges adverses")
+    parser.add_argument("--trace", action="store_true", help="diagnostic : compte les branches coequipier gagnant (TRACE)")
     args = parser.parse_args()
+    if args.trace:
+        os.environ["FOLLOW_TRACE"] = "1"
     t0 = time.time()
     per = args.deals // args.workers
     with mp.Pool(args.workers) as pool:
