@@ -156,11 +156,13 @@ PARTNER_SUIT_HIGH = True  # defense, couleur du coequipier : la plus haute (hors
 # A/B +0.075 z 5.5 contre ExpertBot (60k) ; contre joueur_1027 / expert_tune1027 +0.001 / +0.014 (<= 1 % des donnes changent).
 DISCARD_SHORT_WHEN_MATE = False  # coequipier gagnant le pli : defausse COURTE (se mettre en renom), sinon longue (09/11)
 RUFF_HIGH_IF_UNSAFE = False  # aucune coupe sure : couper avec le plus HAUT atout gagnant (eviter la surcoupe) (09/11)
-NO_OVERTAKE_POS = (2,)  # positions ou l on ne depasse jamais le coequipier gagnant en fournissant. PROMU 09/11 (2e, piste
+NO_OVERTAKE_POS = ()  # positions ou l on ne depasse jamais le coequipier gagnant en fournissant. PROMU 09/11 (2e, piste
 # PIMC) : A/B +0.062 z 7.5 (80k), +0.016..+0.068 contre 3 profils (42593678581) ; en 3e -0.30 (rejete).
+# 10/11 RETIRE (() ) : promu sous placements biaises (0,2)/(1,3) (declarants voisins = gain nul). Placements par camp :
+# () +1.31 z 32 (A/B 21 42839891548) et +1.34 z 32 (A/B 22 42842339940) vs ExpertBot, + contre les 3 profils.
 # 10/11 (conseil, desaccords PIMC emballage declarant, 2 runs 42773665572/42773670239) -- A/B, defauts inchanges :
 NO_OVERTAKE_POS_SIDE = None  # "def" : NO_OVERTAKE_POS ne s applique qu en defense (le declarant 2e peut prendre avec une maitresse sure)
-DECL_2ND_TAKE_SAFE = False  # declarant 2e, coequipier gagnant, toutes mes cartes fournies le battent : prendre avec la plus petite SURE, sinon la plus haute
+DECL_2ND_TAKE_SAFE = True  # PROMU 10/11 (A/B 22 : +0.125 z 9.7 sur NO_OVERTAKE_POS=(), + contre 4 profils) ; declarant 2e, coequipier gagnant, toutes mes cartes fournies le battent : prendre avec la plus petite SURE, sinon la plus haute
 DRAW_NEED_MASTER = False  # contrat d equipe : ne tirer l atout qu avec un atout maitre en main
 # 10/11 (conseil apres A/B 18 : PIMC PREND en 2e = partenaire SUR -> deblocage) -- A/B, defaut inchange :
 FOLLOW_TRACE = None  # diagnostic 10/11 : dict -> compte les branches "coequipier gagnant, on fournit" (mesure seule)
