@@ -277,14 +277,17 @@ GATE_Z = 2.0
 GATE_PATIENCE = 4
 
 
-def gate(pool, cand, champ, workers, matches, it):
+def gate(pool, cand, champ, workers, matches, it, extra=0):
     # 08/11 (conseil) : `it` repart de 0 a chaque nouvelle empreinte -> decalage par empreinte,
     # pour ne pas rejouer les memes matchs de porte d'une grille de regles a l'autre (reste dans 30M..50M)
     shift = int(J.JOKER_SPEC_HASH[:8], 16) % 1999
-    seeds = [GATE_SEED + ((shift + it) % 1999) * GATE_STRIDE + i for i in range(matches)]
-    chunks = [seeds[i::workers] for i in range(workers)]
-    rows = [r for part in pool.map(policies_worker, [(c, [(cand, None), (champ, None)]) for c in chunks])
-            for r in part]
+    base = GATE_SEED + ((shift + it) % 1999) * GATE_STRIDE
+    seeds = [base + i for i in range(matches)]
+
+    def play(sd):
+        return [r for part in pool.map(policies_worker, [(sd[i::workers], [(cand, None), (champ, None)])
+                                                         for i in range(workers)]) for r in part]
+    rows = play(seeds)
     by_kind = {}
     for _s, cfg, res in rows:
         by_kind.setdefault(cfg.get("boss") or "elite_acte%d" % cfg["act"], []).append(res[0][0] - res[2][0])
@@ -300,6 +303,16 @@ def gate(pool, cand, champ, workers, matches, it):
                                     for j in J.CASTABLE} for k, who in ((0, "candidat"), (1, "champion"))}}
     m, se = ev["vs_champion"]
     ev["accepted"] = m > 0 and m > GATE_Z * se
+    # 09/11 (conseil) : porte a deux temps, comme les cartes. Positif sous le bruit -> `extra` matchs
+    # NEUFS (meme bloc de graines, apres les `matches` premiers ; extra + matches < GATE_STRIDE) ;
+    # decision sur ces seuls matchs neufs (le 1er regard a servi a choisir, il est biaise vers le haut).
+    if not ev["accepted"] and m > 0 and extra > 0:
+        more = play([base + matches + i for i in range(extra)])
+        m2, se2 = _stat([res[0][0] - res[1][0] for _s, _c, res in more])
+        ev["second_look"] = [m2, se2, extra]
+        ev["accepted"] = m2 > 0 and m2 > GATE_Z * se2
+        print("porte 2e regard : %+.2f +- %.2f sur %d matchs neufs -> %s" % (
+            m2, GATE_Z * se2, extra, "ACCEPTE" if ev["accepted"] else "refuse"), flush=True)
     return ev
 
 
@@ -374,6 +387,10 @@ def main():
     parser.add_argument("--eval-matches", type=int, default=EVAL_MATCHES, help="(compare_jokers_oos, audits)")
     parser.add_argument("--gate-matches", type=int, default=GATE_MATCHES,
                         help="matchs neufs de la porte du champion par iteration")
+    parser.add_argument("--gate-extra-matches", type=int, default=0,
+                        help="porte a deux temps : matchs neufs si positif sous le bruit (0 = sans)")
+    parser.add_argument("--avg", type=float, default=0.0,
+                        help="moyenne exponentielle des poids proposee a la porte (0 = reseau brut, ex. 0.7)")
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--epochs", type=int, default=6, help="passes sur les donnees a chaque iteration (0 = reseau inchange)")
     parser.add_argument("--seed", type=int, default=1)
@@ -451,6 +468,7 @@ def main():
             args.init, ckpt.get("spec_hash"), ckpt["iter"]), flush=True)
     data = []
     refused = 0
+    avg_sd = [None]
     t0 = time.time()
     with mp.Pool(args.workers) as pool:
         it = start_it
@@ -476,11 +494,26 @@ def main():
             main._sizes = sizes
             data = (data + new)[-sum(sizes):]  # les REPLAY_ITERS dernieres iterations
             loss = fit(net, data, epochs=args.epochs, lr=args.lr) if args.epochs > 0 else 0.0
-            weights = net_to_numpy(net)
-            ev = gate(pool, weights, champ["w"], args.workers, args.gate_matches, it)
-            ev["gate"] = {"champion_iter": champ["iter"], "accepted": ev.pop("accepted"), "z": GATE_Z}
+            # 09/11 (conseil) : candidat = moyenne exponentielle des poids depuis la derniere remise au
+            # champion (lisse le bruit des cibles) ; le reseau brut continue d'apprendre.
+            if args.avg > 0:
+                raw = net.state_dict()
+                if avg_sd[0] is None:
+                    avg_sd[0] = copy.deepcopy(raw)
+                else:
+                    for k, v in raw.items():
+                        if v.is_floating_point():
+                            avg_sd[0][k].mul_(args.avg).add_(v, alpha=1 - args.avg)
+                cand_net = PolicyValueNet(O.OBS_DIM, J.ACTION_DIM)
+                cand_net.load_state_dict(avg_sd[0])
+            else:
+                cand_net = net
+            weights = net_to_numpy(cand_net)
+            ev = gate(pool, weights, champ["w"], args.workers, args.gate_matches, it, args.gate_extra_matches)
+            ev["gate"] = {"champion_iter": champ["iter"], "accepted": ev.pop("accepted"), "z": GATE_Z,
+                          "avg": args.avg}
             if ev["gate"]["accepted"]:
-                set_champion(net.state_dict(), it, ev)
+                set_champion(cand_net.state_dict(), it, ev)
                 safe_save(champion_payload(), CHECKPOINT)
                 refused = 0
             else:
@@ -500,6 +533,7 @@ def main():
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")
             if refused >= GATE_PATIENCE and champ["sd"] is not None:
                 net.load_state_dict(champ["sd"])  # le reseau derive sans battre le champion : on repart de lui
+                avg_sd[0] = None
                 refused = 0
                 print("%d refus d'affilee : reseau remis au champion (iteration %s)" % (GATE_PATIENCE, champ["iter"]),
                       flush=True)

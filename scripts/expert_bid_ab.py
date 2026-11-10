@@ -32,8 +32,11 @@ from scripts.expert_bot_match import bot_player, play_out
 from scripts.train import (MEASURE_WHISTED_RATIO, declarer_role_and_seats, describe_contract,
                            dispatch_play_phase2, real_points_by_seat)
 
-VARIANTS = {  # 09/11 A/B 17 : NO_RUFF_PARTNER_2ND -0.011 z -1.7 (42596921310), rejete
-    "pas_couper_coequipier_2e": {"NO_RUFF_PARTNER_2ND": True},
+VARIANTS = {  # 10/11 A/B 18 (conseil, desaccords PIMC emballage declarant) ; 09/11 A/B 17 NO_RUFF_PARTNER_2ND rejete
+    "A1_depasser_2e_decl": {"NO_OVERTAKE_POS_SIDE": "def"},
+    "A2_prendre_sur_2e_decl": {"DECL_2ND_TAKE_SAFE": True},
+    "A1+A2": {"NO_OVERTAKE_POS_SIDE": "def", "DECL_2ND_TAKE_SAFE": True},
+    "B2_tirer_avec_maitre": {"DRAW_NEED_MASTER": True},
 }
 
 def play_deal(hands, dealer, whisted, params_by_seat):
@@ -79,16 +82,21 @@ def worker(args):
         for name, params in VARIANTS.items():
             gain = 0.0
             rows = []
+            cells = []  # 10/11 : (contrat de reference|camp des sieges variante, gain du placement)
             for seats in ((0, 2), (1, 3)):
                 pbs = [{**other, **params} if s in seats else other for s in range(4)]
                 pts, c, game = play_deal(hands, dealer, whisted, pbs)
-                gain += sum(pts[s] - base[s] for s in seats)
+                g = sum(pts[s] - base[s] for s in seats)
+                gain += g
+                if bc is not None:
+                    _r, bdecl = declarer_role_and_seats(bc)
+                    cells.append(("%s|%s" % (bc["type"], "decl" if bdecl & set(seats) else "def"), g))
                 if c is not None:
                     _r, decl = declarer_role_and_seats(c)
                     if decl & set(seats):
                         oks = declarer_successes(c, game, decl)
                         rows.append((describe_contract(c), c["type"], sum(oks), len(oks)))
-            out.append((name, gain, rows))
+            out.append((name, gain, rows, cells))
         if bgame is None:
             chain.finish_unplayed(hands, dealer)
         else:
@@ -131,13 +139,26 @@ def main():
     print("=== A/B encheres ExpertBot : %d donnes, %d variantes, %.0fs ===" % (n, len(VARIANTS), time.time() - t0))
     table([r for _o, b in parts for r in b], n, "reference (4 sieges)")
     for name, params in VARIANTS.items():
-        gains = [g for o, _b in parts for v, g, _r in o if v == name]
-        rows = [r for o, _b in parts for v, _g, rs in o if v == name for r in rs]
+        gains = [g for o, _b in parts for v, g, _r, _c in o if v == name]
+        rows = [r for o, _b in parts for v, _g, rs, _c in o if v == name for r in rs]
+        cells = {}
+        for o, _b in parts:
+            for v, _g, _r, cs in o:
+                if v == name:
+                    for k, g in cs:
+                        cells.setdefault(k, []).append(g)
         changed = sum(1 for g in gains if g != 0)
         m, se = stat(gains)
         print("\n%s %s : gain %+.3f +- %.3f pts/donne (z %.1f), donnes changees %.1f%%"
               % (name, params, m, se, m / se if se else 0.0, 100 * changed / len(gains)))
         table(rows, n, "variante (sieges variante, 2 placements)")
+        print("  gain par contrat de reference | camp des sieges variante (pts par placement, z ; contribution/donne)")
+        for k in sorted(cells, key=lambda k: -len(cells[k])):
+            xs = cells[k]
+            if len(xs) >= 2:
+                cm, cse = stat(xs)
+                print("    %-22s n %6d  %+.3f +- %.3f  z %+5.1f  %+.4f/donne" % (
+                    k, len(xs), cm, cse, cm / cse if cse else 0.0, sum(xs) / n))
     names = list(VARIANTS)
     by = {name: [g for o, _b in parts for v, g, _r in o if v == name] for name in names}
     print("\n=== ecarts apparies (memes donnes) ===")

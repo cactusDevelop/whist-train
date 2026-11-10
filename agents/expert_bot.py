@@ -158,6 +158,10 @@ DISCARD_SHORT_WHEN_MATE = False  # coequipier gagnant le pli : defausse COURTE (
 RUFF_HIGH_IF_UNSAFE = False  # aucune coupe sure : couper avec le plus HAUT atout gagnant (eviter la surcoupe) (09/11)
 NO_OVERTAKE_POS = (2,)  # positions ou l on ne depasse jamais le coequipier gagnant en fournissant. PROMU 09/11 (2e, piste
 # PIMC) : A/B +0.062 z 7.5 (80k), +0.016..+0.068 contre 3 profils (42593678581) ; en 3e -0.30 (rejete).
+# 10/11 (conseil, desaccords PIMC emballage declarant, 2 runs 42773665572/42773670239) -- A/B, defauts inchanges :
+NO_OVERTAKE_POS_SIDE = None  # "def" : NO_OVERTAKE_POS ne s applique qu en defense (le declarant 2e peut prendre avec une maitresse sure)
+DECL_2ND_TAKE_SAFE = False  # declarant 2e, coequipier gagnant, toutes mes cartes fournies le battent : prendre avec la plus petite SURE, sinon la plus haute
+DRAW_NEED_MASTER = False  # contrat d equipe : ne tirer l atout qu avec un atout maitre en main
 DEF_LEAD_SEQ_ANY = False  # defense, entame par defaut : tete de sequence d honneurs de N IMPORTE quelle couleur annexe d abord (09/11)
 DEF_LEAD_PASSIVE = False  # defense, entame par defaut : couleur la plus longue SANS honneur (V+) si possible (09/11)
 NO_RUFF_PARTNER_2ND = False  # 2e en renonce, coequipier gagnant non sur : ne pas couper son pli (09/11)
@@ -181,7 +185,8 @@ KEEP_TRUMPS_VS_VOID = True  # adversaires sans atout : encaisser ses maitresses 
 DRAW_STOP_OUTSTANDING = 0  # contrat d'equipe : ne plus tirer quand il reste au plus ce nombre d'atouts adverses
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
               "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "CASH_BEFORE_DRAW", "LAST_LEAD_MASTER", "DUCK_RUFF_SECOND", "RUFF_RISK_VOID_ONLY", "PARTNER_SUIT_TOP_SHORT", "PARTNER_SUIT_HIGH", "DISCARD_SHORT_WHEN_MATE", "RUFF_HIGH_IF_UNSAFE", "NO_OVERTAKE_POS", "DEF_LEAD_SEQ_ANY", "DEF_LEAD_PASSIVE", "NO_RUFF_PARTNER_2ND", "DECL_LEAD_STRONG", "DISCARD_LONG_TOP", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
-              "LEAD_PARTNER_SUIT", "KEEP_TRUMPS_VS_VOID", "DRAW_STOP_OUTSTANDING")
+              "LEAD_PARTNER_SUIT", "KEEP_TRUMPS_VS_VOID", "DRAW_STOP_OUTSTANDING",
+              "NO_OVERTAKE_POS_SIDE", "DECL_2ND_TAKE_SAFE", "DRAW_NEED_MASTER")
 
 # Profils CONCURRENTS de l'ExpertBot (utilisateur 2026-10-27 : « mets les regles que je viens
 # de te donner en concurrent a l'ExpertBot, pas en remplacement, idem pour toutes les autres
@@ -983,7 +988,14 @@ def _follow(v):
                 s not in mates and not v.void[s][v.trump] and v.unseen_in(v.trump) for s in later):
             partner_safe = False
         if following:
-            if not partner_safe and not NO_OVERTAKE and len(v.current_trick) + 1 not in NO_OVERTAKE_POS:
+            pos = len(v.current_trick) + 1
+            declaring = v.seat in v.declarer_side
+            if (DECL_2ND_TAKE_SAFE and declaring and pos == 2 and not partner_safe
+                    and all(_wins_now(v, c) for c in following)):
+                safe = [c for c in following if _safe_win(v, c, later)]
+                return _lowest(safe) if safe else _highest(following)
+            no_pos = pos in NO_OVERTAKE_POS and not (NO_OVERTAKE_POS_SIDE == "def" and declaring)
+            if not partner_safe and not NO_OVERTAKE and not no_pos:
                 masters = [c for c in following if _wins_now(v, c) and _safe_win(v, c, later)]
                 if masters:
                     return _lowest(masters)
@@ -1081,11 +1093,13 @@ def _lead(v):
                 keep_drawing = False
         else:  # solo : 3 adversaires, tirer tant que 2+ peuvent encore en avoir
             keep_drawing = outstanding > 0 and len(opps_with_trumps) >= (1 if SOLO_DRAW_ALL else 2)
+        masters = [c for c in my_trumps if v.is_master(c)]
+        if keep_drawing and DRAW_NEED_MASTER and v.team_contract and not masters:
+            keep_drawing = False
         if keep_drawing:
-            masters = [c for c in my_trumps if v.is_master(c)]
             if masters:
                 return _highest(masters)
-            if CASH_BEFORE_DRAW:
+            if CASH_BEFORE_DRAW and (CASH_BEFORE_DRAW != "team" or v.team_contract):
                 side_masters = [c for c in v.legal if suit_of(c) != trump and v.is_master(c)
                                 and not any(v.may_ruff(o, suit_of(c)) for o in opps)]
                 if side_masters:
