@@ -33,10 +33,11 @@ from scripts.expert_bot_match import bot_player, play_out
 from scripts.train import (MEASURE_WHISTED_RATIO, declarer_role_and_seats, describe_contract,
                            dispatch_play_phase2, real_points_by_seat)
 
-VARIANTS = {  # 10/11 A/B 21 confirmation graines neuves ; A/B 20 (placements par camp) : A1 +0.90 z 27 (4 profils +), A2 +0.69, A3/A3b rejetes
-    "A1_depasser_2e_decl": {"NO_OVERTAKE_POS_SIDE": "def"},
-    "A1+A2": {"NO_OVERTAKE_POS_SIDE": "def", "DECL_2ND_TAKE_SAFE": True},
+VARIANTS = {  # 10/11 A/B 22 ; A/B 21 (graines neuves) : NO_OVERTAKE_POS=() +1.31 z 32 (4 profils, meilleur), A1 +0.81, A1+A2 +0.90
     "sans_NO_OVERTAKE_POS": {"NO_OVERTAKE_POS": ()},
+    "sans_NOP+A2": {"NO_OVERTAKE_POS": (), "DECL_2ND_TAKE_SAFE": True},
+    "sans_NOP+ruff_risk_None": {"NO_OVERTAKE_POS": (), "RUFF_RISK_VOID_ONLY": None},
+    "sans_NOP+partner_suit_high_off": {"NO_OVERTAKE_POS": (), "PARTNER_SUIT_HIGH": False},
 }
 
 def play_deal(hands, dealer, whisted, params_by_seat):
