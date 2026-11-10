@@ -33,8 +33,10 @@ from scripts.expert_bot_match import bot_player, play_out
 from scripts.train import (MEASURE_WHISTED_RATIO, declarer_role_and_seats, describe_contract,
                            dispatch_play_phase2, real_points_by_seat)
 
-VARIANTS = {  # 10/11 A/B 19 bis : diagnostic (--trace) ; A3 decl 0 %, A3b +0.00 (solo def seul) ; A/B 18 A1/A2 0 %, B2 rejete
+VARIANTS = {  # 10/11 A/B 20 : placements par camp ; A/B 18-19 rejoues (A1/A2/A3 = 0 % par artefact de placement)
     "A1_depasser_2e_decl": {"NO_OVERTAKE_POS_SIDE": "def"},
+    "A2_prendre_sur_2e_decl": {"DECL_2ND_TAKE_SAFE": True},
+    "A3_debloquer_2e_decl": {"UNBLOCK_2ND": "decl"},
     "A3b_debloquer_2e_tous": {"UNBLOCK_2ND": "all"},
 }
 
@@ -84,7 +86,14 @@ def worker(args):
             gain = 0.0
             rows = []
             cells = []  # 10/11 : (contrat de reference|camp des sieges variante, gain du placement)
-            for seats in ((0, 2), (1, 3)):
+            # 10/11 : placements = VRAIS camps du contrat de reference (avant : (0,2)/(1,3) -> declarants voisins
+            # = 1 declarant + 1 defenseur par placement, gain nul par construction ; A1/A2/A3 "0 %" = artefact)
+            if bc is not None:
+                _r, bdecl0 = declarer_role_and_seats(bc)
+                placements = (tuple(sorted(bdecl0)), tuple(s for s in range(4) if s not in bdecl0))
+            else:
+                placements = ((0, 2), (1, 3))
+            for seats in placements:
                 pbs = [{**other, **params} if s in seats else other for s in range(4)]
                 pts, c, game = play_deal(hands, dealer, whisted, pbs)
                 g = sum(pts[s] - base[s] for s in seats)
