@@ -208,9 +208,15 @@ PLAYER_FORCE = {}
 PLAYER_TRACE = None
 
 
+# 10/11 : inversions GARDEES par la recherche joueur x10 (run 42715037631, confirmation sur
+# 8000 matchs neufs) : main_lourde:pioche +0.40 +- 0.18 (2182 touches), dette_de_jeu:pas_sur
+# +0.04 +- 0.02 (111 touches). JOUEUR seul, bots inchanges (pas de port Godot).
+PLAYER_KEPT = {"main_lourde:pioche": YES, "dette_de_jeu:pas_sur": YES}
+
+
 def player_rule(v, jid):
     verdict, rid = rule(v, jid)
-    return PLAYER_FORCE.get(rid, verdict), rid
+    return PLAYER_FORCE.get(rid, PLAYER_KEPT.get(rid, verdict)), rid
 
 
 def rule(v, jid):
