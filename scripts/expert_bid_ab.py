@@ -33,10 +33,21 @@ from scripts.expert_bot_match import bot_player, play_out
 from scripts.train import (MEASURE_WHISTED_RATIO, declarer_role_and_seats, describe_contract,
                            dispatch_play_phase2, real_points_by_seat)
 
-VARIANTS = {  # 10/11 A/B 25 : piste PIMC (def emballage 2e, adversaire gagne : PIMC joue petit) -- re-test sous placements par camp
-    "SECOND_HAND_LOW_DEF": {"SECOND_HAND_LOW_DEF": True},
-    "SECOND_HAND_LOW_DEF_team": {"SECOND_HAND_LOW_DEF": "team"},
+VARIANTS = {  # 11/11 A/B 26 (11e conseil) : re-audit des knobs d ENCHERES, variante sur UN siege (4 rotations)
+    "IDENTITE": {},  # controle : doit donner exactement 0
+    "SOLO_MARGIN_-1": {"SOLO_MARGIN": -1},
+    "SOLO_MARGIN_+1": {"SOLO_MARGIN": 1},
+    "RAISE_MARGIN_-1": {"RAISE_MARGIN": -1},
+    "RAISE_MARGIN_+1": {"RAISE_MARGIN": 1},
+    "RAISE_CAP_10": {"RAISE_CAP": 10},
+    "RAISE_CAP_11": {"RAISE_CAP": 11},
+    "RAISE_CAP_8": {"RAISE_CAP": 8},
 }
+# 11/11 (11e conseil, critique) : pour un knob d ENCHERES, placer la variante sur les camps du contrat de
+# reference est mal pose (la variante change le contrat ; pas de partenaires fixes au whist ; repli (0,2)/(1,3)
+# sur les passes generales). SEATS=single : variante sur un seul siege, 4 rotations, gain = points de ce siege
+# - reference ; cellules = contrat JOUE par la variante | camp du siege variante.
+SEATS = os.environ.get("AB_SEATS", "single")
 
 def play_deal(hands, dealer, whisted, params_by_seat):
     """-> (points des 4 sieges, contrat ou None, jeu ou None)."""
@@ -86,7 +97,9 @@ def worker(args):
             cells = []  # 10/11 : (contrat de reference|camp des sieges variante, gain du placement)
             # 10/11 : placements = VRAIS camps du contrat de reference (avant : (0,2)/(1,3) -> declarants voisins
             # = 1 declarant + 1 defenseur par placement, gain nul par construction ; A1/A2/A3 "0 %" = artefact)
-            if bc is not None:
+            if SEATS == "single":
+                placements = ((0,), (1,), (2,), (3,))
+            elif bc is not None:
                 _r, bdecl0 = declarer_role_and_seats(bc)
                 placements = (tuple(sorted(bdecl0)), tuple(s for s in range(4) if s not in bdecl0))
             else:
@@ -96,7 +109,13 @@ def worker(args):
                 pts, c, game = play_deal(hands, dealer, whisted, pbs)
                 g = sum(pts[s] - base[s] for s in seats)
                 gain += g
-                if bc is not None:
+                if SEATS == "single":
+                    if c is None:
+                        cells.append(("passe generale", g))
+                    else:
+                        _r, vdecl = declarer_role_and_seats(c)
+                        cells.append(("%s|%s" % (c["type"], "decl" if vdecl & set(seats) else "def"), g))
+                elif bc is not None:
                     _r, bdecl = declarer_role_and_seats(bc)
                     cells.append(("%s|%s" % (bc["type"], "decl" if bdecl & set(seats) else "def"), g))
                 if c is not None:
@@ -165,8 +184,8 @@ def main():
         m, se = stat(gains)
         print("\n%s %s : gain %+.3f +- %.3f pts/donne (z %.1f), donnes changees %.1f%%"
               % (name, params, m, se, m / se if se else 0.0, 100 * changed / len(gains)))
-        table(rows, n, "variante (sieges variante, 2 placements)")
-        print("  gain par contrat de reference | camp des sieges variante (pts par placement, z ; contribution/donne)")
+        table(rows, n, "variante (sieges variante, %s)" % ("4 rotations 1 siege" if SEATS == "single" else "2 placements"))
+        print("  gain par contrat (%s) | camp" % ("JOUE par la variante" if SEATS == "single" else "de reference") + "  des sieges variante (pts par placement, z ; contribution/donne)")
         for k in sorted(cells, key=lambda k: -len(cells[k])):
             xs = cells[k]
             if len(xs) >= 2:
