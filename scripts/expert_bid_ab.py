@@ -33,7 +33,8 @@ from scripts.expert_bot_match import bot_player, play_out
 from scripts.train import (MEASURE_WHISTED_RATIO, declarer_role_and_seats, describe_contract,
                            dispatch_play_phase2, real_points_by_seat)
 
-VARIANTS = {  # 12/11 A/B 27 : marges CIBLEES sur les releves fatals du bid_audit 43070138406 (A/B 26 globaux rejetes)
+VARIANT_SETS = {}
+VARIANT_SETS["a27"] = {  # 12/11 A/B 27 : marges CIBLEES sur les releves fatals du bid_audit 43070138406 (A/B 26 globaux rejetes)
     "IDENTITE": {},  # controle : doit donner exactement 0
     "EMB9_+1": {"RAISE_MARGIN_AT": {("emballage", 9): 1}},
     "EMB9PLUS_+1": {"RAISE_MARGIN_AT": {("emballage", 9): 1, ("emballage", 10): 1, ("emballage", 11): 1}},
@@ -43,6 +44,19 @@ VARIANTS = {  # 12/11 A/B 27 : marges CIBLEES sur les releves fatals du bid_audi
     "SOLO_ENTREE8_+1": {"SOLO_MARGIN_AT": {8: 1}},
     "EMB9_SOLO78_+1": {"RAISE_MARGIN_AT": {("emballage", 9): 1, ("solo", 7): 1, ("solo", 8): 1}},
 }
+VARIANT_SETS["a28"] = {  # 12/11 A/B 28 : seuils d'ENTREE et hypotheses de partenaire (jamais mesures en placement 1 siege)
+    "IDENTITE": {},
+    "EMBALLER_MIN_-1": {"EMBALLER_MIN": 3},
+    "EMBALLER_MIN_+1": {"EMBALLER_MIN": 5},
+    "SOLO_MIN_-1": {"SOLO_MIN": 5},
+    "SOLO_MIN_+1": {"SOLO_MIN": 7},
+    "PROPOSER_ASSUMED_-1": {"PROPOSER_ASSUMED": 6},
+    "PROPOSER_ASSUMED_+1": {"PROPOSER_ASSUMED": 8},
+    "EMBALLER_ASSUMED_-1": {"EMBALLER_ASSUMED": 1},
+    "EMBALLER_ASSUMED_+1": {"EMBALLER_ASSUMED": 3},
+}
+# AB_SET (env, herite par les workers) : jeu de variantes ; defaut a27
+VARIANTS = VARIANT_SETS[os.environ.get("AB_SET", "a27")]
 # 11/11 (11e conseil, critique) : pour un knob d ENCHERES, placer la variante sur les camps du contrat de
 # reference est mal pose (la variante change le contrat ; pas de partenaires fixes au whist ; repli (0,2)/(1,3)
 # sur les passes generales). SEATS=single : variante sur un seul siege, 4 rotations, gain = points de ce siege
