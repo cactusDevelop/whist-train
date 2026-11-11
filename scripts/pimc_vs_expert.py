@@ -13,6 +13,16 @@ Gain = points moyens par siege PIMC (variante - base), meme donne.
 Sort aussi les situations ou PIMC s'ecarte d'ExpertBot (pistes de regles).
 
 Usage : python -u scripts/pimc_vs_expert.py --minutes 60 --workers 4 --samples 8
+
+--oracle (10e conseil 11/11, apres l'echec de la distillation) : DEFENSE
+D'EMBALLAGE seule, par profil adverse (--others, expert_bot.PROFILES), avec
+deux variantes sur la meme donne :
+  def  : PIMC a toutes les decisions de defense (plafond) ;
+  trig : PIMC seulement quand le pli est entame et que l'adversaire le gagne
+         (fournir/renoncer en 2e-4e : la ou l'eleve perdait le plus) ;
+         ExpertBot ailleurs.
+Si ni def ni trig ne gagne > 3 SE sur les profils -> piste PIMC close,
+pivot encheres. Sinon : extraire des regles des ecarts (trig) -> ExpertBot.
 """
 
 import argparse
@@ -27,10 +37,11 @@ sys.path.insert(0, ".")
 from agents import expert_bot
 from agents.rollouts import dds_values
 from engine import dds
-from engine.cards import NUM_PLAYERS, suit_of
+from engine.cards import NUM_PLAYERS, suit_of, trick_winner
 from engine.whisted import DeckChain
 from scripts.expert_bot_match import run_bot_bidding
 from scripts.expert_play_audit import card_txt, describe, situation
+from scripts.team_errors import teammates
 from scripts.train import MEASURE_WHISTED_RATIO, declarer_role_and_seats, dispatch_play_phase2, real_points_by_seat
 
 
@@ -38,14 +49,21 @@ def new_game(contract, hands, dealer, bidding, whisted):
     return dispatch_play_phase2(contract, [list(h) for h in hands], dealer, bidding.bid_summary, whisted)
 
 
-def play(game, pimc_seats, score_fn, rng, samples, diffs):
-    """Joue la donne ; `pimc_seats` jouent PIMC. -> nombre de decisions PIMC."""
+def adv_wins_trick(game, seat):
+    """Pli entame et gagne (pour l'instant) par un adversaire de `seat`."""
+    trick = game.current_trick
+    return bool(trick) and trick_winner(trick, game.trump_suit) not in teammates(game, seat)
+
+
+def play(game, pimc_seats, score_fn, rng, samples, diffs, trigger=None):
+    """Joue la donne ; `pimc_seats` jouent PIMC (seulement si trigger(game, seat) quand il est donne).
+    -> nombre de decisions PIMC."""
     n = 0
     while not game.done:
         seat = game.turn
         card = expert_bot.choose_card(game, seat)
         trou_lead = getattr(game, "trou_pending", lambda: False)() and seat == game.partner
-        if seat in pimc_seats and not trou_lead:  # l'entame du bouche-trou fixe le Trou (regle) : jamais PIMC
+        if seat in pimc_seats and not trou_lead and (trigger is None or trigger(game, seat)):  # l'entame du bouche-trou fixe le Trou (regle) : jamais PIMC
             legal = [c for c, ok in enumerate(game.legal_action_mask(seat)) if ok]
             if len(legal) > 1 and game.trump_suit is not None and dds.supported(game):
                 q = dds_values(game, seat, legal, score_fn, rng, samples)
@@ -113,6 +131,66 @@ def worker(args):
     return rows, diffs
 
 
+def oracle_worker(args):
+    """--oracle : defense d'emballage, variantes def (PIMC partout) et trig (PIMC si l'adversaire gagne le pli)."""
+    seed, samples, deadline, others = args
+    expert_bot.set_bid_params(dict(expert_bot.PROFILES[others]))
+    rng = random.Random(seed)
+    play_rng = random.Random(seed + 1)
+    chain = DeckChain(MEASURE_WHISTED_RATIO, rng)
+    rows = []  # (variante, "emballage", gain moyen par siege defenseur, decisions PIMC)
+    diffs = {"def": [], "trig": []}
+    while time.time() < deadline:
+        hands, dealer, whisted = chain.deal(rng)
+        bidding = run_bot_bidding(hands, dealer)
+        if bidding.general_pass:
+            chain.finish_unplayed(hands, dealer)
+            continue
+        contract = bidding.locked_contract
+        role, _decl = declarer_role_and_seats(contract)
+        base = new_game(contract, hands, dealer, bidding, whisted)
+        play(base, (), None, play_rng, samples, [])
+        chain.finish_played(base, dealer, contract["type"])
+        if contract["type"] != "emballage" or base.trump_suit is None:
+            continue
+        pts_base = real_points_by_seat(role, base, contract)
+        defense = [s for s in range(NUM_PLAYERS) if s not in set(dds.side_seats(base))]
+
+        def score_fn(g):
+            return real_points_by_seat(role, g, contract)
+        for name, trigger in (("trig", adv_wins_trick), ("def", None)):
+            g = new_game(contract, hands, dealer, bidding, whisted)
+            n = play(g, set(defense), score_fn, play_rng, samples, diffs[name], trigger)
+            pts = real_points_by_seat(role, g, contract)
+            rows.append((name, "emballage", sum(pts[s] - pts_base[s] for s in defense) / len(defense), n))
+    return rows, diffs
+
+
+def oracle_main(args):
+    profiles = args.others.split(",")
+    for others in profiles:
+        t0 = time.time()
+        deadline = t0 + args.minutes * 60 / len(profiles)
+        with mp.Pool(args.workers) as pool:
+            parts = pool.map(oracle_worker, [(args.seed * 1000 + w, args.samples, deadline, others)
+                                             for w in range(args.workers)])
+        rows = [r for p, _ in parts for r in p]
+        for name in ("def", "trig"):
+            n, m, se = stats([r[2] for r in rows if r[0] == name])
+            dec = sum(r[3] for r in rows if r[0] == name)
+            print("ORACLE %-16s %-4s emballage def : n %6d gain %+.3f +- %.3f pts/siege (z %+.1f), %d decisions PIMC,"
+                  " %d mondes, %.0f s" % (others, name, n, m, se, m / se if se else 0.0, dec, args.samples,
+                                         time.time() - t0), flush=True)
+        agg = {}
+        for sit, gap, _ex in (d for _, ds in parts for d in ds["trig"]):
+            a = agg.setdefault(sit, [0, 0.0])
+            a[0] += 1
+            a[1] += gap
+        for sit in sorted(agg, key=lambda k: -agg[k][1])[:12]:
+            print("   trig %-58s n %5d  gap Q moyen %.2f" % (sit, agg[sit][0], agg[sit][1] / agg[sit][0]))
+    print("PIMC_ORACLE_DONE")
+
+
 def stats(xs):
     n = len(xs)
     if n == 0:
@@ -128,7 +206,11 @@ def main():
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--samples", type=int, default=8)
     parser.add_argument("--seed", type=int, default=20261109)
+    parser.add_argument("--oracle", action="store_true", help="defense d emballage seule, variantes def/trig, par profil")
+    parser.add_argument("--others", default="expert", help="--oracle : profils adverses (expert_bot.PROFILES), virgules")
     args = parser.parse_args()
+    if args.oracle:
+        return oracle_main(args)
     t0 = time.time()
     deadline = t0 + args.minutes * 60
     with mp.Pool(args.workers) as pool:
