@@ -33,15 +33,15 @@ from scripts.expert_bot_match import bot_player, play_out
 from scripts.train import (MEASURE_WHISTED_RATIO, declarer_role_and_seats, describe_contract,
                            dispatch_play_phase2, real_points_by_seat)
 
-VARIANTS = {  # 11/11 A/B 26 (11e conseil) : re-audit des knobs d ENCHERES, variante sur UN siege (4 rotations)
+VARIANTS = {  # 12/11 A/B 27 : marges CIBLEES sur les releves fatals du bid_audit 43070138406 (A/B 26 globaux rejetes)
     "IDENTITE": {},  # controle : doit donner exactement 0
-    "SOLO_MARGIN_-1": {"SOLO_MARGIN": -1},
-    "SOLO_MARGIN_+1": {"SOLO_MARGIN": 1},
-    "RAISE_MARGIN_-1": {"RAISE_MARGIN": -1},
-    "RAISE_MARGIN_+1": {"RAISE_MARGIN": 1},
-    "RAISE_CAP_10": {"RAISE_CAP": 10},
-    "RAISE_CAP_11": {"RAISE_CAP": 11},
-    "RAISE_CAP_8": {"RAISE_CAP": 8},
+    "EMB9_+1": {"RAISE_MARGIN_AT": {("emballage", 9): 1}},
+    "EMB9PLUS_+1": {"RAISE_MARGIN_AT": {("emballage", 9): 1, ("emballage", 10): 1, ("emballage", 11): 1}},
+    "SOLO7_+1": {"RAISE_MARGIN_AT": {("solo", 7): 1}},
+    "SOLO8_+1": {"RAISE_MARGIN_AT": {("solo", 8): 1}},
+    "SOLO78_+1": {"RAISE_MARGIN_AT": {("solo", 7): 1, ("solo", 8): 1}},
+    "SOLO_ENTREE8_+1": {"SOLO_MARGIN_AT": {8: 1}},
+    "EMB9_SOLO78_+1": {"RAISE_MARGIN_AT": {("emballage", 9): 1, ("solo", 7): 1, ("solo", 8): 1}},
 }
 # 11/11 (11e conseil, critique) : pour un knob d ENCHERES, placer la variante sur les camps du contrat de
 # reference est mal pose (la variante change le contrat ; pas de partenaires fixes au whist ; repli (0,2)/(1,3)

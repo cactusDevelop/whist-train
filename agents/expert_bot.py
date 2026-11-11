@@ -131,6 +131,14 @@ ABONDANCE_MIN_HONOURS = 3  # « sept a huit atouts avec trois honneurs »
 SOLO_MARGIN = 0  # un solo de niveau L demande L + SOLO_MARGIN plis estimes
 RAISE_MARGIN = 0  # une relance (solo, emballage, saut du proposeur) demande ce nombre de plis en plus
 RAISE_CAP = 9  # (tune 40411623914 ; 11 avant) niveau maximal atteint par relance, saut ou emballage d'entree
+# 12/11 A/B 27 (bid_audit 43070138406 : releves fatals emballage-9 10 %, solo-7 13 %, solo-8 15 %) :
+# marge supplementaire CIBLEE par (famille, niveau vise) ; {} = aucun changement.
+RAISE_MARGIN_AT = {}  # {("emballage", 9): 1, ("solo", 7): 1, ...} : relance vers ce niveau
+SOLO_MARGIN_AT = {}  # {8: 1} : solo d'entree a ce niveau
+
+
+def _raise_margin(family, target):
+    return RAISE_MARGIN + RAISE_MARGIN_AT.get((family, target), 0)
 # Jeu de la carte (plaintes 2026-10-26 « overkill, defausse au lieu de couper ») :
 NO_OVERTAKE = False  # coequipier gagnant, on fournit : toujours la plus petite (jamais le depasser)
 RUFF_IF_OPP_LATER = False  # renonce, coequipier gagnant hors atout, un adversaire apres peut couper : couper
@@ -192,7 +200,8 @@ DRAW_STOP_OUTSTANDING = 0  # contrat d'equipe : ne plus tirer quand il reste au 
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
               "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "CASH_BEFORE_DRAW", "LAST_LEAD_MASTER", "DUCK_RUFF_SECOND", "RUFF_RISK_VOID_ONLY", "PARTNER_SUIT_TOP_SHORT", "PARTNER_SUIT_HIGH", "DISCARD_SHORT_WHEN_MATE", "RUFF_HIGH_IF_UNSAFE", "NO_OVERTAKE_POS", "DEF_LEAD_SEQ_ANY", "DEF_LEAD_PASSIVE", "NO_RUFF_PARTNER_2ND", "DECL_LEAD_STRONG", "DISCARD_LONG_TOP", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
               "LEAD_PARTNER_SUIT", "KEEP_TRUMPS_VS_VOID", "DRAW_STOP_OUTSTANDING",
-              "NO_OVERTAKE_POS_SIDE", "DECL_2ND_TAKE_SAFE", "DRAW_NEED_MASTER", "UNBLOCK_2ND", "DEF_NT_KEEP_MASTERS")
+              "NO_OVERTAKE_POS_SIDE", "DECL_2ND_TAKE_SAFE", "DRAW_NEED_MASTER", "UNBLOCK_2ND", "DEF_NT_KEEP_MASTERS",
+              "RAISE_MARGIN_AT", "SOLO_MARGIN_AT")
 
 # Profils CONCURRENTS de l'ExpertBot (utilisateur 2026-10-27 : « mets les regles que je viens
 # de te donner en concurrent a l'ExpertBot, pas en remplacement, idem pour toutes les autres
@@ -570,7 +579,7 @@ def _cheapest_solo(by_kind, est, suit, hand, families=("solo", "abondance", "sol
     for fam in families:
         for a, info in by_kind.get(fam, []):
             level = info.get("level", 13)
-            if info["suit"] == suit and level + SOLO_MARGIN <= est and solo_suit_ok(hand, suit, level):
+            if info["suit"] == suit and level + SOLO_MARGIN + SOLO_MARGIN_AT.get(level, 0) <= est and solo_suit_ok(hand, suit, level):
                 choices.append((level, a))
     return min(choices)[1] if choices else None
 
@@ -599,7 +608,7 @@ def _respond_to_outbid(bidding, seat, hand, c, legal, by_kind):
             solo = _best_solo(by_kind, hand, exclude_suit=c["suit"])
             if solo is not None and own < EMBALLER_MIN + (target - 8):
                 return solo
-            if ACTION_RAISE in legal and team >= target + RAISE_MARGIN and target <= RAISE_CAP:
+            if ACTION_RAISE in legal and team >= target + _raise_margin("emballage", target) and target <= RAISE_CAP:
                 return ACTION_RAISE
             if solo is not None:
                 return solo
@@ -609,12 +618,15 @@ def _respond_to_outbid(bidding, seat, hand, c, legal, by_kind):
         # proposeur, parole passee : l'emballeur a montre (niveau - 5) plis ;
         # une seule decision -> sauter directement au niveau que l'equipe porte
         team = min(EMBALLAGE_MAX_LEVEL, RAISE_CAP, own + (c["level"] - PROPOSER_ASSUMED) - RAISE_MARGIN)
+        while team >= target and RAISE_MARGIN_AT.get(("emballage", team), 0) and (
+                own + (c["level"] - PROPOSER_ASSUMED) - _raise_margin("emballage", team) < team):
+            team -= 1
         if team >= target and bidding.can_raise_to(seat, team):
             return (RAISE_TO, team)
         return ACTION_PASS
     if c["type"] == "solo":
         own = estimate_tricks(hand, c["suit"])
-        return ACTION_RAISE if ACTION_RAISE in legal and own >= target + RAISE_MARGIN and target <= RAISE_CAP else ACTION_PASS
+        return ACTION_RAISE if ACTION_RAISE in legal and own >= target + _raise_margin("solo", target) and target <= RAISE_CAP else ACTION_PASS
     return ACTION_PASS  # trou (jamais relancable)
 
 
