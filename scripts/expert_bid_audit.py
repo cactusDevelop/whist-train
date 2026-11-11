@@ -9,6 +9,8 @@ Par contrat verrouille (cle describe_contract) :
   ecart moyen niveau - DDS, part des contrats montes par relance,
   relance fatale = DDS >= niveau d'avant la derniere relance mais < niveau.
 Plus le nombre moyen de relances par donne et la repartition par type.
+11/11 (pivot encheres, 10e conseil) : points reels moyens par siege declarant
+(pts) et cumul par donne jouee (pts x part) = ou les encheres coutent.
 
 Usage (cloud, ci/run_expert_bid_audit.sh) : python -u scripts/expert_bid_audit.py --deals 20000
 """
@@ -28,7 +30,7 @@ from engine.trou import detect_trou
 from engine.whisted import DeckChain
 from scripts.eval_vs_random import declarer_successes
 from scripts.expert_bot_match import bot_player, play_out
-from scripts.train import MEASURE_WHISTED_RATIO, declarer_role_and_seats, describe_contract, dispatch_play_phase2
+from scripts.train import MEASURE_WHISTED_RATIO, declarer_role_and_seats, describe_contract, dispatch_play_phase2, real_points_by_seat
 
 
 def bid_with_log(hands, dealer):
@@ -86,7 +88,7 @@ def main():
             chain.finish_unplayed(hands, dealer)
             continue
         contract = bidding.locked_contract
-        _role, decl = declarer_role_and_seats(contract)
+        role, decl = declarer_role_and_seats(contract)
         keys = (describe_contract(contract), "_" + contract["type"], "_TOUT")
         game = dispatch_play_phase2(contract, hands, dealer, bidding.bid_summary, whisted)
         dd = None
@@ -95,13 +97,16 @@ def main():
         play_out(game, [bot_player] * 4)
         oks = declarer_successes(contract, game, decl)
         tricks = sum(game.tricks_won[s] for s in decl)
+        pts_all = real_points_by_seat(role, game, contract)
+        pts = sum(pts_all[s] for s in decl) / len(decl)
         for k in keys:
             r = rows.setdefault(k, {"n": 0, "ok": 0, "tries": 0, "tricks": 0, "dd_n": 0, "imp": 0, "gap": 0,
-                                    "raised": 0, "fatal": 0})
+                                    "raised": 0, "fatal": 0, "pts": 0.0})
             r["n"] += 1
             r["ok"] += sum(oks)
             r["tries"] += len(oks)
             r["tricks"] += tricks
+            r["pts"] += pts
             r["raised"] += pre is not None
             if dd is not None:
                 r["dd_n"] += 1
@@ -114,16 +119,18 @@ def main():
 
     print("\n=== Audit encheres ExpertBot : %d donnes, %d passes generales, %.2f relances/donne, %.0fs ==="
           % (deals, passes, total_raises / deals, time.time() - t0))
-    print("%-16s %6s %6s %7s %6s %8s %8s %7s %7s" % ("contrat", "n", "part", "reussi", "plis",
-                                                     "imposs.", "niv-DDS", "releve", "fatale"))
+    print("%-16s %6s %6s %7s %6s %8s %8s %7s %7s %7s %8s" % ("contrat", "n", "part", "reussi", "plis",
+                                                             "imposs.", "niv-DDS", "releve", "fatale", "pts",
+                                                             "pts/don"))
     played = deals - passes
     for k in sorted(rows, key=lambda k: (not k.startswith("_"), -rows[k]["n"])):
         r = rows[k]
         dn = r["dd_n"]
-        print("%-16s %6d %5.1f%% %6.1f%% %6.2f %8s %8s %6.1f%% %7s" % (
+        print("%-16s %6d %5.1f%% %6.1f%% %6.2f %8s %8s %6.1f%% %7s %+7.2f %+8.3f" % (
             k.lstrip("_"), r["n"], 100 * r["n"] / played, 100 * r["ok"] / r["tries"], r["tricks"] / r["n"],
             "%.1f%%" % (100 * r["imp"] / dn) if dn else "-", "%+.2f" % (r["gap"] / dn) if dn else "-",
-            100 * r["raised"] / r["n"], "%.1f%%" % (100 * r["fatal"] / dn) if dn else "-"))
+            100 * r["raised"] / r["n"], "%.1f%%" % (100 * r["fatal"] / dn) if dn else "-",
+            r["pts"] / r["n"], r["pts"] / played))
     print("AUDIT_DONE")
 
 
