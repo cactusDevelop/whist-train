@@ -67,6 +67,7 @@ def main():
     parser.add_argument("--dds-node-limit", type=int, default=20_000_000)
     parser.add_argument("--params", default="{}",
                         help="reglages JSON (expert_bot.set_bid_params) des 4 sieges, {} = defauts")
+    parser.add_argument("--max-seconds", type=float, default=0, help="arret propre apres N s (0 = sans limite)")
     parser.add_argument("--profile", default=None, help="profil de expert_bot.PROFILES (avant --params)")
     args = parser.parse_args()
     expert_bot.set_bid_params(dict(expert_bot.PROFILES[args.profile] if args.profile else {},
@@ -79,6 +80,8 @@ def main():
     passes = total_raises = deals = 0
     t0 = time.time()
     while deals < args.deals:
+        if args.max_seconds and time.time() - t0 > args.max_seconds:
+            break
         hands, dealer, whisted = chain.deal(rng)
         bidding, raises, pre = bid_with_log(hands, dealer)
         deals += 1
