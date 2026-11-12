@@ -33,45 +33,18 @@ from scripts.expert_bot_match import bot_player, play_out
 from scripts.train import (MEASURE_WHISTED_RATIO, declarer_role_and_seats, describe_contract,
                            dispatch_play_phase2, real_points_by_seat)
 
+# Jeux de variantes : une variante = dict partiel de expert_bot.set_bid_params, appliquee PAR-DESSUS le profil
+# du champ ({**PROFILES[--others], **params}) ; IDENTITE = le profil lui-meme. Contre un profil qui fixe deja le
+# knob (ex. acte1 EMBALLER_MIN=5), on compare donc profil vs variante, PAS defaut vs variante (piege a31) : la
+# sortie affiche la valeur effective de chaque knob varie. Historique a27-a31 (EMBALLER_MIN 4->3 etc.) : git f3e3e40.
 VARIANT_SETS = {}
-VARIANT_SETS["a27"] = {  # 12/11 A/B 27 : marges CIBLEES sur les releves fatals du bid_audit 43070138406 (A/B 26 globaux rejetes)
+VARIANT_SETS["a32"] = {  # 12/11 14e conseil : regle STRUCTURELLE de releve OPP_SUIT_CAP (plis de cote plafonnes dans les couleurs adverses)
     "IDENTITE": {},  # controle : doit donner exactement 0
-    "EMB9_+1": {"RAISE_MARGIN_AT": {("emballage", 9): 1}},
-    "EMB9PLUS_+1": {"RAISE_MARGIN_AT": {("emballage", 9): 1, ("emballage", 10): 1, ("emballage", 11): 1}},
-    "SOLO7_+1": {"RAISE_MARGIN_AT": {("solo", 7): 1}},
-    "SOLO8_+1": {"RAISE_MARGIN_AT": {("solo", 8): 1}},
-    "SOLO78_+1": {"RAISE_MARGIN_AT": {("solo", 7): 1, ("solo", 8): 1}},
-    "SOLO_ENTREE8_+1": {"SOLO_MARGIN_AT": {8: 1}},
-    "EMB9_SOLO78_+1": {"RAISE_MARGIN_AT": {("emballage", 9): 1, ("solo", 7): 1, ("solo", 8): 1}},
+    "OPP_CAP_1": {"OPP_SUIT_CAP": 1},
+    "OPP_CAP_0": {"OPP_SUIT_CAP": 0},
 }
-VARIANT_SETS["a28"] = {  # 12/11 A/B 28 : seuils d'ENTREE et hypotheses de partenaire (jamais mesures en placement 1 siege)
-    "IDENTITE": {},
-    "EMBALLER_MIN_-1": {"EMBALLER_MIN": 3},
-    "EMBALLER_MIN_+1": {"EMBALLER_MIN": 5},
-    "SOLO_MIN_-1": {"SOLO_MIN": 5},
-    "SOLO_MIN_+1": {"SOLO_MIN": 7},
-    "PROPOSER_ASSUMED_-1": {"PROPOSER_ASSUMED": 6},
-    "PROPOSER_ASSUMED_+1": {"PROPOSER_ASSUMED": 8},
-    "EMBALLER_ASSUMED_-1": {"EMBALLER_ASSUMED": 1},
-    "EMBALLER_ASSUMED_+1": {"EMBALLER_ASSUMED": 3},
-}
-VARIANT_SETS["a29"] = {  # 12/11 12e conseil : variantes gagnantes vs UN profil (A/B 26-27), remesurees vs champ NON ExpertBot
-    "IDENTITE": {},
-    "RAISE_CAP_10": {"RAISE_CAP": 10},
-    "RAISE_MARGIN_+1": {"RAISE_MARGIN": 1},
-    "EMB9_+1": {"RAISE_MARGIN_AT": {("emballage", 9): 1}},
-    "SOLO_ENTREE8_+1": {"SOLO_MARGIN_AT": {8: 1}},
-}
-VARIANT_SETS["a30"] = {  # 12/11 A/B 30 : EMBALLER_MIN 4->3 (seul gagnant A/B 28, cellules < -3 SE vs expert_tune1027) vs champ NON ExpertBot
-    "IDENTITE": {},
-    "EMBALLER_MIN_3": {"EMBALLER_MIN": 3},
-}
-VARIANT_SETS["a31"] = {  # 12/11 14e conseil : CONFIRMATION graines neuves de EMBALLER_MIN=3 (defaut depuis 57f1f8b) ; variante = retour a 4, attendu < -3 SE partout
-    "IDENTITE": {},
-    "EMBALLER_MIN_4": {"EMBALLER_MIN": 4},
-}
-# AB_SET (env, herite par les workers) : jeu de variantes ; defaut a27
-VARIANTS = VARIANT_SETS[os.environ.get("AB_SET", "a27")]
+# AB_SET (env, herite par les workers) : jeu de variantes ; defaut = le plus recent
+VARIANTS = VARIANT_SETS[os.environ.get("AB_SET", max(VARIANT_SETS))]
 # 11/11 (11e conseil, critique) : pour un knob d ENCHERES, placer la variante sur les camps du contrat de
 # reference est mal pose (la variante change le contrat ; pas de partenaires fixes au whist ; repli (0,2)/(1,3)
 # sur les passes generales). SEATS=single : variante sur un seul siege, 4 rotations, gain = points de ce siege
@@ -211,6 +184,10 @@ def main():
                         cells.setdefault(k, []).append(g)
         changed = sum(1 for g in gains if g != 0)
         m, se = stat(gains)
+        prof = expert_bot.PROFILES[args.others]
+        eff = ["%s %s -> %s" % (k, prof.get(k, getattr(expert_bot, k, None)), v) for k, v in params.items()]
+        if eff:
+            print("\n  (valeurs effectives, profil %s -> variante : %s)" % (args.others, ", ".join(eff)))
         print("\n%s %s : gain %+.3f +- %.3f pts/donne (z %.1f), donnes changees %.1f%%"
               % (name, params, m, se, m / se if se else 0.0, 100 * changed / len(gains)))
         table(rows, n, "variante (sieges variante, %s)" % ("4 rotations 1 siege" if SEATS == "single" else "2 placements"))

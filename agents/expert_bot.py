@@ -142,6 +142,10 @@ BID_SLIP = 0.0  # proba de se tromper d enchere : passe au lieu d annoncer, ou a
 PLAY_SLIP = 0.0  # proba de jouer une carte legale au hasard
 RAISE_MARGIN_AT = {}  # {("emballage", 9): 1, ("solo", 7): 1, ...} : relance vers ce niveau
 SOLO_MARGIN_AT = {}  # {8: 1} : solo d'entree a ce niveau
+# 12/11 (14e conseil) : regle STRUCTURELLE de releve. A la relance, les plis de cote estimes dans une couleur
+# ANNONCEE par l'adversaire (proposition / contrat) sont plafonnes a OPP_SUIT_CAP (sa longueur = coupes probables
+# au 2e tour). None = regle coupee (defaut, comportement inchange) ; 1 = seul l'as compte ; 0 = rien ne compte.
+OPP_SUIT_CAP = None
 
 
 def _raise_margin(family, target):
@@ -208,7 +212,7 @@ BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_I
               "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "CASH_BEFORE_DRAW", "LAST_LEAD_MASTER", "DUCK_RUFF_SECOND", "RUFF_RISK_VOID_ONLY", "PARTNER_SUIT_TOP_SHORT", "PARTNER_SUIT_HIGH", "DISCARD_SHORT_WHEN_MATE", "RUFF_HIGH_IF_UNSAFE", "NO_OVERTAKE_POS", "DEF_LEAD_SEQ_ANY", "DEF_LEAD_PASSIVE", "NO_RUFF_PARTNER_2ND", "DECL_LEAD_STRONG", "DISCARD_LONG_TOP", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
               "LEAD_PARTNER_SUIT", "KEEP_TRUMPS_VS_VOID", "DRAW_STOP_OUTSTANDING",
               "NO_OVERTAKE_POS_SIDE", "DECL_2ND_TAKE_SAFE", "DRAW_NEED_MASTER", "UNBLOCK_2ND", "DEF_NT_KEEP_MASTERS",
-              "RAISE_MARGIN_AT", "SOLO_MARGIN_AT")
+              "RAISE_MARGIN_AT", "SOLO_MARGIN_AT", "OPP_SUIT_CAP")
 
 # Profils CONCURRENTS de l'ExpertBot (utilisateur 2026-10-27 : « mets les regles que je viens
 # de te donner en concurrent a l'ExpertBot, pas en remplacement, idem pour toutes les autres
@@ -616,6 +620,25 @@ def _cheapest_solo(by_kind, est, suit, hand, families=("solo", "abondance", "sol
     return min(choices)[1] if choices else None
 
 
+def _opp_suits(bidding, team):
+    """Couleurs annoncees par les sieges hors de `team` (propositions, emballages, solos)."""
+    suits = {bidding.own_suit[s] for s in range(4) if s not in team and bidding.own_suit[s] is not None}
+    for k in bidding.contracts:
+        if k["type"] in ("emballage", "solo") and k["declarer"] not in team and k.get("partner") not in team:
+            suits.add(k["suit"])
+    return suits
+
+
+def _raise_estimate(bidding, hand, c):
+    """Plis estimes pour une relance du contrat `c` (regle OPP_SUIT_CAP, voir plus haut)."""
+    own = estimate_tricks(hand, c["suit"])
+    if OPP_SUIT_CAP is None:
+        return own
+    for s in _opp_suits(bidding, {c["declarer"], c.get("partner", c["declarer"])}) - {c["suit"]}:
+        own -= max(0, side_suit_tricks(_ranks(hand, s)) - OPP_SUIT_CAP)
+    return own
+
+
 def _respond_to_outbid(bidding, seat, hand, c, legal, by_kind):
     """Le contrat de ce siege vient d'etre depasse (ou la parole lui est
     passee) : relancer d'un pli si la main le porte, sinon passer."""
@@ -632,8 +655,9 @@ def _respond_to_outbid(bidding, seat, hand, c, legal, by_kind):
         return ACTION_PASS
     if c["type"] == "emballage":
         own = estimate_tricks(hand, c["suit"])
+        raise_own = _raise_estimate(bidding, hand, c)
         if seat == c["spokesperson"]:
-            team = own + PROPOSER_ASSUMED
+            team = raise_own + PROPOSER_ASSUMED
             # Ecole : l'emballeur surencheri peut lacher son emballage pour un
             # solo ailleurs, « a condition que sa main justifie reellement ce
             # Solo » -- prefere a une relance dans une couleur ou il n'a rien
@@ -649,15 +673,15 @@ def _respond_to_outbid(bidding, seat, hand, c, legal, by_kind):
             return ACTION_PASS
         # proposeur, parole passee : l'emballeur a montre (niveau - 5) plis ;
         # une seule decision -> sauter directement au niveau que l'equipe porte
-        team = min(EMBALLAGE_MAX_LEVEL, RAISE_CAP, own + (c["level"] - PROPOSER_ASSUMED) - RAISE_MARGIN)
+        team = min(EMBALLAGE_MAX_LEVEL, RAISE_CAP, raise_own + (c["level"] - PROPOSER_ASSUMED) - RAISE_MARGIN)
         while team >= target and RAISE_MARGIN_AT.get(("emballage", team), 0) and (
-                own + (c["level"] - PROPOSER_ASSUMED) - _raise_margin("emballage", team) < team):
+                raise_own + (c["level"] - PROPOSER_ASSUMED) - _raise_margin("emballage", team) < team):
             team -= 1
         if team >= target and bidding.can_raise_to(seat, team):
             return (RAISE_TO, team)
         return ACTION_PASS
     if c["type"] == "solo":
-        own = estimate_tricks(hand, c["suit"])
+        own = _raise_estimate(bidding, hand, c)
         return ACTION_RAISE if ACTION_RAISE in legal and own >= target + _raise_margin("solo", target) and target <= RAISE_CAP else ACTION_PASS
     return ACTION_PASS  # trou (jamais relancable)
 
