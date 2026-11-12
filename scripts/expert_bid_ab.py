@@ -62,6 +62,10 @@ VARIANT_SETS["a29"] = {  # 12/11 12e conseil : variantes gagnantes vs UN profil 
     "EMB9_+1": {"RAISE_MARGIN_AT": {("emballage", 9): 1}},
     "SOLO_ENTREE8_+1": {"SOLO_MARGIN_AT": {8: 1}},
 }
+VARIANT_SETS["a30"] = {  # 12/11 A/B 30 : EMBALLER_MIN 4->3 (seul gagnant A/B 28, cellules < -3 SE vs expert_tune1027) vs champ NON ExpertBot
+    "IDENTITE": {},
+    "EMBALLER_MIN_3": {"EMBALLER_MIN": 3},
+}
 # AB_SET (env, herite par les workers) : jeu de variantes ; defaut a27
 VARIANTS = VARIANT_SETS[os.environ.get("AB_SET", "a27")]
 # 11/11 (11e conseil, critique) : pour un knob d ENCHERES, placer la variante sur les camps du contrat de
