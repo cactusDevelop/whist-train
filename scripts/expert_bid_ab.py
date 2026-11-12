@@ -66,6 +66,10 @@ VARIANT_SETS["a30"] = {  # 12/11 A/B 30 : EMBALLER_MIN 4->3 (seul gagnant A/B 28
     "IDENTITE": {},
     "EMBALLER_MIN_3": {"EMBALLER_MIN": 3},
 }
+VARIANT_SETS["a31"] = {  # 12/11 14e conseil : CONFIRMATION graines neuves de EMBALLER_MIN=3 (defaut depuis 57f1f8b) ; variante = retour a 4, attendu < -3 SE partout
+    "IDENTITE": {},
+    "EMBALLER_MIN_4": {"EMBALLER_MIN": 4},
+}
 # AB_SET (env, herite par les workers) : jeu de variantes ; defaut a27
 VARIANTS = VARIANT_SETS[os.environ.get("AB_SET", "a27")]
 # 11/11 (11e conseil, critique) : pour un knob d ENCHERES, placer la variante sur les camps du contrat de
