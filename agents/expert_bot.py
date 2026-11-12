@@ -103,7 +103,10 @@ ACE, KING, QUEEN, JACK = 12, 11, 10, 9
 PROPOSE_MIN = 3  # plis surs pour proposer
 # Bloc emballer + attente : profil expert_emb1027, vainqueur de la ligue 40651271548 (+0.124 +-0.052,
 # z 2.4), promu le 30/10 (signalement « emballe avec 1 atout » : 1 pli sur suffisait, sans condition d'atouts).
-EMBALLER_MIN = 4  # plis surs pour emballer (au niveau 8)
+# 12/11 (13e conseil) : 4 -> 3. A/B 28 vs expert +0.77 z31 (2 graines), +0.21..+0.34 vs joueur_1027/expert_tune1027 ;
+# A/B 30 vs champ non-Expert bruite10 +0.72 z29, bruite25 +0.66 z27, acte1 +2.35 z70. Cellules defense < -3 SE
+# = effet de selection (cellules par contrat JOUE par la variante), le total duplicate fait foi.
+EMBALLER_MIN = 3  # plis surs pour emballer (au niveau 8)
 SOLO_MIN = 6  # plis surs pour un solo seul
 ABONDANCE_MIN = 10  # solo 10+ d'entree
 PROPOSER_ASSUMED = 7  # ce que l'emballeur suppose chez le proposeur
