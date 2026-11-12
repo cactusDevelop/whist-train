@@ -1,1 +1,1 @@
---pairs routage:expert --route petite_misere:decl --seed 23261110 --bids expert
+--pairs routage:expert --route piccolo,petite_misere:def,grande_misere,misere_etalee,trou:decl --hybrid-roles piccolo,grande_misere,petite_misere,misere_etalee --seed 24261112 --bids expert
