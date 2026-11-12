@@ -55,6 +55,13 @@ VARIANT_SETS["a28"] = {  # 12/11 A/B 28 : seuils d'ENTREE et hypotheses de parte
     "EMBALLER_ASSUMED_-1": {"EMBALLER_ASSUMED": 1},
     "EMBALLER_ASSUMED_+1": {"EMBALLER_ASSUMED": 3},
 }
+VARIANT_SETS["a29"] = {  # 12/11 12e conseil : variantes gagnantes vs UN profil (A/B 26-27), remesurees vs champ NON ExpertBot
+    "IDENTITE": {},
+    "RAISE_CAP_10": {"RAISE_CAP": 10},
+    "RAISE_MARGIN_+1": {"RAISE_MARGIN": 1},
+    "EMB9_+1": {"RAISE_MARGIN_AT": {("emballage", 9): 1}},
+    "SOLO_ENTREE8_+1": {"SOLO_MARGIN_AT": {8: 1}},
+}
 # AB_SET (env, herite par les workers) : jeu de variantes ; defaut a27
 VARIANTS = VARIANT_SETS[os.environ.get("AB_SET", "a27")]
 # 11/11 (11e conseil, critique) : pour un knob d ENCHERES, placer la variante sur les camps du contrat de

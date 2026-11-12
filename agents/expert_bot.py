@@ -133,6 +133,10 @@ RAISE_MARGIN = 0  # une relance (solo, emballage, saut du proposeur) demande ce 
 RAISE_CAP = 9  # (tune 40411623914 ; 11 avant) niveau maximal atteint par relance, saut ou emballage d'entree
 # 12/11 A/B 27 (bid_audit 43070138406 : releves fatals emballage-9 10 %, solo-7 13 %, solo-8 15 %) :
 # marge supplementaire CIBLEE par (famille, niveau vise) ; {} = aucun changement.
+# 12/11 (12e conseil) : adversaires « humains bruites » pour mesurer la solidite hors champ ExpertBot (mesure seule,
+# 0 = ExpertBot exact). Bruit DETERMINISTE par situation (meme main + memes coups legaux -> meme erreur) : le duplicate tient.
+BID_SLIP = 0.0  # proba de se tromper d enchere : passe au lieu d annoncer, ou annonce bas niveau au lieu de passer
+PLAY_SLIP = 0.0  # proba de jouer une carte legale au hasard
 RAISE_MARGIN_AT = {}  # {("emballage", 9): 1, ("solo", 7): 1, ...} : relance vers ce niveau
 SOLO_MARGIN_AT = {}  # {8: 1} : solo d'entree a ce niveau
 
@@ -226,6 +230,10 @@ PROFILES = {
                     "EMBALLER_LONG_TRUMPS": 5, "EMBALLER_SHORT_TRUMPS": 4, "WAIT_BALANCED": True,
                     "ABONDANCE_MIN": 9, "PROPOSER_ASSUMED": 5, "EMBALLER_ASSUMED": 3,
                     "SOLO_MIN_TOP_HONOURS": 2, "RAISE_CAP": 11},
+    # 12/11 (12e conseil) : champ NON ExpertBot -- humains bruites et adversaires de l Acte I (mesure seule)
+    "bruite10": {"BID_SLIP": 0.10, "PLAY_SLIP": 0.05},
+    "bruite25": {"BID_SLIP": 0.25, "PLAY_SLIP": 0.15},
+    "acte1": {"SOLO_MARGIN": 1, "RAISE_MARGIN": 1, "RAISE_CAP": 8, "EMBALLER_MIN": 5, "SOLO_MIN": 7},
     # ExpertBot du 30/10 avant la regle du renom d'atout
     "expert_emb1027": {"KEEP_TRUMPS_VS_VOID": False},
     # ExpertBot jusqu au 09/11 : defausse dans la couleur la plus courte (se mettre en renom)
@@ -483,7 +491,28 @@ def apply_bid(bidding, seat, hand):
     return choice
 
 
+def _slip(p, key):
+    import random as _random
+    r = _random.Random(hash(key) & 0xFFFFFFFF)
+    return r if r.random() < p else None
+
+
 def choose_bid(bidding, seat, hand):
+    choice = _choose_bid_core(bidding, seat, hand)
+    if BID_SLIP <= 0:
+        return choice
+    legal = legal_action_ids_with_hand(bidding, seat, hand)
+    r = _slip(BID_SLIP, (1, seat, tuple(sorted(hand)), tuple(sorted(legal))))
+    if r is None:
+        return choice
+    if choice in (ACTION_PASS, ACTION_WAIT):
+        low = [a for a in legal if bid_action_to_dict(a)["action"] in ("propose", "emballer")
+               or (bid_action_to_dict(a)["action"] == "solo" and bid_action_to_dict(a)["level"] <= 7)]
+        return r.choice(low) if low else choice
+    return ACTION_PASS if ACTION_PASS in legal else choice
+
+
+def _choose_bid_core(bidding, seat, hand):
     """-> un id d'action d'enchere TOUJOURS legal (legal_action_ids_with_hand),
     ou (RAISE_TO, niveau) pour le saut du proposeur en passe parole,
     ou (RAISE_KIND, misere) pour un saut vers un negatif plus haut."""
@@ -801,6 +830,11 @@ def choose_card(game, seat, seen=None):
     if getattr(game, "trou_pending", lambda: False)() and seat == game.partner:
         return trou_opening_card(game.hands[seat], game.anchor_card)
     v = PublicView(game, seat, seen)
+    if PLAY_SLIP > 0 and len(v.legal) > 1:
+        r = _slip(PLAY_SLIP, (2, seat, tuple(sorted(game.hands[seat])), tuple(sorted(v.legal))))
+        if r is not None:
+            card = r.choice(sorted(v.legal))
+            return mirror_card(card) if v.mirrored else card
     card = _choose(v)
     return mirror_card(card) if v.mirrored else card
 
