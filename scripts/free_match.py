@@ -34,7 +34,10 @@ avec la decision reseau a CE seul point (ExpertBot ailleurs) ; gain = vrais poin
 du siege qui a devie. Cellule = (categorie ExpertBot, categorie reseau), sans
 couleur. 2) garde les cellules gain - 2 se > 0 (n >= 200). 3) sur --seed + 1000003 :
 un siege encherit "routage d'enchere" (reseau seulement dans les cellules gardees)
-contre ExpertBot, 4 rotations ; critere gain > 3 SE.
+contre ExpertBot, 4 rotations ; critere gain > 3 SE. --seeds : graines de
+confirmation (defaut --seed + 1000003) ; --others : confirmation aussi face a ces
+champs (les 3 autres sieges encherissent ET jouent ExpertBot au profil du champ,
+le siege mesure joue la carte en routage ; base = meme siege avec l'enchere ExpertBot).
 
 Usage (cloud seulement) : ci/run_free_match.sh, mode free_match de train.yml.
 """
@@ -199,9 +202,10 @@ def net_bid(bidding, seat, hand):
     return BIDDER.act_greedy(obs, mask)
 
 
-def run_bidding(hands, dealer, trou, override=None, routed_seat=None, trace=None):
+def run_bidding(hands, dealer, trou, override=None, routed_seat=None, trace=None, prof=None, me=None):
     """ExpertBot partout ; override=(siege, k, choix) : k-ieme decision du siege remplacee ;
-    routed_seat : ce siege suit BID_ROUTE ; trace : liste remplie de (siege, k, choix expert, choix reseau)."""
+    routed_seat : ce siege suit BID_ROUTE ; trace : liste remplie de (siege, k, choix expert, choix reseau) ;
+    prof : profil ExpertBot des sieges autres que me (champ)."""
     bidding = Bidding(dealer)
     if trou is not None:
         bidding.seed_trou(trou)
@@ -214,7 +218,11 @@ def run_bidding(hands, dealer, trou, override=None, routed_seat=None, trace=None
         if override is not None and override[0] == seat and override[1] == k:
             choice = override[2]
         else:
+            if prof is not None:
+                expert_bot.set_bid_params({} if seat == me else prof)
             choice = expert_bot.choose_bid(bidding, seat, hand)
+            if prof is not None:
+                expert_bot.set_bid_params({})
             if trace is not None or seat == routed_seat:
                 n = net_bid(bidding, seat, hand)
                 if bid_label(n) != bid_label(choice):
@@ -229,7 +237,8 @@ def run_bidding(hands, dealer, trou, override=None, routed_seat=None, trace=None
 
 
 def bid_cells_chunk(args):
-    deals, seed, route, confirm = args
+    deals, seed, route, confirm, others = args
+    prof = expert_bot.PROFILES[others] if others else None
     ROUTE[0] = route
     rng = random.Random(seed)
     play_rng = random.Random(seed + 1)
@@ -237,7 +246,7 @@ def bid_cells_chunk(args):
     cells = {}
     per_deal = []
 
-    def points(bidding, hands, whisted):
+    def points(bidding, hands, whisted, me=None):
         if bidding.general_pass:
             return [0.0] * 4
         contract = bidding.locked_contract
@@ -247,7 +256,13 @@ def bid_cells_chunk(args):
         game = dispatch_play_phase2(contract, [list(h) for h in hands], DEALER[0], bidding.bid_summary, whisted)
         while not game.done:
             seat = game.turn
-            game.step(seat, choose("routage", game, seat, play_rng))
+            if prof is not None and seat != me:
+                expert_bot.set_bid_params(prof)
+                card = expert_bot.choose_card(game, seat)
+                expert_bot.set_bid_params({})
+            else:
+                card = choose("routage", game, seat, play_rng)
+            game.step(seat, card)
         return real_points_by_seat(role, game, contract)
 
     with torch.no_grad():
@@ -257,11 +272,15 @@ def bid_cells_chunk(args):
             DEALER[0] = dealer
             trou = detect_trou(hands)
             if confirm:
-                base = points(run_bidding(hands, dealer, trou), hands, whisted)
+                base = None if prof is not None else points(run_bidding(hands, dealer, trou), hands, whisted)
                 g = 0.0
                 for s in range(4):
-                    b = run_bidding(hands, dealer, trou, routed_seat=s)
-                    g += points(b, hands, whisted)[s] - base[s]
+                    if prof is not None:
+                        ref = points(run_bidding(hands, dealer, trou, prof=prof, me=s), hands, whisted, s)
+                    else:
+                        ref = base
+                    b = run_bidding(hands, dealer, trou, routed_seat=s, prof=prof, me=s)
+                    g += points(b, hands, whisted, s if prof is not None else None)[s] - ref[s]
                 per_deal.append(g)
                 continue
             trace = []
@@ -273,8 +292,8 @@ def bid_cells_chunk(args):
 
 
 
-def run_bid_cells(pool, deals, procs, seed, route, confirm):
-    parts = pool.map(bid_cells_chunk, [(deals // procs, seed + 10 * i, route, confirm) for i in range(procs)],
+def run_bid_cells(pool, deals, procs, seed, route, confirm, others=None):
+    parts = pool.map(bid_cells_chunk, [(deals // procs, seed + 10 * i, route, confirm, others) for i in range(procs)],
                      chunksize=1)
     cells, per_deal = {}, []
     for c, p in parts:
@@ -330,7 +349,7 @@ def main():
     for f in fields:
         if f not in expert_bot.PROFILES:
             raise SystemExit("--others : profil inconnu %s" % f)
-    if fields and (args.auto_route or args.bids != "expert"):
+    if fields and not args.bid_cells and (args.auto_route or args.bids != "expert"):
         raise SystemExit("--others : --bids expert seulement, sans --auto-route")
     route = parse_route(args.route)
     if args.auto_route and not args.hybrid_roles:
@@ -388,14 +407,16 @@ def main():
             pool.close()
             pool.join()
             pool = multiprocessing.get_context("fork").Pool(args.workers, train_free.init_worker)
-            seed2 = args.seed + 1000003
-            t0 = time.time()
-            _, per_deal = run_bid_cells(pool, args.deals, args.workers, seed2, route, True)
-            g, se = champion_play.mean_se(per_deal)
-            print("=== CONFIRMATION graine %d : routage d'enchere a la place d'ExpertBot (4 rotations) : %+.3f +- %.3f "
-                  "(z %+.1f, %d donnes, %.0fs) -> %s ===" % (
-                      seed2, g, se, g / se if se else 0.0, len(per_deal), time.time() - t0,
-                      "DEVANT" if g - 3 * se > 0 else ("DERRIERE" if g + 3 * se < 0 else "egalite")), flush=True)
+            seeds = [int(x) for x in args.seeds.split(",") if x] or [args.seed + 1000003]
+            for seed2 in seeds:
+                for f in [None] + fields:
+                    t0 = time.time()
+                    _, per_deal = run_bid_cells(pool, args.deals, args.workers, seed2, route, True, f)
+                    g, se = champion_play.mean_se(per_deal)
+                    print("=== CONFIRMATION graine %d champ %-12s : routage d'enchere a la place d'ExpertBot (4 rotations) : "
+                          "%+.3f +- %.3f (z %+.1f, %d donnes, %.0fs) -> %s ===" % (
+                              seed2, f or "-", g, se, g / se if se else 0.0, len(per_deal), time.time() - t0,
+                              "DEVANT" if g - 3 * se > 0 else ("DERRIERE" if g + 3 * se < 0 else "egalite")), flush=True)
     elif args.auto_route:
         sel = line("best", "expert", "expert", args.seed, route)
         picked = set()

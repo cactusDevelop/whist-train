@@ -1,1 +1,1 @@
---bid-cells --route piccolo,petite_misere:def,grande_misere,misere_etalee,trou:decl --seed 28261113
+--bid-cells --route piccolo,petite_misere:def,grande_misere,misere_etalee,trou:decl --seed 28261113 --seeds 29261113 --others acte1
