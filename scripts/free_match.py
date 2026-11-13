@@ -27,6 +27,15 @@ encherit) avec ce profil ; le camp mesure joue candidat puis base (ExpertBot par
 defaut), adversaires identiques dans les 2 parties. Mesure si le gain du routage
 tient contre autre chose qu'ExpertBot (acte1, joueur_0927, bruites).
 
+ENCHERE PAR CELLULE (2026-11-13, 15e conseil, etape 2) : --bid-cells. Cartes =
+routage aux 4 sieges (comme en jeu), encheres ExpertBot. 1) sur --seed, a chaque
+decision d'enchere ou l'encherisseur reseau differe d'ExpertBot : on rejoue la donne
+avec la decision reseau a CE seul point (ExpertBot ailleurs) ; gain = vrais points
+du siege qui a devie. Cellule = (categorie ExpertBot, categorie reseau), sans
+couleur. 2) garde les cellules gain - 2 se > 0 (n >= 200). 3) sur --seed + 1000003 :
+un siege encherit "routage d'enchere" (reseau seulement dans les cellules gardees)
+contre ExpertBot, 4 rotations ; critere gain > 3 SE.
+
 Usage (cloud seulement) : ci/run_free_match.sh, mode free_match de train.yml.
 """
 
@@ -44,7 +53,7 @@ sys.path.insert(0, ".")
 
 from agents import expert_bot
 from agents.play_guards import ai_play_mask
-from engine.bidding import Bidding
+from engine.bidding import Bidding, bid_action_to_dict, legal_action_mask_with_hand, observation as bid_observation
 from engine.trou import detect_trou
 from engine.whisted import DeckChain
 from scripts import champion_play, train_free
@@ -160,6 +169,121 @@ def match_chunk(args):
     return rows
 
 
+DEALER = [0]  # donneur de la donne en cours (par processus)
+BID_ROUTE = [frozenset()]  # cellules (cat ExpertBot, cat reseau) ou le reseau encherit
+
+
+def bid_label(choice, suit=True):
+    if isinstance(choice, tuple):
+        if choice[0] == expert_bot.RAISE_KIND:
+            return "raise_misere_%s" % choice[1]
+        return "raise_to_%d" % choice[1]
+    d = bid_action_to_dict(choice)
+    a = d["action"]
+    if a == "raise":
+        return "raise_to_%d" % d["level"] if "level" in d else "raise+1"
+    if a == "misere":
+        return "misere_%s" % d["kind"]
+    if "level" in d:
+        a = "%s_%d" % (a, d["level"])
+    if suit and "suit" in d:
+        a = "%s/%d" % (a, d["suit"])
+    return a
+
+
+def net_bid(bidding, seat, hand):
+    if getattr(BIDDER, "hybrid", False):
+        return BIDDER.decide(bidding, seat, hand)
+    obs = torch.tensor(bid_observation(bidding, seat, hand), dtype=torch.float32)
+    mask = torch.tensor(legal_action_mask_with_hand(bidding, seat, hand), dtype=torch.bool)
+    return BIDDER.act_greedy(obs, mask)
+
+
+def run_bidding(hands, dealer, trou, override=None, routed_seat=None, trace=None):
+    """ExpertBot partout ; override=(siege, k, choix) : k-ieme decision du siege remplacee ;
+    routed_seat : ce siege suit BID_ROUTE ; trace : liste remplie de (siege, k, choix expert, choix reseau)."""
+    bidding = Bidding(dealer)
+    if trou is not None:
+        bidding.seed_trou(trou)
+    count = [0, 0, 0, 0]
+    while not bidding.finished:
+        seat = bidding.turn
+        hand = hands[seat]
+        k = count[seat]
+        count[seat] += 1
+        if override is not None and override[0] == seat and override[1] == k:
+            choice = override[2]
+        else:
+            choice = expert_bot.choose_bid(bidding, seat, hand)
+            if trace is not None or seat == routed_seat:
+                n = net_bid(bidding, seat, hand)
+                if bid_label(n) != bid_label(choice):
+                    cell = (bid_label(choice, False), bid_label(n, False))
+                    if trace is not None:
+                        trace.append((seat, k, cell, n))
+                    if seat == routed_seat and cell in BID_ROUTE[0]:
+                        choice = n
+        if not expert_bot.apply_choice(bidding, seat, choice):
+            raise AssertionError("enchere illegale %r siege %d" % (choice, seat))
+    return bidding
+
+
+def bid_cells_chunk(args):
+    deals, seed, route, confirm = args
+    ROUTE[0] = route
+    rng = random.Random(seed)
+    play_rng = random.Random(seed + 1)
+    chain = DeckChain(MEASURE_WHISTED_RATIO, rng)
+    cells = {}
+    per_deal = []
+
+    def points(bidding, hands, whisted):
+        if bidding.general_pass:
+            return [0.0] * 4
+        contract = bidding.locked_contract
+        role, decl = declarer_role_and_seats(contract)
+        CUR_ROLE[0] = role
+        CUR_DECL[0] = frozenset(decl)
+        game = dispatch_play_phase2(contract, [list(h) for h in hands], DEALER[0], bidding.bid_summary, whisted)
+        while not game.done:
+            seat = game.turn
+            game.step(seat, choose("routage", game, seat, play_rng))
+        return real_points_by_seat(role, game, contract)
+
+    with torch.no_grad():
+        for _ in range(deals):
+            hands, dealer, whisted = chain.deal(rng)
+            chain.finish_unplayed(hands, dealer)
+            DEALER[0] = dealer
+            trou = detect_trou(hands)
+            if confirm:
+                base = points(run_bidding(hands, dealer, trou), hands, whisted)
+                g = 0.0
+                for s in range(4):
+                    b = run_bidding(hands, dealer, trou, routed_seat=s)
+                    g += points(b, hands, whisted)[s] - base[s]
+                per_deal.append(g)
+                continue
+            trace = []
+            base = points(run_bidding(hands, dealer, trou, trace=trace), hands, whisted)
+            for seat, k, cell, n in trace:
+                b = run_bidding(hands, dealer, trou, override=(seat, k, n))
+                cells.setdefault(cell, []).append(points(b, hands, whisted)[seat] - base[seat])
+    return cells, per_deal
+
+
+
+def run_bid_cells(pool, deals, procs, seed, route, confirm):
+    parts = pool.map(bid_cells_chunk, [(deals // procs, seed + 10 * i, route, confirm) for i in range(procs)],
+                     chunksize=1)
+    cells, per_deal = {}, []
+    for c, p in parts:
+        for k, v in c.items():
+            cells.setdefault(k, []).extend(v)
+        per_deal += p
+    return cells, per_deal
+
+
 def run_pair(pool, cand, base, bid, deals, procs, seed=SEED, route=frozenset(), others=None):
     parts = pool.map(match_chunk, [(cand, base, bid, deals // procs, seed + 10 * i, route, others)
                                    for i in range(procs)],
@@ -199,6 +323,7 @@ def main():
     parser.add_argument("--route", default="", help="voir ROUTAGE")
     parser.add_argument("--auto-route", action="store_true", help="voir ROUTAGE (enchere expert)")
     parser.add_argument("--others", default="", help="voir CHAMP : profils separes par des virgules")
+    parser.add_argument("--bid-cells", action="store_true", help="voir ENCHERE PAR CELLULE (cartes = --route)")
     parser.add_argument("--seeds", default="", help="graines separees par des virgules (CHAMP ; defaut --seed)")
     args = parser.parse_args()
     fields = [x for x in args.others.split(",") if x]
@@ -241,7 +366,37 @@ def main():
         print("RESULT " + json.dumps(r), flush=True)
         return r
 
-    if args.auto_route:
+    if args.bid_cells:
+        t0 = time.time()
+        cells, _ = run_bid_cells(pool, args.deals, args.workers, args.seed, route, False)
+        n_dec = sum(len(v) for v in cells.values())
+        print("CELLULES graine %d : %d decisions divergentes sur %d donnes (%.0fs)" % (
+            args.seed, n_dec, args.deals, time.time() - t0), flush=True)
+        picked = set()
+        for cell, xs in sorted(cells.items(), key=lambda kv: -len(kv[1])):
+            g, se = champion_play.mean_se(xs)
+            ok = len(xs) >= 200 and g - 2 * se > 0
+            if ok:
+                picked.add(cell)
+            print("cellule expert %-22s reseau %-22s n %7d : %+.3f +- %.3f (z %+.1f)%s" % (
+                cell[0], cell[1], len(xs), g, se, g / se if se else 0.0, "  <- GARDE" if ok else ""), flush=True)
+            print("CELL " + json.dumps({"expert": cell[0], "reseau": cell[1], "n": len(xs), "gain": round(g, 3),
+                                        "se": round(se, 3)}), flush=True)
+        print("BID_ROUTE " + ",".join("%s>%s" % c for c in sorted(picked)), flush=True)
+        if picked:
+            BID_ROUTE[0] = frozenset(picked)
+            pool.close()
+            pool.join()
+            pool = multiprocessing.get_context("fork").Pool(args.workers, train_free.init_worker)
+            seed2 = args.seed + 1000003
+            t0 = time.time()
+            _, per_deal = run_bid_cells(pool, args.deals, args.workers, seed2, route, True)
+            g, se = champion_play.mean_se(per_deal)
+            print("=== CONFIRMATION graine %d : routage d'enchere a la place d'ExpertBot (4 rotations) : %+.3f +- %.3f "
+                  "(z %+.1f, %d donnes, %.0fs) -> %s ===" % (
+                      seed2, g, se, g / se if se else 0.0, len(per_deal), time.time() - t0,
+                      "DEVANT" if g - 3 * se > 0 else ("DERRIERE" if g + 3 * se < 0 else "egalite")), flush=True)
+    elif args.auto_route:
         sel = line("best", "expert", "expert", args.seed, route)
         picked = set()
         for role, c in sel["par_contrat"].items():
