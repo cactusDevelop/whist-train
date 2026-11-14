@@ -338,6 +338,7 @@ def main():
     parser.add_argument("--auto-route", action="store_true", help="voir ROUTAGE (enchere expert)")
     parser.add_argument("--others", default="", help="voir CHAMP : profils separes par des virgules")
     parser.add_argument("--bid-cells", action="store_true", help="voir ENCHERE PAR CELLULE (cartes = --route)")
+    parser.add_argument("--min-n", type=int, default=200, help="--bid-cells : decisions minimum par cellule (smoke : petit)")
     parser.add_argument("--bid-iterate", action="store_true",
                         help="--bid-cells en partant du routage d'enchere en place (agents/bid_route.BID_ROUTE)")
     parser.add_argument("--seeds", default="", help="graines separees par des virgules (CHAMP ; defaut --seed)")
@@ -399,9 +400,9 @@ def main():
         picked = set()
         for cell, xs in sorted(cells.items(), key=lambda kv: -len(kv[1])):
             g, se = champion_play.mean_se(xs)
-            ok = len(xs) >= 200 and g - 2 * se > 0
+            ok = len(xs) >= args.min_n and g - 2 * se > 0
             if BASE_ROUTE[0] is not None and cell in BASE_ROUTE[0]:
-                ok = not (len(xs) >= 200 and g + 2 * se < 0)  # en place : retiree seulement si nettement negative
+                ok = not (len(xs) >= args.min_n and g + 2 * se < 0)  # en place : retiree seulement si nettement negative
             if ok:
                 picked.add(cell)
             print("cellule expert %-22s reseau %-22s n %7d : %+.3f +- %.3f (z %+.1f)%s" % (

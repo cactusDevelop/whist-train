@@ -1,1 +1,1 @@
---bid-cells --bid-iterate --route piccolo,petite_misere:def,grande_misere,misere_etalee,trou:decl --seed 31261114 --seeds 32261114,33261114 --others expert,bruite10,bruite25,acte1,joueur_0927,joueur_1027
+--bid-cells --bid-iterate --route piccolo,petite_misere:def,grande_misere,misere_etalee,trou:decl --seed 31261114 --seeds 32261114,33261114 --others expert,bruite10,bruite25,acte1,joueur_0927,joueur_1027 --min-n 10
