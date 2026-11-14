@@ -55,6 +55,7 @@ import torch
 sys.path.insert(0, ".")
 
 from agents import expert_bot
+from agents.bid_route import bid_label
 from agents.play_guards import ai_play_mask
 from engine.bidding import Bidding, bid_action_to_dict, legal_action_mask_with_hand, observation as bid_observation
 from engine.trou import detect_trou
@@ -174,24 +175,6 @@ def match_chunk(args):
 
 DEALER = [0]  # donneur de la donne en cours (par processus)
 BID_ROUTE = [frozenset()]  # cellules (cat ExpertBot, cat reseau) ou le reseau encherit
-
-
-def bid_label(choice, suit=True):
-    if isinstance(choice, tuple):
-        if choice[0] == expert_bot.RAISE_KIND:
-            return "raise_misere_%s" % choice[1]
-        return "raise_to_%d" % choice[1]
-    d = bid_action_to_dict(choice)
-    a = d["action"]
-    if a == "raise":
-        return "raise_to_%d" % d["level"] if "level" in d else "raise+1"
-    if a == "misere":
-        return "misere_%s" % d["kind"]
-    if "level" in d:
-        a = "%s_%d" % (a, d["level"])
-    if suit and "suit" in d:
-        a = "%s/%d" % (a, d["suit"])
-    return a
 
 
 def net_bid(bidding, seat, hand):
