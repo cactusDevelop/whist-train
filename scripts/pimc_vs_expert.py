@@ -23,6 +23,12 @@ deux variantes sur la meme donne :
          ExpertBot ailleurs.
 Si ni def ni trig ne gagne > 3 SE sur les profils -> piste PIMC close,
 pivot encheres. Sinon : extraire des regles des ecarts (trig) -> ExpertBot.
+
+--camps decl --validate 32 (conseil 14/11 soir, critique) : le gap max(Q)-Q(expert)
+sur les memes 8 mondes est biaise (max de bruit, toujours > 0, A/B 24 trompe).
+A chaque ecart, Q(expert) et Q(pimc) sont re-estimes sur 32 mondes NEUFS
+(independants du choix) -> gap valide sans biais, peut etre negatif ; table par
+situation avec SE. Situation retenue si gap valide > 3 SE avec n >= 100.
 """
 
 import argparse
@@ -55,7 +61,7 @@ def adv_wins_trick(game, seat):
     return bool(trick) and trick_winner(trick, game.trump_suit) not in teammates(game, seat)
 
 
-def play(game, pimc_seats, score_fn, rng, samples, diffs, trigger=None):
+def play(game, pimc_seats, score_fn, rng, samples, diffs, trigger=None, validate=0, vrng=None):
     """Joue la donne ; `pimc_seats` jouent PIMC (seulement si trigger(game, seat) quand il est donne).
     -> nombre de decisions PIMC."""
     n = 0
@@ -73,7 +79,12 @@ def play(game, pimc_seats, score_fn, rng, samples, diffs, trigger=None):
                     qe = q[legal.index(card)]
                     if best - qe > 1e-6:  # ExpertBot garde la main a egalite
                         pick = legal[q.index(best)]
-                        diffs.append((sit_key(game, seat, card), best - qe,
+                        vgap = None
+                        if validate:
+                            q2 = dds_values(game, seat, [card, pick], score_fn, vrng, validate)
+                            if q2 is not None:
+                                vgap = q2[1] - q2[0]
+                        diffs.append((sit_key(game, seat, card), best - qe, vgap,
                                       "%s | siege %d | pli %s | main %s | expert %s (%.1f) pimc %s (%.1f)" % (
                                           describe(game.public_contract()), seat,
                                           " ".join("%d:%s" % (s, card_txt(c)) for s, c in game.current_trick) or "-",
@@ -96,9 +107,10 @@ def sit_key(game, seat, card):
 
 
 def worker(args):
-    seed, samples, deadline = args
+    seed, samples, deadline, camps, validate = args
     rng = random.Random(seed)
     play_rng = random.Random(seed + 1)
+    vrng = random.Random(seed + 2)
     chain = DeckChain(MEASURE_WHISTED_RATIO, rng)
     rows = []  # (variante, type contrat, gain moyen par siege PIMC, decisions)
     diffs = {"def": [], "decl": []}
@@ -121,8 +133,10 @@ def worker(args):
         def score_fn(g):
             return real_points_by_seat(role, g, contract)
         for name, seats in (("def", [s for s in range(NUM_PLAYERS) if s not in side]), ("decl", sorted(side))):
+            if name not in camps:
+                continue
             g = new_game(contract, hands, dealer, bidding, whisted)
-            n = play(g, set(seats), score_fn, play_rng, samples, diffs[name])
+            n = play(g, set(seats), score_fn, play_rng, samples, diffs[name], validate=validate, vrng=vrng)
             pts = real_points_by_seat(role, g, contract)
             gain = sum(pts[s] - pts_base[s] for s in seats) / len(seats)
             rows.append((name, contract["type"], gain, n))
@@ -207,6 +221,8 @@ def main():
     parser.add_argument("--samples", type=int, default=8)
     parser.add_argument("--seed", type=int, default=20261109)
     parser.add_argument("--oracle", action="store_true", help="defense d emballage seule, variantes def/trig, par profil")
+    parser.add_argument("--camps", default="def,decl", help="camps PIMC mesures (def, decl)")
+    parser.add_argument("--validate", type=int, default=0, help="re-estime chaque ecart sur N mondes neufs (gap sans biais)")
     parser.add_argument("--others", default="expert", help="--oracle : profils adverses (expert_bot.PROFILES), virgules")
     args = parser.parse_args()
     if args.oracle:
@@ -214,7 +230,8 @@ def main():
     t0 = time.time()
     deadline = t0 + args.minutes * 60
     with mp.Pool(args.workers) as pool:
-        parts = pool.map(worker, [(args.seed * 1000 + w, args.samples, deadline) for w in range(args.workers)])
+        parts = pool.map(worker, [(args.seed * 1000 + w, args.samples, deadline, set(args.camps.split(",")), args.validate)
+                                       for w in range(args.workers)])
     rows = [r for p, _ in parts for r in p]
     diffs = {k: [d for _, ds in parts for d in ds[k]] for k in ("def", "decl")}
     print("=== PIMC (%d mondes) vs ExpertBot, duplicate, %.0f s ===" % (args.samples, time.time() - t0))
@@ -227,16 +244,23 @@ def main():
             print("%-6s %-10s %6d %+9.3f %7.3f %8d" % (name, typ or "TOUT", n, m, se, dec))
     for name in ("def", "decl"):
         agg = {}
-        for sit, gap, ex in diffs[name]:
-            a = agg.setdefault(sit, {"n": 0, "gap": 0.0, "ex": []})
+        for sit, gap, vgap, ex in diffs[name]:
+            a = agg.setdefault(sit, {"n": 0, "gap": 0.0, "ex": [], "v": []})
             a["n"] += 1
             a["gap"] += gap
+            if vgap is not None:
+                a["v"].append(vgap)
             if len(a["ex"]) < 4 and gap >= 1.0:
                 a["ex"].append(ex)
         print("\n=== %s : ecarts PIMC / ExpertBot par situation (Q gap cumule) ===" % name)
         for sit in sorted(agg, key=lambda k: -agg[k]["gap"])[:30]:
             a = agg[sit]
-            print("%-62s n %5d  gap moyen %.2f  cumul %.1f" % (sit, a["n"], a["gap"] / a["n"], a["gap"]))
+            line = "%-62s n %5d  gap moyen %.2f  cumul %.1f" % (sit, a["n"], a["gap"] / a["n"], a["gap"])
+            if a["v"]:
+                vn, vm, vse = stats(a["v"])
+                line += "  | VALIDE n %d gap %+.2f +- %.2f (z %+.1f)%s" % (
+                    vn, vm, vse, vm / vse if vse > 0 else 0.0, "  RETENUE" if vn >= 100 and vse > 0 and vm > 3 * vse else "")
+            print(line)
             for ex in a["ex"]:
                 print("     " + ex)
     print("PIMC_VS_EXPERT_DONE")
