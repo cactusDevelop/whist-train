@@ -400,6 +400,8 @@ def main():
         for cell, xs in sorted(cells.items(), key=lambda kv: -len(kv[1])):
             g, se = champion_play.mean_se(xs)
             ok = len(xs) >= 200 and g - 2 * se > 0
+            if BASE_ROUTE[0] is not None and cell in BASE_ROUTE[0]:
+                ok = not (len(xs) >= 200 and g + 2 * se < 0)  # en place : retiree seulement si nettement negative
             if ok:
                 picked.add(cell)
             print("cellule expert %-22s reseau %-22s n %7d : %+.3f +- %.3f (z %+.1f)%s" % (
@@ -408,6 +410,7 @@ def main():
                                         "se": round(se, 3)}), flush=True)
         print("BID_ROUTE " + ",".join("%s>%s" % c for c in sorted(picked)), flush=True)
         if BASE_ROUTE[0] is not None:
+            picked |= {c for c in BASE_ROUTE[0] if c not in cells}  # jamais vue : gardee
             print("AJOUTEES " + ",".join("%s>%s" % c for c in sorted(picked - BASE_ROUTE[0])), flush=True)
             print("RETIREES " + ",".join("%s>%s" % c for c in sorted(BASE_ROUTE[0] - picked)), flush=True)
             if picked == BASE_ROUTE[0]:
