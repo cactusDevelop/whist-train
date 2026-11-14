@@ -159,6 +159,7 @@ def lead_cats(game, decl, hand0):
 
 def chunk(args):
     deals, seed = args
+    torch.set_num_threads(1)  # 4 processus sur 4 coeurs : pas de surabonnement
     rng = random.Random(seed)
     chain = DeckChain(WHISTED_RATIO, rng)
     acc = {"deals": 0, "general_pass": 0, "contracts": {}, "when": {}, "defense": {}, "cf": {}, "cf_ctx": {}}
@@ -166,7 +167,9 @@ def chunk(args):
     def push(d, k, v):
         d.setdefault(k, []).append(v)
 
-    for _ in range(deals):
+    for i in range(deals):
+        if seed % 10 == 0 and i % 100 == 0:
+            print("  worker %d : %d/%d donnes" % (seed % 100, i, deals), flush=True)
         hands, dealer, whisted = chain.deal(rng)
         trou = detect_trou(hands)
         bidding, first = run_bidding(hands, dealer, trou)
@@ -323,6 +326,7 @@ def main():
     ap.add_argument("--out", default="ai_insights.json")
     args = ap.parse_args()
 
+    torch.set_num_threads(1)  # avant le fork : sinon blocage possible des threads torch dans les enfants
     BIDDER = RuledBidder(load_role(args.weights, "encherisseur", evolution.OBS_DIM))
     for role in ("defenseur", "piccolo", "grande_misere", "petite_misere", "misere_etalee", "trou", "bouche_trou"):
         NETS[role] = load_role(args.weights, "libre_" + role, specialists.IMPLEMENTED[role][0])
