@@ -58,6 +58,7 @@ JACK_RANK = 9  # rang 0 = 2 ... 9 = Valet, 12 = As
 UNRELIABLE_JOKERS = ["pot_de_vin", "main_de_fer"]  # notes joker_profit : joueur simule qui les joue mal (30/10)
 
 BIDDER = None  # herites par fork
+VALIDATE_KNOB = {}  # --validate-knob, ex. {"PROPOSE_LONG_TRUMPS": 5}
 NETS = {}
 
 
@@ -162,7 +163,7 @@ def chunk(args):
     torch.set_num_threads(1)  # 4 processus sur 4 coeurs : pas de surabonnement
     rng = random.Random(seed)
     chain = DeckChain(WHISTED_RATIO, rng)
-    acc = {"deals": 0, "general_pass": 0, "contracts": {}, "when": {}, "defense": {}, "cf": {}, "cf_ctx": {}}
+    acc = {"deals": 0, "general_pass": 0, "contracts": {}, "when": {}, "defense": {}, "cf": {}, "cf_ctx": {}, "knob": {}}
 
     def push(d, k, v):
         d.setdefault(k, []).append(v)
@@ -215,6 +216,23 @@ def chunk(args):
             s2 = pre.turn
             e = expert_bot.choose_bid(pre, s2, hands[s2])
             expert_bot.apply_choice(pre, s2, bid_route.route(e, BIDDER.decide(pre, s2, hands[s2])))
+        if VALIDATE_KNOB and not pre.finished and pre.turn == seat:
+            # validation conseil 14/11 : decisions que le knob (A/B 33 LONG5) changerait, gain contrefactuel
+            # = points du siege (choix knob - choix du jeu) ; l A/B mesurait -0.047/donne pour 2.1 % changees
+            saved = {k: getattr(expert_bot, k) for k in VALIDATE_KNOB}
+            for k, v in VALIDATE_KNOB.items():
+                setattr(expert_bot, k, v)
+            try:
+                e_on = expert_bot.choose_bid(pre, seat, hand)
+            finally:
+                for k, v in saved.items():
+                    setattr(expert_bot, k, v)
+            alt = bid_route.route(e_on, BIDDER.decide(pre, seat, hand))
+            if alt != played:
+                b3, _ = run_bidding(hands, dealer, None, force=(seat, alt))
+                push(acc["knob"], "changed", seat_points(b3, hands, dealer, whisted, seat) - base_pts[seat])
+            else:
+                push(acc["knob"], "same", 0.0)
         legal = not pre.finished and pre.turn == seat and (
             pre.can_propose(seat, suit) if kind == "propose" else pre.can_solo(seat, suit, 6)) and pre.can_pass(seat)
         if not legal:
@@ -231,16 +249,17 @@ def chunk(args):
             p_ann = seat_points(b2, hands, dealer, whisted, seat)
         bot = "passe" if played == ACTION_PASS else ("annonce" if played == announce else "autre")
         push(acc["cf"], (kind, trump_bucket(hand, suit)), (p_ann - p_pass, bot))
-        push(acc["cf_ctx"], (kind, ctx), p_ann - p_pass)
+        push(acc["cf_ctx"], (kind, ctx, None), p_ann - p_pass)
+        push(acc["cf_ctx"], (kind, ctx, bot), p_ann - p_pass)
     return acc
 
 
 def merge(parts):
-    out = {"deals": 0, "general_pass": 0, "contracts": {}, "when": {}, "defense": {}, "cf": {}, "cf_ctx": {}}
+    out = {"deals": 0, "general_pass": 0, "contracts": {}, "when": {}, "defense": {}, "cf": {}, "cf_ctx": {}, "knob": {}}
     for p in parts:
         out["deals"] += p["deals"]
         out["general_pass"] += p["general_pass"]
-        for k in ("contracts", "when", "defense", "cf", "cf_ctx"):
+        for k in ("contracts", "when", "defense", "cf", "cf_ctx", "knob"):
             for kk, v in p[k].items():
                 out[k].setdefault(kk, []).extend(v)
     return out
@@ -301,18 +320,29 @@ def build(acc, min_n, meta):
             continue
         g, se = mean_se([x for x, _ in rows])
         bot_ann = sum(1 for _, b in rows if b == "annonce") / len(rows)
-        verdict = "annoncer" if g - 2 * se > 0 else ("passer" if g + 2 * se < 0 else "limite")
+        # 14/11 (conseil) : la moyenne du bucket melange les mains ou l IA annonce deja (les meilleures) ;
+        # le conseil se lit sur les mains ou l IA PASSE (la decision marginale), sinon "limite"
+        xp = [x for x, b in rows if b == "passe"]
+        gp, sep = mean_se(xp) if len(xp) >= min_n else (None, None)
+        verdict = "limite" if gp is None else ("annoncer" if gp - 2 * sep > 0 else ("passer" if gp + 2 * sep < 0 else "limite"))
         cf.setdefault(kind, {})[bucket] = {"n": len(rows), "gain_annonce_vs_passe": r(g), "se": r(se),
+                                           "n_bot_passe": len(xp), "gain_quand_bot_passe": None if gp is None else r(gp),
+                                           "se_quand_bot_passe": None if gp is None else r(sep),
                                            "conseil": verdict, "bot_annonce": r(bot_ann, 3)}
     cf_ctx = {}
-    for (kind, ctx), xs in sorted(acc["cf_ctx"].items()):
+    cf_ctx_bot = {}
+    for (kind, ctx, bot), xs in sorted(acc["cf_ctx"].items(), key=lambda kv: tuple(str(x) for x in kv[0])):
         if len(xs) >= min_n:
             g, se = mean_se(xs)
-            cf_ctx.setdefault(kind, {})[ctx] = {"n": len(xs), "gain_annonce_vs_passe": r(g), "se": r(se)}
+            cell = {"n": len(xs), "gain_annonce_vs_passe": r(g), "se": r(se)}
+            if bot is None:
+                cf_ctx.setdefault(kind, {})[ctx] = cell
+            else:
+                cf_ctx_bot.setdefault(kind, {}).setdefault(ctx, {})["bot_" + bot] = cell
     return dict(meta, **{
         "deals": total, "general_pass_rate": r(acc["general_pass"] / total, 4), "min_n": min_n,
         "contracts": contracts, "hidden_contracts_below_min_n": hidden, "when_to_bid": when, "defense": defense,
-        "pass_vs_bid": cf, "pass_vs_bid_by_context": cf_ctx, "unreliable_jokers": UNRELIABLE_JOKERS})
+        "pass_vs_bid": cf, "pass_vs_bid_by_context": cf_ctx, "pass_vs_bid_by_context_and_bot": cf_ctx_bot, "unreliable_jokers": UNRELIABLE_JOKERS})
 
 
 def main():
@@ -324,8 +354,11 @@ def main():
     ap.add_argument("--weights", default="godot_weights_ingame", help="copie des whist_ai_weights_data_v2_*.gd du jeu")
     ap.add_argument("--min-n", type=int, default=MIN_N)
     ap.add_argument("--out", default="ai_insights.json")
+    ap.add_argument("--validate-knob", default="", help='JSON des knobs expert_bot a valider en contrefactuel, ex. {"PROPOSE_LONG_TRUMPS": 5}')
     args = ap.parse_args()
 
+    if args.validate_knob:
+        VALIDATE_KNOB.update(json.loads(args.validate_knob))
     torch.set_num_threads(1)  # avant le fork : sinon blocage possible des threads torch dans les enfants
     BIDDER = RuledBidder(load_role(args.weights, "encherisseur", evolution.OBS_DIM))
     for role in ("defenseur", "piccolo", "grande_misere", "petite_misere", "misere_etalee", "trou", "bouche_trou"):
@@ -348,7 +381,9 @@ def main():
                 "atouts/honneurs": "main du declarant : cartes dans la couleur d'atout, dont Valet et plus",
                 "hautes": "misere : cartes Valet et plus dans la main du declarant",
                 "pass_vs_bid": "meme main rejouee : 1re decision forcee a annoncer (propose ou solo 6, couleur la plus longue) "
-                               "moins forcee a passer ; vrais points du siege ; conseil = gain hors +-2 se",
+                               "moins forcee a passer ; vrais points du siege (score individuel, pas d equipe fixe) ; "
+                               "conseil = gain hors +-2 se sur les mains ou l IA passe (la moyenne du bucket inclut "
+                               "les mains ou elle annonce deja, biais de selection)",
                 "defense": "par_entame = premiere carte jouee par la defense ; correlation, pas causalite"}}
     out = build(acc, args.min_n, meta)
     out["elapsed_s"] = r(time.time() - t0, 1)
@@ -360,8 +395,18 @@ def main():
         print("  %-16s n %6d reussite %.3f ev %+6.2f chute %s" % (k, s["n"], s["reussite"], s["ev"], s["cout_chute"]))
     for kind, buckets in out["pass_vs_bid"].items():
         for b, s in buckets.items():
-            print("  CF %-8s %-22s n %6d gain %+6.2f +- %.2f -> %s (bot annonce %.0f%%)" % (
-                kind, b, s["n"], s["gain_annonce_vs_passe"], s["se"], s["conseil"], 100 * s["bot_annonce"]))
+            print("  CF %-8s %-22s n %6d gain %+6.2f +- %.2f | bot passe n %6d gain %s -> %s (bot annonce %.0f%%)" % (
+                kind, b, s["n"], s["gain_annonce_vs_passe"], s["se"], s["n_bot_passe"],
+                "-" if s["gain_quand_bot_passe"] is None else "%+.2f +- %.2f" % (s["gain_quand_bot_passe"], s["se_quand_bot_passe"]),
+                s["conseil"], 100 * s["bot_annonce"]))
+    if VALIDATE_KNOB:
+        ch, same = acc["knob"].get("changed", []), acc["knob"].get("same", [])
+        tot = len(ch) + len(same)
+        if tot:
+            g, se = mean_se(ch) if ch else (0.0, 0.0)
+            print("VALIDATION knob %s : %d/%d decisions changees (%.1f %%), gain/changee %+.2f +- %.2f, "
+                  "par decision %+.3f (A/B 33 : -0.047/donne, 2.1 %% changees)" % (
+                      VALIDATE_KNOB, len(ch), tot, 100 * len(ch) / tot, g, se, g * len(ch) / tot), flush=True)
 
 
 if __name__ == "__main__":
