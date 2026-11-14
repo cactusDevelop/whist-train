@@ -185,10 +185,14 @@ def net_bid(bidding, seat, hand):
     return BIDDER.act_greedy(obs, mask)
 
 
+BASE_ROUTE = [None]  # --bid-iterate : routage d'enchere en place (agents/bid_route.BID_ROUTE), sinon None
+
+
 def run_bidding(hands, dealer, trou, override=None, routed_seat=None, trace=None, prof=None, me=None):
     """ExpertBot partout ; override=(siege, k, choix) : k-ieme decision du siege remplacee ;
-    routed_seat : ce siege suit BID_ROUTE ; trace : liste remplie de (siege, k, choix expert, choix reseau) ;
-    prof : profil ExpertBot des sieges autres que me (champ)."""
+    routed_seat : ce siege suit BID_ROUTE ; trace : liste remplie de (siege, k, cellule, alternative, signe) ;
+    prof : profil ExpertBot des sieges autres que me (champ). BASE_ROUTE (--bid-iterate) : les autres
+    sieges (seulement me face a un champ) suivent le routage en place."""
     bidding = Bidding(dealer)
     if trou is not None:
         bidding.seed_trou(trou)
@@ -206,21 +210,30 @@ def run_bidding(hands, dealer, trou, override=None, routed_seat=None, trace=None
             choice = expert_bot.choose_bid(bidding, seat, hand)
             if prof is not None:
                 expert_bot.set_bid_params({})
-            if trace is not None or seat == routed_seat:
+            if seat == routed_seat:
+                cells = BID_ROUTE[0]
+            elif BASE_ROUTE[0] is not None and (prof is None or seat == me):
+                cells = BASE_ROUTE[0]
+            else:
+                cells = None
+            if trace is not None or cells is not None:
                 n = net_bid(bidding, seat, hand)
                 if bid_label(n) != bid_label(choice):
                     cell = (bid_label(choice, False), bid_label(n, False))
-                    if trace is not None:
-                        trace.append((seat, k, cell, n))
-                    if seat == routed_seat and cell in BID_ROUTE[0]:
+                    expert = choice
+                    if cells is not None and cell in cells:
                         choice = n
+                    if trace is not None:
+                        # gain toujours oriente "reseau moins ExpertBot" : deviation vers l'autre choix
+                        trace.append((seat, k, cell, expert, -1) if choice is n else (seat, k, cell, n, 1))
         if not expert_bot.apply_choice(bidding, seat, choice):
             raise AssertionError("enchere illegale %r siege %d" % (choice, seat))
     return bidding
 
 
 def bid_cells_chunk(args):
-    deals, seed, route, confirm, others = args
+    deals, seed, route, confirm, others, base_route = args
+    BASE_ROUTE[0] = base_route
     prof = expert_bot.PROFILES[others] if others else None
     ROUTE[0] = route
     rng = random.Random(seed)
@@ -268,15 +281,14 @@ def bid_cells_chunk(args):
                 continue
             trace = []
             base = points(run_bidding(hands, dealer, trou, trace=trace), hands, whisted)
-            for seat, k, cell, n in trace:
-                b = run_bidding(hands, dealer, trou, override=(seat, k, n))
-                cells.setdefault(cell, []).append(points(b, hands, whisted)[seat] - base[seat])
+            for seat, k, cell, alt, sign in trace:
+                b = run_bidding(hands, dealer, trou, override=(seat, k, alt))
+                cells.setdefault(cell, []).append(sign * (points(b, hands, whisted)[seat] - base[seat]))
     return cells, per_deal
 
 
-
 def run_bid_cells(pool, deals, procs, seed, route, confirm, others=None):
-    parts = pool.map(bid_cells_chunk, [(deals // procs, seed + 10 * i, route, confirm, others) for i in range(procs)],
+    parts = pool.map(bid_cells_chunk, [(deals // procs, seed + 10 * i, route, confirm, others, BASE_ROUTE[0]) for i in range(procs)],
                      chunksize=1)
     cells, per_deal = {}, []
     for c, p in parts:
@@ -326,6 +338,8 @@ def main():
     parser.add_argument("--auto-route", action="store_true", help="voir ROUTAGE (enchere expert)")
     parser.add_argument("--others", default="", help="voir CHAMP : profils separes par des virgules")
     parser.add_argument("--bid-cells", action="store_true", help="voir ENCHERE PAR CELLULE (cartes = --route)")
+    parser.add_argument("--bid-iterate", action="store_true",
+                        help="--bid-cells en partant du routage d'enchere en place (agents/bid_route.BID_ROUTE)")
     parser.add_argument("--seeds", default="", help="graines separees par des virgules (CHAMP ; defaut --seed)")
     args = parser.parse_args()
     fields = [x for x in args.others.split(",") if x]
@@ -368,6 +382,14 @@ def main():
         print("RESULT " + json.dumps(r), flush=True)
         return r
 
+    if args.bid_iterate:
+        if not args.bid_cells:
+            raise SystemExit("--bid-iterate va avec --bid-cells")
+        from agents.bid_route import BID_ROUTE as CURRENT_ROUTE
+        BASE_ROUTE[0] = CURRENT_ROUTE
+        print("ITERATION depuis le routage en place (%d cellules) : base = routage aux 4 sieges ; cellule = gain "
+              "reseau moins ExpertBot dans ce contexte ; confirmation = nouveau routage a la place de l'ancien" % len(
+                  CURRENT_ROUTE), flush=True)
     if args.bid_cells:
         t0 = time.time()
         cells, _ = run_bid_cells(pool, args.deals, args.workers, args.seed, route, False)
@@ -385,6 +407,12 @@ def main():
             print("CELL " + json.dumps({"expert": cell[0], "reseau": cell[1], "n": len(xs), "gain": round(g, 3),
                                         "se": round(se, 3)}), flush=True)
         print("BID_ROUTE " + ",".join("%s>%s" % c for c in sorted(picked)), flush=True)
+        if BASE_ROUTE[0] is not None:
+            print("AJOUTEES " + ",".join("%s>%s" % c for c in sorted(picked - BASE_ROUTE[0])), flush=True)
+            print("RETIREES " + ",".join("%s>%s" % c for c in sorted(BASE_ROUTE[0] - picked)), flush=True)
+            if picked == BASE_ROUTE[0]:
+                print("ROUTAGE INCHANGE : rien a confirmer", flush=True)
+                picked = set()
         if picked:
             BID_ROUTE[0] = frozenset(picked)
             pool.close()
