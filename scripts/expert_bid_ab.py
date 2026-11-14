@@ -43,6 +43,12 @@ VARIANT_SETS["a32"] = {  # 12/11 14e conseil : regle STRUCTURELLE de releve OPP_
     "OPP_CAP_1": {"OPP_SUIT_CAP": 1},
     "OPP_CAP_0": {"OPP_SUIT_CAP": 0},
 }
+VARIANT_SETS["a33"] = {  # 14/11 piste ai_insights : proposer plus souvent avec une longue couleur
+    "IDENTITE": {},
+    "LONG5_MIN0": {"PROPOSE_LONG_TRUMPS": 5, "PROPOSE_LONG_MIN": 0},
+    "LONG5_MIN2": {"PROPOSE_LONG_TRUMPS": 5, "PROPOSE_LONG_MIN": 2},
+    "LONG6_MIN0": {"PROPOSE_LONG_TRUMPS": 6, "PROPOSE_LONG_MIN": 0},
+}
 # AB_SET (env, herite par les workers) : jeu de variantes ; defaut = le plus recent
 VARIANTS = VARIANT_SETS[os.environ.get("AB_SET", max(VARIANT_SETS))]
 # 11/11 (11e conseil, critique) : pour un knob d ENCHERES, placer la variante sur les camps du contrat de

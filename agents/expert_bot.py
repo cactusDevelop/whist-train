@@ -117,6 +117,11 @@ EMBALLER_LONG_TRUMPS = 5  # emballer avec au moins ce nombre d'atouts...
 EMBALLER_SHORT_TRUMPS = 4  # ... ou celui-ci avec au moins une figure (0, 0 = sans condition)
 WAIT_BALANCED = True  # premier a parler, main moyenne repartie : attendre (pour emballer ensuite)
 PROPOSER_TRUMPS_ASSUMED = 5  # longueur d'atout supposee chez le proposeur
+# 14/11 piste ai_insights (400k, 43587316674 : proposer avec 5+ atouts rapporte +0.6..+11, l'ExpertBot ne
+# propose que 29-84 % du temps) : proposer aussi une couleur d'au moins PROPOSE_LONG_TRUMPS cartes avec
+# >= PROPOSE_LONG_MIN plis estimes (0 = desactive). Mesure A/B a33.
+PROPOSE_LONG_TRUMPS = 0
+PROPOSE_LONG_MIN = 0
 # Ecole du whist (voir docstring) :
 # « au moins quatre cartes avec deux honneurs » : les deux honneurs ont ete
 # MESURES contre-productifs ici (duel duplicate 3000 donnes contre l'ancien
@@ -557,7 +562,9 @@ def _choose_bid_core(bidding, seat, hand):
     # 2. proposer si >= 5 plis
     options = [(estimate_tricks(hand, info["suit"]), a) for a, info in by_kind.get("propose", [])
                if propose_suit_ok(hand, info["suit"])]
-    options = [o for o in options if o[0] >= PROPOSE_MIN]
+    options = [o for o in options if o[0] >= PROPOSE_MIN or (
+        PROPOSE_LONG_TRUMPS and o[0] >= PROPOSE_LONG_MIN
+        and len(_ranks(hand, infos[o[1]]["suit"])) >= PROPOSE_LONG_TRUMPS)]
     if options:
         return max(options)[1]
     # 3. solo si >= 6 plis (seconde priorite)

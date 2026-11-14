@@ -36,6 +36,10 @@ STATS_TARGETS = {
     "eval": "whist_ai_eval_stats.jsonl",
 }
 EVAL_STATS_FILE_DEFAULT = "eval_stats.jsonl"
+# 14/11 (whist-4-it, conseil Stats IA) : l'onglet Stats IA ne lit plus les stats Phase 1/2/3 ni le duel
+# (ils decrivaient une IA que le joueur n'affronte plus) ; il lit game/ai_insights.json
+# (scripts/ai_insights.py). On ne les publie donc plus dans game/ ; True pour les republier.
+PUBLISH_LEGACY_STATS = False
 
 
 def _last_record(path):
@@ -67,6 +71,9 @@ def append_eval_stats(eval_stats_file=EVAL_STATS_FILE_DEFAULT, duel_file="duel_e
 def publish_stats_file(stats_file, key, godot_project=None):
     """Copie UN fichier de stats (pas de poids, donc rien a verifier) --
     utilise par scripts/phase3.py en autonome. Retourne True si copie."""
+    if not PUBLISH_LEGACY_STATS:
+        print("  stats %s non publiees (PUBLISH_LEGACY_STATS = False, voir ai_insights.json)." % key, flush=True)
+        return False
     godot_project = godot_project or find_godot_project()
     if godot_project is None or not os.path.isfile(stats_file):
         print("  !! stats %s non publiees (projet whist-4-it ou fichier introuvable)." % key, flush=True)
@@ -99,7 +106,7 @@ def publish_to_godot(export_dir="godot_export", stats_file=None, stats_file_phas
     for path in weights:
         shutil.copy2(path, game_dir)
     copied_stats = []
-    for src, key in ((stats_file, "phase1"), (stats_file_phase2, "phase2"), (stats_file_phase3, "phase3"),
+    for src, key in () if not PUBLISH_LEGACY_STATS else ((stats_file, "phase1"), (stats_file_phase2, "phase2"), (stats_file_phase3, "phase3"),
                      (eval_stats_file, "eval")):
         if src and os.path.isfile(src):
             shutil.copy2(src, os.path.join(game_dir, STATS_TARGETS[key]))
