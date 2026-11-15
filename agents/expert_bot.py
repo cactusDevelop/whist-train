@@ -213,10 +213,13 @@ LEAD_PARTNER_SUIT = True  # defense : entamer la couleur proposee/emballee par u
 # coequipier ». Ligue 41132837609 : +0.023 +-0.003 (z 6.8), promu ; arreter de tirer a 1 atout restant : +0.001, rejete.
 KEEP_TRUMPS_VS_VOID = True  # adversaires sans atout : encaisser ses maitresses avant de faire couper le partenaire
 DRAW_STOP_OUTSTANDING = 0  # contrat d'equipe : ne plus tirer quand il reste au plus ce nombre d'atouts adverses
+# 15/11 (conseil 14/11, etape 2 ; diag decl 43638797757 : entame d atout emballage decl, PIMC tire l As d atout la ou
+# ExpertBot joue a cote) -- A/B, defaut inchange :
+DRAW_COUNT_RAW = False  # contrat d equipe, decision de tirer : compter TOUS les atouts non vus (sans retirer ceux supposes chez le partenaire)
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
               "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "CASH_BEFORE_DRAW", "LAST_LEAD_MASTER", "DUCK_RUFF_SECOND", "RUFF_RISK_VOID_ONLY", "PARTNER_SUIT_TOP_SHORT", "PARTNER_SUIT_HIGH", "DISCARD_SHORT_WHEN_MATE", "RUFF_HIGH_IF_UNSAFE", "NO_OVERTAKE_POS", "DEF_LEAD_SEQ_ANY", "DEF_LEAD_PASSIVE", "NO_RUFF_PARTNER_2ND", "DECL_LEAD_STRONG", "DISCARD_LONG_TOP", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
               "LEAD_PARTNER_SUIT", "KEEP_TRUMPS_VS_VOID", "DRAW_STOP_OUTSTANDING",
-              "NO_OVERTAKE_POS_SIDE", "DECL_2ND_TAKE_SAFE", "DRAW_NEED_MASTER", "UNBLOCK_2ND", "DEF_NT_KEEP_MASTERS",
+              "NO_OVERTAKE_POS_SIDE", "DECL_2ND_TAKE_SAFE", "DRAW_NEED_MASTER", "DRAW_COUNT_RAW", "UNBLOCK_2ND", "DEF_NT_KEEP_MASTERS",
               "RAISE_MARGIN_AT", "SOLO_MARGIN_AT", "OPP_SUIT_CAP")
 
 # Profils CONCURRENTS de l'ExpertBot (utilisateur 2026-10-27 : « mets les regles que je viens
@@ -1178,7 +1181,8 @@ def _lead(v):
 
     # 1. declarant : tirer les atouts adverses
     if declaring and my_trumps:
-        outstanding = v.opponent_trumps_outstanding()
+        outstanding = (len(v.unseen_in(trump)) if DRAW_COUNT_RAW and v.team_contract
+                       else v.opponent_trumps_outstanding())
         opps_with_trumps = [s for s in opps if not v.void[s][trump]]
         if v.team_contract:
             # tirer tant qu'UN adversaire peut encore couper (signalement 2026-10-23 :

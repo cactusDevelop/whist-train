@@ -49,13 +49,20 @@ VARIANT_SETS["a33"] = {  # 14/11 piste ai_insights : proposer plus souvent avec 
     "LONG5_MIN2": {"PROPOSE_LONG_TRUMPS": 5, "PROPOSE_LONG_MIN": 2},
     "LONG6_MIN0": {"PROPOSE_LONG_TRUMPS": 6, "PROPOSE_LONG_MIN": 0},
 }
+VARIANT_SETS["a34"] = {  # 15/11 conseil 14/11 etape 2 (jeu de la carte, DECLARANT) : entame d atout de l emballeur
+    "IDENTITE": {},
+    "DRAW_RAW": {"DRAW_COUNT_RAW": True},
+    "NO_INFER": {"INFER_OPP_TRUMPS": False},
+}
+# placements par defaut d un jeu (knob de JEU -> "camp" = vrais camps du contrat de reference ; encheres -> "single")
+SET_SEATS = {"a34": "camp"}
 # AB_SET (env, herite par les workers) : jeu de variantes ; defaut = le plus recent
 VARIANTS = VARIANT_SETS[os.environ.get("AB_SET", max(VARIANT_SETS))]
 # 11/11 (11e conseil, critique) : pour un knob d ENCHERES, placer la variante sur les camps du contrat de
 # reference est mal pose (la variante change le contrat ; pas de partenaires fixes au whist ; repli (0,2)/(1,3)
 # sur les passes generales). SEATS=single : variante sur un seul siege, 4 rotations, gain = points de ce siege
 # - reference ; cellules = contrat JOUE par la variante | camp du siege variante.
-SEATS = os.environ.get("AB_SEATS", "single")
+SEATS = os.environ.get("AB_SEATS", SET_SEATS.get(os.environ.get("AB_SET", max(VARIANT_SETS)), "single"))
 
 def play_deal(hands, dealer, whisted, params_by_seat):
     """-> (points des 4 sieges, contrat ou None, jeu ou None)."""
