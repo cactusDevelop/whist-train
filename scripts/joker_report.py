@@ -177,6 +177,16 @@ def build(cur, prev=None):
             out.append("| %d | %s | %s | %s | %s | %d | %s |" % (i + 1, r["id"], fmt(value(r)), fmt(r.get("force")),
                                                               fmt(r.get("polyvalence")), fr[r["id"]], label(r)))
         out.append("")
+    # 15/11 : moteurs (DeckEngine) -- le moment ne compte pas, la valeur est de l'avoir en main ou pas
+    has = [r for r in rows if r.get("has_value") and r["has_value"].get("mean") is not None]
+    if has:
+        out += ["**Moteurs : valeur de l'avoir en main** (meme main sans lui, debut de donne ; leur force « maintenant "
+                "contre plus tard » reste proche de 0 par construction)", "",
+                "| joker | cout | valeur l'avoir (se) | n |", "|---|---|---|---|"]
+        for r in sorted(has, key=lambda r: -r["has_value"]["mean"]):
+            hv = r["has_value"]
+            out.append("| %s | %s | %s (%s) | %s |" % (r["id"], r.get("cost"), fmt(hv["mean"]), fmt(hv.get("se")), hv.get("n")))
+        out.append("")
     out += ["## 4. Ce que ce rapport ne voit pas", "",
             "- le ressenti et le plaisir de jeu ;",
             "- le vrai meta des joueurs (le draft simule prend presque toujours la 1re option) ;",

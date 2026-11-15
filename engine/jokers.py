@@ -75,7 +75,7 @@ RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH}  # a76f : regles changees (avant : 86
 # une autre carte legale ; aucun joker, cout ni observation ne change -> regles = 07ac.
 # Exportable sans equivalence de regles : champion du gate cloud MESURE sous les regles courantes
 # (run 40100438746, 07ac : iter 93 champion_vs_heuristic +26..+41, aucune iteration acceptee devant lui).
-MEASURED_CHAMPION_HASHES = {"1f49fc6fb6a25cae", "473e418c736d5419"}  # 0e9a (nuit 09/11 : 0/24 acceptee) + acb9 : champion 473e (iter 56) reexporte sans reentrainement
+MEASURED_CHAMPION_HASHES = {"1f49fc6fb6a25cae", "473e418c736d5419"}  # 55e9 (15/11, demande whist-4-it) : champion 473e iter 56 reexporte sans reentrainement (CASTABLE/obs inchanges) ; 0e9a (nuit 09/11 : 0/24 acceptee) + acb9 : champion 473e (iter 56) reexporte sans reentrainement
 # (demande whist-4-it 9f25355, reentrainement acb9 a decider) ; e1f4 : champion 1f49 (iter 93) mesure sous 8f41 (run 40783453624,
 # 19 portes, champion_vs_heuristic +12.9..+23.7, se ~3.4) ; 8f41 -> e1f4 ne change que la garde de Courant d'Air
 # 65a7 : regles changees, le champion 6c54 doit repasser la porte

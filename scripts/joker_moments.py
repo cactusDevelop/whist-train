@@ -24,6 +24,11 @@ des autres branches, utile si jouer > alt. Les K suivantes MESURENT : gain = jou
   bien_vu     = part des occasions utiles ou la regle du joueur le lance ;
   gain_tout   = gain moyen sur toutes les occasions (comparaison avec l'ancienne mesure).
 
+Valeur « l'avoir ou pas » (15/11, demande whist-4-it) : pour les moteurs (DeckEngine : L'Addition2,
+Tournee Generale2...), dont le moment ne compte presque pas (jouer ~ garder -> 0 occasion utile),
+en debut de donne : le joker suivi en main contre la meme main sans lui (un exemplaire retire),
+meme situation rejouee K fois jusqu'a la fin du match -> has_value (points).
+
 Valeur d'un ⚡ / d'une pioche : en debut de donne (contrat connu), +1 ⚡ (resp. +1 joker
 pioche) contre rien, meme situation rejouee K fois jusqu'a la fin du match.
 
@@ -73,6 +78,10 @@ PLAYER = jm.PLAYER
 
 def _measurable(jid):
     return J.jtype(jid) != "passif" and J.base_id(jid) not in J.FROM_DECK_IDS
+
+
+def _is_engine(jid):
+    return issubclass(J.EFFECTS[J.base_id(jid)], J.DeckEngine)
 
 
 def _reseed(m2, seed):
@@ -170,7 +179,7 @@ def _merge_cell(d, s):
 def _entry():
     return {"occasions": 0, "useful": 0, "rule_cast": 0, "rule_cast_useful": 0, "hands": 0, "hands_useful": 0,
             "force": _cell(), "tout": _cell(), "alt": {b: 0 for b in ALTS}, "by_contract": {}, "by_ctx": {},
-            "false_cast": _cell(), "missed": _cell()}
+            "false_cast": _cell(), "missed": _cell(), "has": _cell()}
 
 
 def _ctx_entry():
@@ -263,6 +272,19 @@ def worker(args):
                 elif not bid_done:
                     held = [j for j in dict.fromkeys(hand.state.joker_hand[PLAYER]) if _measurable(j) and J.jtype(j) != "enchere"]
                     focus = rng.choice(held) if held else None
+                # 15/11 : moteurs -- l'avoir en main contre ne pas l'avoir, debut de la donne
+                if (focus is not None and not value_only and _is_engine(focus)
+                        and focus in hand.state.joker_hand[PLAYER]):
+                    deals = jm.spare_deals(match, rng.randrange(1 << 30))
+                    vs = rng.randrange(1 << 30)
+
+                    def without(_p, s, jid=focus):
+                        s.joker_hand[PLAYER].remove(jid)
+                    for _r in range(k):
+                        d = (_rollout(match, hand, lambda p, s: None, policy, hands_left, deals, vs)[0]
+                             - _rollout(match, hand, without, policy, hands_left, deals, vs)[0])
+                        _add(entry(focus)["has"], d)
+                        vs += 1
                 # valeur d'un ⚡ / d'une pioche, debut de la donne
                 if value_only or rng.random() < VALUE_PROB:
                     deals = jm.spare_deals(match, rng.randrange(1 << 30))
@@ -328,8 +350,8 @@ def merge(dst, src):
         d = dst["jokers"].setdefault(jid, _entry())
         for key in ("occasions", "useful", "rule_cast", "rule_cast_useful", "hands", "hands_useful"):
             d[key] += e[key]
-        for key in ("force", "tout", "false_cast", "missed"):
-            _merge_cell(d[key], e[key])
+        for key in ("force", "tout", "false_cast", "missed", "has"):
+            _merge_cell(d[key], e.get(key) or _cell())
         for c, cx in e["by_ctx"].items():
             dc = d["by_ctx"].setdefault(c, _ctx_entry())
             for key in ("occasions", "useful", "rule_cast", "rule_cast_useful"):
@@ -375,6 +397,7 @@ def table(agg):
                      "rule_casts": e["rule_cast"],
                      "precision": round(e["rule_cast_useful"] / e["rule_cast"], 3) if e["rule_cast"] else None,
                      "false_cast": _ms(e["false_cast"]), "missed": _ms(e["missed"]),
+                     "has_value": _ms(e["has"]) if e["has"]["n"] else None,
                      "by_ctx": {c: {"occasions": cx["occasions"], "useful": cx["useful"], "rule_cast": cx["rule_cast"],
                                     "rule_cast_useful": cx["rule_cast_useful"], "force": _ms(cx["force"])}
                                 for c, cx in sorted(e["by_ctx"].items())},
@@ -410,6 +433,13 @@ def render(agg, meta):
             r["id"], r["cost"], r["occasions"], fmt(r["useful_rate"]), fmt(r["force"]), fmt(r["force_se"]),
             fmt(r["polyvalence"]), fmt(r["bien_vu"]), fmt(r["gain_tout"]), "oui" if r["fiable"] else "non"))
     with open(OUT_MD, "w", encoding="utf-8") as f:
+        has = [r for r in rows if r.get("has_value")]
+        if has:
+            lines += ["", "Moteurs : valeur de l'avoir en main (contre la meme main sans lui, debut de donne)", "",
+                      "| joker | cout | valeur (se) | n |", "|---|---|---|---|"]
+            for r in sorted(has, key=lambda r: -(r["has_value"]["mean"] or -99)):
+                hv = r["has_value"]
+                lines.append("| %s | %d | %s (%s) | %d |" % (r["id"], r["cost"], fmt(hv["mean"]), fmt(hv["se"]), hv["n"]))
         f.write("\n".join(lines) + "\n")
     return rows
 
