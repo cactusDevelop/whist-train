@@ -61,6 +61,9 @@ def adv_wins_trick(game, seat):
     return bool(trick) and trick_winner(trick, game.trump_suit) not in teammates(game, seat)
 
 
+PIMC_TIMES = []  # secondes par decision PIMC (dds_values, hors --validate) : budget CPU avant tout port
+
+
 def play(game, pimc_seats, score_fn, rng, samples, diffs, trigger=None, validate=0, vrng=None):
     """Joue la donne ; `pimc_seats` jouent PIMC (seulement si trigger(game, seat) quand il est donne).
     -> nombre de decisions PIMC."""
@@ -72,8 +75,10 @@ def play(game, pimc_seats, score_fn, rng, samples, diffs, trigger=None, validate
         if seat in pimc_seats and not trou_lead and (trigger is None or trigger(game, seat)):  # l'entame du bouche-trou fixe le Trou (regle) : jamais PIMC
             legal = [c for c, ok in enumerate(game.legal_action_mask(seat)) if ok]
             if len(legal) > 1 and game.trump_suit is not None and dds.supported(game):
+                t_dec = time.perf_counter()
                 q = dds_values(game, seat, legal, score_fn, rng, samples)
                 if q is not None:
+                    PIMC_TIMES.append(time.perf_counter() - t_dec)
                     n += 1
                     best = max(q)
                     qe = q[legal.index(card)]
@@ -107,7 +112,8 @@ def sit_key(game, seat, card):
 
 
 def worker(args):
-    seed, samples, deadline, camps, validate = args
+    seed, samples, deadline, camps, validate, others = args
+    expert_bot.set_bid_params(dict(expert_bot.PROFILES[others]))  # ExpertBot (base + sieges non PIMC) sous ce profil
     rng = random.Random(seed)
     play_rng = random.Random(seed + 1)
     vrng = random.Random(seed + 2)
@@ -142,7 +148,7 @@ def worker(args):
             rows.append((name, contract["type"], gain, n))
             if time.time() >= deadline:
                 break
-    return rows, diffs
+    return rows, diffs, list(PIMC_TIMES)
 
 
 def oracle_worker(args):
@@ -223,25 +229,38 @@ def main():
     parser.add_argument("--oracle", action="store_true", help="defense d emballage seule, variantes def/trig, par profil")
     parser.add_argument("--camps", default="def,decl", help="camps PIMC mesures (def, decl)")
     parser.add_argument("--validate", type=int, default=0, help="re-estime chaque ecart sur N mondes neufs (gap sans biais)")
-    parser.add_argument("--others", default="expert", help="--oracle : profils adverses (expert_bot.PROFILES), virgules")
+    parser.add_argument("--others", default="expert", help="profils ExpertBot (expert_bot.PROFILES), virgules ; hors --oracle : duree partagee")
     args = parser.parse_args()
     if args.oracle:
         return oracle_main(args)
+    profiles = args.others.split(",")
+    for others in profiles:
+        run_profile(args, others, args.minutes / len(profiles))
+    print("PIMC_VS_EXPERT_DONE")
+
+
+def run_profile(args, others, minutes):
+    """15/11 (conseil) : --others p1,p2 -> duree partagee, une table par profil ExpertBot (base + sieges non PIMC)."""
     t0 = time.time()
-    deadline = t0 + args.minutes * 60
+    deadline = t0 + minutes * 60
     with mp.Pool(args.workers) as pool:
-        parts = pool.map(worker, [(args.seed * 1000 + w, args.samples, deadline, set(args.camps.split(",")), args.validate)
-                                       for w in range(args.workers)])
-    rows = [r for p, _ in parts for r in p]
-    diffs = {k: [d for _, ds in parts for d in ds[k]] for k in ("def", "decl")}
-    print("=== PIMC (%d mondes) vs ExpertBot, duplicate, %.0f s ===" % (args.samples, time.time() - t0))
+        parts = pool.map(worker, [(args.seed * 1000 + w, args.samples, deadline, set(args.camps.split(",")), args.validate,
+                                   others) for w in range(args.workers)])
+    rows = [r for p, _, _ in parts for r in p]
+    diffs = {k: [d for _, ds, _ in parts for d in ds[k]] for k in ("def", "decl")}
+    times = sorted(t for _, _, ts in parts for t in ts)
+    print("=== profil %s : PIMC (%d mondes) vs ExpertBot, duplicate, %.0f s ===" % (others, args.samples, time.time() - t0))
+    if times:
+        print("temps/decision PIMC (Python, runner) : n %d mediane %.0f ms p90 %.0f ms max %.0f ms" % (
+            len(times), 1000 * times[len(times) // 2], 1000 * times[int(len(times) * 0.9)], 1000 * times[-1]))
     print("%-6s %-10s %6s %9s %7s %8s" % ("camp", "contrat", "n", "gain/sieg", "se", "decis."))
     for name in ("def", "decl"):
         for typ in ("emballage", "solo", "trou", None):
             sel = [r for r in rows if r[0] == name and (typ is None or r[1] == typ)]
             n, m, se = stats([r[2] for r in sel])
             dec = sum(r[3] for r in sel)
-            print("%-6s %-10s %6d %+9.3f %7.3f %8d" % (name, typ or "TOUT", n, m, se, dec))
+            print("%-6s %-10s %6d %+9.3f %7.3f %8d  (z %+.1f) profil %s" % (name, typ or "TOUT", n, m, se, dec,
+                                                                    m / se if se else 0.0, others))
     for name in ("def", "decl"):
         agg = {}
         for sit, gap, vgap, ex in diffs[name]:
@@ -263,7 +282,6 @@ def main():
             print(line)
             for ex in a["ex"]:
                 print("     " + ex)
-    print("PIMC_VS_EXPERT_DONE")
 
 
 if __name__ == "__main__":
