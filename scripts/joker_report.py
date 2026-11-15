@@ -14,6 +14,9 @@ precedente ; ecrit joker_report.md. Aucune simulation ici : lecture seule.
    borne basse force - 2 se > 0). Etiquettes : dominant (fort dans >= 60 % des cellules
    mesurees, >= 3), pilier (fort dans 1-2 cellules), jamais utile (occasions >= 100 et
    < 5 % utiles), sans cellule sure.
+   15/11 (conseil 3 avis, valide par le user) : VALEUR EN MAIN = force x polyvalence
+   (points attendus par donne ou le joker est en main et lancable) ; les dominants / piliers
+   sont classes par valeur ET par force, la polyvalence compte dans l'utilite.
 3. DIFF contre la version precedente (memes graines de match : SEED de joker_moments) :
    ecarts de force et de taux d'occasions utiles avec |z| >= 2, jokers nouveaux / disparus.
 
@@ -73,6 +76,16 @@ def label(r):
     return "sans cellule sure"
 
 
+def value(r):
+    """15/11 : valeur en main = force x polyvalence (None si l'une manque)."""
+    f, p = r.get("force"), r.get("polyvalence")
+    return None if f is None or p is None else f * p
+
+
+def _key(x):
+    return -(x if x is not None else -1e9)
+
+
 def fmt(x, nd=2):
     return "-" if x is None else ("%.*f" % (nd, x) if isinstance(x, float) else str(x))
 
@@ -122,14 +135,15 @@ def build(cur, prev=None):
     for r in rows:
         groups.setdefault(reliability(r), []).append(r)
     out += ["## 2. Fiabilite de la mesure", "",
-            "| joker | cout | occasions | utiles | force (se) | bien vu | precision | gain perdu par la regle | statut |",
-            "|---|---|---|---|---|---|---|---|---|"]
+            "| joker | cout | occasions | utiles | force (se) | polyvalence | valeur en main | bien vu | precision | gain perdu par la regle | statut |",
+            "|---|---|---|---|---|---|---|---|---|---|---|"]
     for st in ("mal joue par le bot", "trop peu d'occasions", "fiable"):
         for r in sorted(groups.get(st, []), key=lambda r: -(r.get("force") or -99)):
             missed = (r.get("missed") or {}).get("mean")
-            out.append("| %s | %s | %s | %s | %s (%s) | %s | %s | %s | %s |" % (
+            out.append("| %s | %s | %s | %s | %s (%s) | %s | %s | %s | %s | %s | %s |" % (
                 r["id"], r.get("cost"), r.get("occasions"), fmt(r.get("useful_rate")), fmt(r.get("force")),
-                fmt(r.get("force_se")), fmt(r.get("bien_vu")), fmt(r.get("precision")), fmt(missed), st))
+                fmt(r.get("force_se")), fmt(r.get("polyvalence")), fmt(value(r)), fmt(r.get("bien_vu")),
+                fmt(r.get("precision")), fmt(missed), st))
     out += ["", "## 3. Ou chaque joker est fort (cellules sures seulement)", "",
             "Cellule = contrat | role | adversaire, n utiles >= %d, force - 2 se > 0." % MIN_CELL, ""]
     by_label = {}
@@ -140,11 +154,28 @@ def build(cur, prev=None):
         rs = by_label.get(lab, [])
         if not rs:
             continue
-        out.append("**%s** (%d)" % (lab, len(rs)))
-        for r in sorted(rs, key=lambda r: r["id"]):
+        out.append("**%s** (%d)%s" % (lab, len(rs), " -- classes par valeur en main (force x polyvalence)"
+                                       if lab in ("dominant", "pilier", "polyvalent") else ""))
+        by_force = {r["id"]: i + 1 for i, r in enumerate(sorted(rs, key=lambda r: _key(r.get("force"))))}
+        order = (sorted(rs, key=lambda r: (_key(value(r)), r["id"])) if lab in ("dominant", "pilier", "polyvalent")
+                 else sorted(rs, key=lambda r: r["id"]))
+        for i, r in enumerate(order):
             strong = sorted((c for c in cells(r) if c[3] > 0), key=lambda c: -c[2])
             where = ", ".join("%s %+.1f" % (k, m) for k, _c, m, _lb in strong[:4]) or "-"
-            out.append("- %s : %s%s" % (r["id"], where, "  (bot : a tester a la main)" if reliability(r) != "fiable" else ""))
+            rank = (" [valeur %s = force %s x polyvalence %s ; rang valeur %d, rang force %d]" % (
+                fmt(value(r)), fmt(r.get("force")), fmt(r.get("polyvalence")), i + 1, by_force[r["id"]])
+                if lab in ("dominant", "pilier", "polyvalent") else "")
+            out.append("- %s : %s%s%s" % (r["id"], where, rank, "  (bot : a tester a la main)" if reliability(r) != "fiable" else ""))
+        out.append("")
+    # 15/11 : classement global des jokers mesurables (hors « trop peu d'occasions »), valeur et force cote a cote
+    ranked = [r for r in rows if reliability(r) != "trop peu d'occasions" and value(r) is not None]
+    if ranked:
+        fr = {r["id"]: i + 1 for i, r in enumerate(sorted(ranked, key=lambda r: _key(r.get("force"))))}
+        out += ["**Classement par valeur en main** (force x polyvalence ; rang force a cote)", "",
+                "| rang valeur | joker | valeur en main | force | polyvalence | rang force | etiquette |", "|---|---|---|---|---|---|---|"]
+        for i, r in enumerate(sorted(ranked, key=lambda r: (_key(value(r)), r["id"]))):
+            out.append("| %d | %s | %s | %s | %s | %d | %s |" % (i + 1, r["id"], fmt(value(r)), fmt(r.get("force")),
+                                                              fmt(r.get("polyvalence")), fr[r["id"]], label(r)))
         out.append("")
     out += ["## 4. Ce que ce rapport ne voit pas", "",
             "- le ressenti et le plaisir de jeu ;",

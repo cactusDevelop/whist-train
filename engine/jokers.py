@@ -30,7 +30,7 @@ import random
 
 from engine.cards import NUM_PLAYERS, legal_plays, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "0e9af98d11ea539b"  # 0e9a : sous Inversion/Traitre, une coupe -> le plus faible atout gagne (whist-4-it 1.2.18) ; f165 : garde defausse vide de La Peche2 (whist-4-it) ; acb9 : La Peche au choix (la_peche2), un joker gratuit relance dans la donne coute 1 (whist-4-it 9f25355) ; 473e : grille revue sur la mesure 22d8 (whist-4-it bbb9a97) ; 22d8 : 2 ⚡ par donne sous dominion (3 hors dominion) ; 8ebd : grille G2 raretes/couts (mesure des moments utiles 515d) ; fc90 : defausse due d'un sort de Feu de Paille2 payee apres lui (bots compris) ; 515d : pas de remelange en cours de donne (dominion) ; ee3a : bot_spares joueur
+JOKER_SPEC_HASH = "55e992350d34d19a"  # 55e9 : equilibrage 15/11 -- Double Valet 2 ⚡, Lune Noire 1 ⚡, Beau Valet / Meche Courte / Defausse Discrete recycles (BALANCE_REPLACED, whist-4-it) ; 0e9a : sous Inversion/Traitre, une coupe -> le plus faible atout gagne (whist-4-it 1.2.18) ; f165 : garde defausse vide de La Peche2 (whist-4-it) ; acb9 : La Peche au choix (la_peche2), un joker gratuit relance dans la donne coute 1 (whist-4-it 9f25355) ; 473e : grille revue sur la mesure 22d8 (whist-4-it bbb9a97) ; 22d8 : 2 ⚡ par donne sous dominion (3 hors dominion) ; 8ebd : grille G2 raretes/couts (mesure des moments utiles 515d) ; fc90 : defausse due d'un sort de Feu de Paille2 payee apres lui (bots compris) ; 515d : pas de remelange en cours de donne (dominion) ; ee3a : bot_spares joueur
 # a76f (whist-4-it, 06/11) : 12 jokers recycles « a la Dominion » (DOMINION_REPLACED), choix en attente
 # (MatchState.choices / bot_picks), sort gratuit (cast_free), Complice2 rejoue le sort -> regles changees.
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
@@ -75,7 +75,7 @@ RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH}  # a76f : regles changees (avant : 86
 # une autre carte legale ; aucun joker, cout ni observation ne change -> regles = 07ac.
 # Exportable sans equivalence de regles : champion du gate cloud MESURE sous les regles courantes
 # (run 40100438746, 07ac : iter 93 champion_vs_heuristic +26..+41, aucune iteration acceptee devant lui).
-MEASURED_CHAMPION_HASHES = {"1f49fc6fb6a25cae", "473e418c736d5419"}  # acb9 : champion 473e (iter 56) reexporte sans reentrainement
+MEASURED_CHAMPION_HASHES = {"1f49fc6fb6a25cae", "473e418c736d5419"}  # 0e9a (nuit 09/11 : 0/24 acceptee) + acb9 : champion 473e (iter 56) reexporte sans reentrainement
 # (demande whist-4-it 9f25355, reentrainement acb9 a decider) ; e1f4 : champion 1f49 (iter 93) mesure sous 8f41 (run 40783453624,
 # 19 portes, champion_vs_heuristic +12.9..+23.7, se ~3.4) ; 8f41 -> e1f4 ne change que la garde de Courant d'Air
 # 65a7 : regles changees, le champion 6c54 doit repasser la porte
@@ -144,7 +144,7 @@ CATALOG = {
     "miroir": ("pli", "salle", 2, False),
     "borgne": ("pli", "arriere_salle", 2, False),
     "carte_fantome": ("pli", "salle", 2, False),
-    "double_valet": ("pli", "salle", 1, False),
+    "double_valet": ("pli", "salle", 2, False),
     "atout_errant": ("pli", "salle", 2, False),
     "courant_d_air": ("sort", "comptoir", 0, False),
     "tournee_generale": ("sort", "comptoir", 1, False),
@@ -160,7 +160,7 @@ CATALOG = {
     "dette_de_jeu": ("piege", "salle", 1, False),
     "fumee_de_pipe": ("aura", "comptoir", 1, False),
     "silence_du_cercle": ("aura", "cave", 3, False),
-    "lune_noire": ("aura", "arriere_salle", 2, False),
+    "lune_noire": ("aura", "arriere_salle", 1, False),
     "coeur_de_zinneke": ("aura", "comptoir", 1, False),
     "brouillard_de_la_senne": ("aura", "cave", 2, False),
     "cartes_sur_table": ("enchere", "comptoir", 0, False),
@@ -240,6 +240,11 @@ CATALOG = {
     "feu_de_paille2": ("sort", "salle", 0, True),
     "poche_interieure2": ("sort", "salle", 0, True),
     "la_peche2": ("sort", "salle", 1, True),
+    # 55e9 (equilibrage 15/11, whist-4-it) : les jamais-utiles recycles ; Beau Valet2 est un DeckEngine
+    # (bot_casts vrai) mais HORS du CASTABLE du reseau comme les Dominion (BALANCE_IDS) -> ACTION_DIM inchange.
+    "beau_valet2": ("sort", "comptoir", 0, True),
+    "meche_courte2": ("aura", "comptoir", 1, False),
+    "defausse_discrete2": ("sort", "salle", 1, False),
 }
 # JokerCatalog.OPPONENT_ONLY : jamais proposes au joueur (chaise_vide, deck simule)
 OPPONENT_ONLY = ("regle_du_moine", "gant_de_la_baronne", "pelle_du_fossoyeur", "sceau_du_grand_maitre", "cavalier_seul")
@@ -256,16 +261,20 @@ DOMINION_REPLACED = {"ardoise": "ardoise2", "tournee_generale": "tournee_general
                      "poche_interieure": "poche_interieure2", "la_peche": "la_peche2"}
 DOMINION_IDS = frozenset(DOMINION_REPLACED.values())
 REPLACED.update(DOMINION_REPLACED)
+# JokerCatalog.BALANCE_REPLACED (55e9) : l'ancien reste pour les runs d'avant (RunState.balance), hors decks et mesures
+BALANCE_REPLACED = {"beau_valet": "beau_valet2", "meche_courte": "meche_courte2", "defausse_discrete": "defausse_discrete2"}
+BALANCE_IDS = frozenset(BALANCE_REPLACED.values())
+REPLACED.update(BALANCE_REPLACED)
 ON_TURN_IDS = ("coup_de_vent", "faux_pas")  # JokerDef.ON_TURN_IDS : a son tour de pli, apres avoir vu une coupe
 STARTING_DECK = ["cameleon", "embuscade", "main_lourde"]  # JokerCatalog.STARTING_DECK
-VALET_FAMILY = ("cameleon", "double_valet", "beau_valet", "bal_des_valets", "valet_de_chambre", "valet_de_chambre2")  # JokerCatalog.FAMILIES["valets"]
+VALET_FAMILY = ("cameleon", "double_valet", "beau_valet", "bal_des_valets", "valet_de_chambre", "valet_de_chambre2", "beau_valet2")  # JokerCatalog.FAMILIES["valets"]
 UPGRADE_SUFFIX = "+"  # JokerDef : cout -1 (jamais un cout 0 ni un maudit)
 MAX_COPIES = 2
 SUSPICION_BY_RARITY = {"arriere_salle": 2, "cave": 4}  # JokerDef.SUSPICION_BY_RARITY
 FROM_DECK_IDS = ("brimborion_dore", "patron")  # JokerDef.FROM_DECK_IDS : jamais pioches, agissent depuis le deck
 BOT_TYPES = ("sort", "piege", "aura")  # RogueMatch.BOT_TYPES
 # Actions de l'IA : 0 = aucun cast, 1..K = ces jokers (ids tries).
-CASTABLE = sorted(i for i, (t, _r, _c, bc) in CATALOG.items() if bc and t in BOT_TYPES and i not in DOMINION_IDS)
+CASTABLE = sorted(i for i, (t, _r, _c, bc) in CATALOG.items() if bc and t in BOT_TYPES and i not in DOMINION_IDS and i not in BALANCE_IDS)
 ACTION_DIM = 1 + len(CASTABLE)
 
 DRAW_PER_HAND = 3  # MatchState
@@ -1822,6 +1831,34 @@ class Patron(Curse):
         return self.EXTRA
 
 
+class DefausseDiscrete2(Effect):
+    """55e9 : tout contrat, ce pli -- le proprietaire n'est pas oblige de fournir, sa carte ne gagne pas."""
+    scope = TRICK
+
+    def legal_cards(self, seat, hand, led, legal, rules):
+        return list(hand) if seat == self.owner else legal
+
+    def competes(self, play, rules):
+        return play[0] != self.owner
+
+
+class MecheCourte2(Aura):
+    """55e9 : tout contrat, chaque pli gagne par un adversaire du proprietaire : +1 ⚡ (MAX) ; au MAXe, pioche un joker."""
+    MAX = 3
+
+    def __init__(self, jid, owner):
+        super().__init__(jid, owner)
+        self.gained = 0
+
+    def on_trick_resolved(self, winner, plays, rules):
+        if self.gained >= self.MAX or rules.state is None or not rules.is_opponent(self.owner, winner):
+            return
+        self.gained += 1
+        rules.state.gain_energy(self.owner, 1)
+        if self.gained == self.MAX:
+            rules.state.draw_jokers(self.owner, 1)
+
+
 # --- a76f (whist-4-it, CHANTIER-REWORK-JOKERS-PLAN.md) : les inutiles recycles a la Dominion ---
 # on_play agit avant que le joker quitte la main : il ne se compte jamais lui-meme.
 
@@ -1889,6 +1926,24 @@ class ValetDeChambre2(DeckEngine):
 
     def on_play(self, rules, target=-1):
         return {} if rules.state.fetch(self.owner, _valet_wanted) != "" else {"error": "no_valet"}
+
+
+class BeauValet2(DeckEngine):
+    """55e9 : pioche un joker par Valet (vraie carte) de la main, MAX au plus."""
+    MAX = 3
+
+    def _jacks(self, rules):
+        return min(self.MAX, sum(1 for c in rules.game.hands[self.owner] if rank_of(c) == FACE_RANKS[0]))
+
+    def pointless(self, rules):
+        return self._jacks(rules) == 0 or not self._can_draw(rules)
+
+    def pointless_reason(self):
+        return "no_jack"
+
+    def on_play(self, rules, target=-1):
+        rules.state.draw_jokers(self.owner, self._jacks(rules))
+        return {}
 
 
 class Addition2(DeckEngine):
@@ -2115,6 +2170,7 @@ EFFECTS = {
     "complice2": Complice2, "consigne2": Consigne2, "cendrier2": Cendrier2,
     "mauvais_perdant2": MauvaisPerdant2, "feu_de_paille2": FeuDePaille2, "poche_interieure2": PocheInterieure2,
     "la_peche2": LaPeche2,
+    "beau_valet2": BeauValet2, "meche_courte2": MecheCourte2, "defausse_discrete2": DefausseDiscrete2,
 }
 assert set(EFFECTS) == set(CATALOG)
 
