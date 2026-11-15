@@ -104,8 +104,16 @@ jobs:
           gh release upload checkpoint-latest "log-$MODE.txt" --clobber
 
       - name: Chain next run
-        if: success() && steps.pause.outputs.paused != 'true' && vars.TRAINING_ENABLED == 'true' && env.MEASURE != 'true' && env.MODE != 'jokers_small'
+        if: success() && steps.pause.outputs.paused != 'true' && vars.TRAINING_ENABLED == 'true' && (env.MEASURE != 'true' || env.MODE == 'pimc_vs_expert') && env.MODE != 'jokers_small'
         run: |
+          # Mesure pimc_vs_expert : chainee seulement si ci/pimc_vs_expert_stop_at existe ; duree = min(300, temps restant - 15 min).
+          if [ "$MODE" = pimc_vs_expert ]; then
+            [ -f ci/pimc_vs_expert_stop_at ] || exit 0
+            left=$(( ( $(date -u -d "$(cat ci/pimc_vs_expert_stop_at)" +%s) - $(date -u +%s) ) / 60 - 15 ))
+            if [ "$left" -lt 45 ]; then echo "arret de la chaine pimc : $(cat ci/pimc_vs_expert_stop_at)"; exit 0; fi
+            [ "$left" -gt 300 ] && left=300
+            gh workflow run train.yml -f mode=pimc_vs_expert -f minutes="$left"; exit 0
+          fi
           # L'IA libre ne s'enchaine que si ci/ppo_free_chain existe (runs courts d'abord).
           if [ "$MODE" = ppo_free ] && [ ! -f ci/ppo_free_chain ]; then exit 0; fi
           # ci/<mode>_stop_at (UTC AAAA-MM-JJTHH:MM) : pas de maillon qui commencerait a moins de 45 min de l'heure d'arret
