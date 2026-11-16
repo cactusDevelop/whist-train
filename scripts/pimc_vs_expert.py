@@ -29,6 +29,14 @@ sur les memes 8 mondes est biaise (max de bruit, toujours > 0, A/B 24 trompe).
 A chaque ecart, Q(expert) et Q(pimc) sont re-estimes sur 32 mondes NEUFS
 (independants du choix) -> gap valide sans biais, peut etre negatif ; table par
 situation avec SE. Situation retenue si gap valide > 3 SE avec n >= 100.
+
+--expert-q (conseil 16/11 apres-midi, palier emb_draw : gap Q z+14 mais gain reel z+0.7) :
+avec --validate, le gap est AUSSI re-estime sur les MEMES mondes neufs avec une suite
+jouee par ExpertBot aux 4 sieges (Q realiste) au lieu du dds a cartes ouvertes.
+Tableau par donne CHANGEE (>= 1 carte PIMC) : gain reel, somme des gaps dds / expert,
+pente gain ~ somme des gaps. Variante "rnd" (--control) : carte legale au hasard
+(autre que celle d'ExpertBot) aux memes declenchements -> calibre ce que bouge 1 carte.
+Pente ~0 et gap expert ~0 -> strategy fusion, piste close.
 """
 
 import argparse
@@ -41,7 +49,7 @@ import time
 sys.path.insert(0, ".")
 
 from agents import expert_bot
-from agents.rollouts import dds_values
+from agents.rollouts import clone_with_hands, dds_values, determinize
 from engine import dds
 from engine.cards import NUM_PLAYERS, suit_of, trick_winner
 from engine.whisted import DeckChain
@@ -70,12 +78,28 @@ def adv_wins_trick(game, seat, card=None):
     return bool(trick) and trick_winner(trick, game.trump_suit) not in teammates(game, seat)
 
 
+def expert_values(game, seat, cards, score_fn, rng, samples):
+    """Q realiste (16/11) : memes mondes que dds_values avec ce rng, suite jouee par ExpertBot aux 4 sieges."""
+    q = [0.0] * len(cards)
+    for _ in range(samples):
+        hands = determinize(game, seat, rng)
+        for i, c in enumerate(cards):
+            g = clone_with_hands(game, hands)
+            g.step(seat, c)
+            while not g.done:
+                g.step(g.turn, expert_bot.choose_card(g, g.turn))
+            q[i] += score_fn(g)[seat] / samples
+    return q
+
+
 PIMC_TIMES = []  # secondes par decision PIMC (dds_values, hors --validate) : budget CPU avant tout port
 
 
-def play(game, pimc_seats, score_fn, rng, samples, diffs, trigger=None, validate=0, vrng=None):
+def play(game, pimc_seats, score_fn, rng, samples, diffs, trigger=None, validate=0, vrng=None, acc=None,
+         expert_q=False, randomize=False):
     """Joue la donne ; `pimc_seats` jouent PIMC (seulement si trigger(game, seat) quand il est donne).
-    -> nombre de decisions PIMC."""
+    `acc` (dict) recoit changed / vgap / egap sommes sur la donne. randomize : carte legale au hasard
+    (autre qu'ExpertBot) au lieu de PIMC (controle). -> nombre de decisions PIMC."""
     n = 0
     while not game.done:
         seat = game.turn
@@ -83,7 +107,11 @@ def play(game, pimc_seats, score_fn, rng, samples, diffs, trigger=None, validate
         trou_lead = getattr(game, "trou_pending", lambda: False)() and seat == game.partner
         if seat in pimc_seats and not trou_lead and (trigger is None or trigger(game, seat, card)):  # l'entame du bouche-trou fixe le Trou (regle) : jamais PIMC
             legal = [c for c, ok in enumerate(game.legal_action_mask(seat)) if ok]
-            if len(legal) > 1 and game.trump_suit is not None and dds.supported(game):
+            if randomize and len(legal) > 1:
+                card = rng.choice([c for c in legal if c != card])
+                if acc is not None:
+                    acc["changed"] += 1
+            elif len(legal) > 1 and game.trump_suit is not None and dds.supported(game):
                 t_dec = time.perf_counter()
                 q = dds_values(game, seat, legal, score_fn, rng, samples)
                 if q is not None:
@@ -93,11 +121,22 @@ def play(game, pimc_seats, score_fn, rng, samples, diffs, trigger=None, validate
                     qe = q[legal.index(card)]
                     if best - qe > 1e-6:  # ExpertBot garde la main a egalite
                         pick = legal[q.index(best)]
-                        vgap = None
+                        vgap = egap = None
                         if validate:
+                            vstate = vrng.getstate()
                             q2 = dds_values(game, seat, [card, pick], score_fn, vrng, validate)
                             if q2 is not None:
                                 vgap = q2[1] - q2[0]
+                            if expert_q:
+                                vrng.setstate(vstate)  # memes mondes neufs que le dds
+                                q3 = expert_values(game, seat, [card, pick], score_fn, vrng, validate)
+                                egap = q3[1] - q3[0]
+                        if acc is not None:
+                            acc["changed"] += 1
+                            acc["vgap"] += vgap or 0.0
+                            acc["egap"] += egap or 0.0
+                            if egap is not None:
+                                acc["e"].append((sit_key(game, seat, card), egap, vgap))
                         diffs.append((sit_key(game, seat, card), best - qe, vgap,
                                       "%s | siege %d | pli %s | main %s | expert %s (%.1f) pimc %s (%.1f)" % (
                                           describe(game.public_contract()), seat,
@@ -121,15 +160,16 @@ def sit_key(game, seat, card):
 
 
 def worker(args):
-    seed, samples, deadline, camps, validate, others, trig = args
+    seed, samples, deadline, camps, validate, others, trig, expert_q, control = args
     trigger = TRIGGERS[trig]
     expert_bot.set_bid_params(dict(expert_bot.PROFILES[others]))  # ExpertBot (base + sieges non PIMC) sous ce profil
     rng = random.Random(seed)
     play_rng = random.Random(seed + 1)
     vrng = random.Random(seed + 2)
     chain = DeckChain(MEASURE_WHISTED_RATIO, rng)
-    rows = []  # (variante, type contrat, gain moyen par siege PIMC, decisions)
+    rows = []  # (variante, type contrat, gain moyen par siege PIMC, decisions, changees, somme vgap, somme egap)
     diffs = {"def": [], "decl": []}
+    egaps = []  # (situation, gap expert, gap dds) sur mondes neufs
     while time.time() < deadline:
         hands, dealer, whisted = chain.deal(rng)
         bidding = run_bot_bidding(hands, dealer)
@@ -150,17 +190,22 @@ def worker(args):
 
         def score_fn(g):
             return real_points_by_seat(role, g, contract)
-        for name, seats in (("def", [s for s in range(NUM_PLAYERS) if s not in side]), ("decl", sorted(side))):
-            if name not in camps:
+        variants = [("def", [s for s in range(NUM_PLAYERS) if s not in side]), ("decl", sorted(side))]
+        if control:
+            variants.append(("rnd", sorted(side)))
+        for name, seats in variants:
+            if name not in camps and name != "rnd":
                 continue
             g = new_game(contract, hands, dealer, bidding, whisted)
-            n = play(g, set(seats), score_fn, play_rng, samples, diffs[name], trigger, validate=validate, vrng=vrng)
+            acc = {"changed": 0, "vgap": 0.0, "egap": 0.0, "e": egaps}
+            n = play(g, set(seats), score_fn, play_rng, samples, diffs.get(name, []), trigger, validate=validate,
+                     vrng=vrng, acc=acc, expert_q=expert_q, randomize=(name == "rnd"))
             pts = real_points_by_seat(role, g, contract)
             gain = sum(pts[s] - pts_base[s] for s in seats) / len(seats)
-            rows.append((name, contract["type"], gain, n))
+            rows.append((name, contract["type"], gain, n, acc["changed"], acc["vgap"], acc["egap"]))
             if time.time() >= deadline:
                 break
-    return rows, diffs, list(PIMC_TIMES)
+    return rows, diffs, list(PIMC_TIMES), egaps
 
 
 def oracle_worker(args):
@@ -242,6 +287,8 @@ def main():
     parser.add_argument("--camps", default="def,decl", help="camps PIMC mesures (def, decl)")
     parser.add_argument("--validate", type=int, default=0, help="re-estime chaque ecart sur N mondes neufs (gap sans biais)")
     parser.add_argument("--trigger", default="all", choices=sorted(TRIGGERS), help="hors --oracle : quand PIMC remplace ExpertBot (emb_draw = entame d atout de l emballeur, conseil 16/11)")
+    parser.add_argument("--expert-q", action="store_true", help="avec --validate : gap aussi re-estime avec suite ExpertBot (Q realiste, conseil 16/11)")
+    parser.add_argument("--control", action="store_true", help="variante rnd : carte legale au hasard aux memes declenchements (camp declarant)")
     parser.add_argument("--others", default="expert", help="profils ExpertBot (expert_bot.PROFILES), virgules ; hors --oracle : duree partagee")
     args = parser.parse_args()
     if args.oracle:
@@ -258,10 +305,11 @@ def run_profile(args, others, minutes):
     deadline = t0 + minutes * 60
     with mp.Pool(args.workers) as pool:
         parts = pool.map(worker, [(args.seed * 1000 + w, args.samples, deadline, set(args.camps.split(",")), args.validate,
-                                   others, args.trigger) for w in range(args.workers)])
-    rows = [r for p, _, _ in parts for r in p]
-    diffs = {k: [d for _, ds, _ in parts for d in ds[k]] for k in ("def", "decl")}
-    times = sorted(t for _, _, ts in parts for t in ts)
+                                   others, args.trigger, args.expert_q, args.control) for w in range(args.workers)])
+    rows = [r for p in parts for r in p[0]]
+    diffs = {k: [d for p in parts for d in p[1][k]] for k in ("def", "decl")}
+    times = sorted(t for p in parts for t in p[2])
+    egaps = [e for p in parts for e in p[3]]
     print("=== profil %s : PIMC (%d mondes) vs ExpertBot, duplicate, %.0f s ===" % (others, args.samples, time.time() - t0))
     if times:
         print("temps/decision PIMC (Python, runner) : n %d mediane %.0f ms p90 %.0f ms max %.0f ms" % (
@@ -274,6 +322,36 @@ def run_profile(args, others, minutes):
             dec = sum(r[3] for r in sel)
             print("%-6s %-10s %6d %+9.3f %7.3f %8d  (z %+.1f) profil %s" % (name, typ or "TOUT", n, m, se, dec,
                                                                     m / se if se else 0.0, others))
+    print("\n=== donnes CHANGEES seulement (>= 1 carte differente d'ExpertBot), profil %s ===" % others)
+    for name in ("def", "decl", "rnd"):
+        sel = [r for r in rows if r[0] == name and r[4] > 0]
+        if not sel:
+            continue
+        n, m, se = stats([r[2] for r in sel])
+        line = "%-5s n %5d  gain reel %+.3f +- %.3f (z %+.1f)  cartes changees/donne %.2f" % (
+            name, n, m, se, m / se if se else 0.0, sum(r[4] for r in sel) / n)
+        if name != "rnd":
+            for lab, k in (("dds", 5), ("expert", 6)):
+                xs = [r[k] for r in sel]
+                mx = sum(xs) / n
+                sxx = sum((x - mx) ** 2 for x in xs)
+                slope = sum((x - mx) * (r[2] - m) for x, r in zip(xs, sel)) / sxx if sxx > 0 else 0.0
+                line += " | somme gap %s %+.3f pente %+.3f" % (lab, mx, slope)
+        print(line)
+    if egaps:
+        print("\n=== gap valide dds vs suite ExpertBot (memes mondes neufs) par situation ===")
+        agg = {}
+        for sit, eg, vg in egaps:
+            a = agg.setdefault(sit, ([], []))
+            a[0].append(eg)
+            if vg is not None:
+                a[1].append(vg)
+        for sit in sorted(agg, key=lambda k: -len(agg[k][0])):
+            en, em, ese = stats(agg[sit][0])
+            vn, vm, vse = stats(agg[sit][1])
+            print("%-58s n %5d  dds %+.2f +- %.2f  | expert %+.2f +- %.2f (z %+.1f)%s" % (
+                sit, en, vm, vse, em, ese, em / ese if ese > 0 else 0.0,
+                "  RETENUE" if en >= 100 and ese > 0 and em > 3 * ese else ""))
     for name in ("def", "decl"):
         agg = {}
         for sit, gap, vgap, ex in diffs[name]:
