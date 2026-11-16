@@ -366,6 +366,7 @@ def v2_tests():
     oks += review_20261014_tests()
     oks += dominion_tests()
     oks += balance_55e9_tests()
+    oks += balance_3fed_tests()
     return oks
 
 
@@ -996,6 +997,34 @@ def balance_55e9_tests():
     oks.append(check("defausse discrete2 : meme ma coupe", rules.trick_winner(plays, H, S), 1))
     rules.on_trick_resolved(1, plays)
     oks.append(check("defausse discrete2 : portee du pli", len(rules.legal_cards(hand0, H, 0)), len(J.legal_plays(hand0, H))))
+    return oks
+
+
+def balance_3fed_tests():
+    """3fed (whist-4-it fe40498) : Fumee de Pipe2, contre tests/balance_jokers_runner.gd _fumee_de_pipe."""
+    oks = []
+    from agents import joker_expert as X
+    oks.append(check("3fed : catalogue, ancienne remplacee, hors CASTABLE",
+                     (J.CATALOG["fumee_de_pipe2"][:3], "fumee_de_pipe" in J.REPLACED, "fumee_de_pipe2" in J.CASTABLE, "fumee_de_pipe2" in X.RULES),
+                     (("aura", "comptoir", 1), True, False, True)))
+    state, rules, game = combo_state(["fumee_de_pipe2", "livre_de_comptes", "livre_de_comptes", "lune_noire"])
+    state.energy[0] = 9
+    state.draw_pile[0] = ["zero", "miroir", "kermesse"]
+    cast(state, rules, "fumee_de_pipe2")
+    oks.append(check("fumee2 : ne pioche rien elle-meme", state.joker_hand[0], ["livre_de_comptes", "livre_de_comptes", "lune_noire"]))
+    J.spend(state, 0, "livre_de_comptes", {})
+    oks.append(check("fumee2 : un joker qui chauffe -> jauge + 1 pioche", (state.suspicion, state.joker_hand[0]),
+                     (4, ["livre_de_comptes", "lune_noire", "kermesse"])))
+    J.spend(state, 0, "livre_de_comptes", {})
+    oks.append(check("fumee2 : un autre", (state.suspicion, state.joker_hand[0]), (8, ["lune_noire", "kermesse", "miroir"])))
+    J.spend(state, 0, "lune_noire", {})
+    oks.append(check("fumee2 : 2 max", (state.suspicion, state.joker_hand[0]), (10, ["kermesse", "miroir"])))
+    state, rules, game = combo_state(["fumee_de_pipe2", "kermesse"])
+    state.energy[0] = 9
+    state.draw_pile[0] = ["zero", "miroir"]
+    cast(state, rules, "fumee_de_pipe2")
+    J.spend(state, 0, "kermesse", {})
+    oks.append(check("fumee2 : un joker qui ne chauffe pas : rien", state.joker_hand[0], []))
     return oks
 
 

@@ -30,7 +30,7 @@ import random
 
 from engine.cards import NUM_PLAYERS, legal_plays, suit_of, rank_of, trick_winner as classic_trick_winner
 
-JOKER_SPEC_HASH = "55e992350d34d19a"  # 55e9 : equilibrage 15/11 -- Double Valet 2 ⚡, Lune Noire 1 ⚡, Beau Valet / Meche Courte / Defausse Discrete recycles (BALANCE_REPLACED, whist-4-it) ; 0e9a : sous Inversion/Traitre, une coupe -> le plus faible atout gagne (whist-4-it 1.2.18) ; f165 : garde defausse vide de La Peche2 (whist-4-it) ; acb9 : La Peche au choix (la_peche2), un joker gratuit relance dans la donne coute 1 (whist-4-it 9f25355) ; 473e : grille revue sur la mesure 22d8 (whist-4-it bbb9a97) ; 22d8 : 2 ⚡ par donne sous dominion (3 hors dominion) ; 8ebd : grille G2 raretes/couts (mesure des moments utiles 515d) ; fc90 : defausse due d'un sort de Feu de Paille2 payee apres lui (bots compris) ; 515d : pas de remelange en cours de donne (dominion) ; ee3a : bot_spares joueur
+JOKER_SPEC_HASH = "3fed1167140e1c96"  # 3fed : Fumee de Pipe recyclee (fumee_de_pipe2, BALANCE2_REPLACED, whist-4-it fe40498) ; 55e9 : equilibrage 15/11 -- Double Valet 2 ⚡, Lune Noire 1 ⚡, Beau Valet / Meche Courte / Defausse Discrete recycles (BALANCE_REPLACED, whist-4-it) ; 0e9a : sous Inversion/Traitre, une coupe -> le plus faible atout gagne (whist-4-it 1.2.18) ; f165 : garde defausse vide de La Peche2 (whist-4-it) ; acb9 : La Peche au choix (la_peche2), un joker gratuit relance dans la donne coute 1 (whist-4-it 9f25355) ; 473e : grille revue sur la mesure 22d8 (whist-4-it bbb9a97) ; 22d8 : 2 ⚡ par donne sous dominion (3 hors dominion) ; 8ebd : grille G2 raretes/couts (mesure des moments utiles 515d) ; fc90 : defausse due d'un sort de Feu de Paille2 payee apres lui (bots compris) ; 515d : pas de remelange en cours de donne (dominion) ; ee3a : bot_spares joueur
 # a76f (whist-4-it, 06/11) : 12 jokers recycles « a la Dominion » (DOMINION_REPLACED), choix en attente
 # (MatchState.choices / bot_picks), sort gratuit (cast_free), Complice2 rejoue le sort -> regles changees.
 # Empreintes dont les REGLES sont identiques a JOKER_SPEC_HASH (changement de
@@ -75,7 +75,7 @@ RULE_EQUIVALENT_HASHES = {JOKER_SPEC_HASH}  # a76f : regles changees (avant : 86
 # une autre carte legale ; aucun joker, cout ni observation ne change -> regles = 07ac.
 # Exportable sans equivalence de regles : champion du gate cloud MESURE sous les regles courantes
 # (run 40100438746, 07ac : iter 93 champion_vs_heuristic +26..+41, aucune iteration acceptee devant lui).
-MEASURED_CHAMPION_HASHES = {"1f49fc6fb6a25cae", "473e418c736d5419"}  # 55e9 (15/11, demande whist-4-it) : champion 473e iter 56 reexporte sans reentrainement (CASTABLE/obs inchanges) ; 0e9a (nuit 09/11 : 0/24 acceptee) + acb9 : champion 473e (iter 56) reexporte sans reentrainement
+MEASURED_CHAMPION_HASHES = {"1f49fc6fb6a25cae", "473e418c736d5419"}  # 3fed (16/11, demande whist-4-it) : idem, champion 473e iter 56 reexporte (fumee_de_pipe2 hors CASTABLE, obs inchangee) ; 55e9 (15/11, demande whist-4-it) : champion 473e iter 56 reexporte sans reentrainement (CASTABLE/obs inchanges) ; 0e9a (nuit 09/11 : 0/24 acceptee) + acb9 : champion 473e (iter 56) reexporte sans reentrainement
 # (demande whist-4-it 9f25355, reentrainement acb9 a decider) ; e1f4 : champion 1f49 (iter 93) mesure sous 8f41 (run 40783453624,
 # 19 portes, champion_vs_heuristic +12.9..+23.7, se ~3.4) ; 8f41 -> e1f4 ne change que la garde de Courant d'Air
 # 65a7 : regles changees, le champion 6c54 doit repasser la porte
@@ -245,6 +245,8 @@ CATALOG = {
     "beau_valet2": ("sort", "comptoir", 0, True),
     "meche_courte2": ("aura", "comptoir", 1, False),
     "defausse_discrete2": ("sort", "salle", 1, False),
+    # 3fed (equilibrage 16/11, whist-4-it fe40498) : aura, chaque joker pose qui chauffe pioche un joker (2 max)
+    "fumee_de_pipe2": ("aura", "comptoir", 1, False),
 }
 # JokerCatalog.OPPONENT_ONLY : jamais proposes au joueur (chaise_vide, deck simule)
 OPPONENT_ONLY = ("regle_du_moine", "gant_de_la_baronne", "pelle_du_fossoyeur", "sceau_du_grand_maitre", "cavalier_seul")
@@ -265,6 +267,10 @@ REPLACED.update(DOMINION_REPLACED)
 BALANCE_REPLACED = {"beau_valet": "beau_valet2", "meche_courte": "meche_courte2", "defausse_discrete": "defausse_discrete2"}
 BALANCE_IDS = frozenset(BALANCE_REPLACED.values())
 REPLACED.update(BALANCE_REPLACED)
+# JokerCatalog.BALANCE2_REPLACED (3fed) : idem, runs d'avant le 16/11 (RunState.balance2)
+BALANCE2_REPLACED = {"fumee_de_pipe": "fumee_de_pipe2"}
+BALANCE_IDS = BALANCE_IDS | frozenset(BALANCE2_REPLACED.values())
+REPLACED.update(BALANCE2_REPLACED)
 ON_TURN_IDS = ("coup_de_vent", "faux_pas")  # JokerDef.ON_TURN_IDS : a son tour de pli, apres avoir vu une coupe
 STARTING_DECK = ["cameleon", "embuscade", "main_lourde"]  # JokerCatalog.STARTING_DECK
 VALET_FAMILY = ("cameleon", "double_valet", "beau_valet", "bal_des_valets", "valet_de_chambre", "valet_de_chambre2", "beau_valet2")  # JokerCatalog.FAMILIES["valets"]
@@ -1068,6 +1074,23 @@ class Aura(Effect):
 class FumeeDePipe(Aura):
     def hides_suspicion(self, seat):
         return seat == self.owner
+
+
+class FumeeDePipe2(Aura):
+    """3fed : jusqu'a la fin de la donne, chaque joker pose par le proprietaire qui ajoute
+    de la Chaleur lui fait piocher un joker (MAX au plus)."""
+    MAX = 2
+
+    def __init__(self, jid, owner):
+        super().__init__(jid, owner)
+        self.drawn = 0
+
+    def on_joker_paid(self, seat, jid, rules):
+        if (self.drawn >= self.MAX or seat != self.owner or jsuspicion(jid) == 0 or rules.hides_suspicion(seat)
+                or rules.state is None or seat not in rules.state.players):
+            return
+        self.drawn += 1
+        rules.state.draw_jokers(self.owner, 1)
 
 
 class SilenceDuCercle(Aura):
@@ -2171,6 +2194,7 @@ EFFECTS = {
     "mauvais_perdant2": MauvaisPerdant2, "feu_de_paille2": FeuDePaille2, "poche_interieure2": PocheInterieure2,
     "la_peche2": LaPeche2,
     "beau_valet2": BeauValet2, "meche_courte2": MecheCourte2, "defausse_discrete2": DefausseDiscrete2,
+    "fumee_de_pipe2": FumeeDePipe2,
 }
 assert set(EFFECTS) == set(CATALOG)
 

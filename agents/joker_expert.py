@@ -44,7 +44,7 @@ PLAYER_PRIORITY = [
     # a76f : moteur Dominion en tete -- energie (Village/Marche), puis le doubleur avant le sort qu'il double,
     # les pioches, enfin ce qui trie la pioche (n'agit que sur les pioches suivantes)
     "chope_vide3", "addition2", "complice2", "ardoise2", "tournee_generale2", "valet_de_chambre2", "cendrier2",
-    "feu_de_paille2", "consigne2", "vieille_habitude2", "mauvais_perdant2", "poche_interieure2", "la_peche2", "beau_valet2",
+    "feu_de_paille2", "consigne2", "vieille_habitude2", "mauvais_perdant2", "poche_interieure2", "la_peche2", "beau_valet2", "fumee_de_pipe2",
     "complice", "valet_de_chambre", "ardoise", "verre_de_trop", "refrain",
     "main_de_fer", "horloge_arretee", "valet_borgne", "inversion", "brouillard_de_la_senne", "remonte_pli", "la_peche", "pli_refile2",
     "coup_de_vent",
@@ -840,6 +840,16 @@ def _fumee_de_pipe(v):
     return (YES, "cache_le_soupcon") if v["suspicion"] >= 5 and suspects >= 1 else (NO, "inutile")
 
 
+def _fumee_de_pipe2(v):
+    # 3fed : avant les jokers qui chauffent (Arriere-salle/Cave) de ma main, chacun pioche (2 max)
+    if owned(v, "fumee_de_pipe2"):
+        return NO, "deja_arme"
+    heaters = sum(1 for j in v["joker_hand"] if J.jsuspicion(j) > 0)
+    if v["remaining"] < 2:
+        return NO, "trop_tard"
+    return (YES, "pioche_sur_la_chaleur") if heaters >= 1 else (NO, "rien_qui_chauffe")
+
+
 def _silence_du_cercle(v):
     return (YES, "bloque_les_adversaires") if v["enemy_jokers"] >= 2 and v["remaining"] >= 4 else (NO, "inutile")
 
@@ -916,7 +926,7 @@ RULES = {
     "pourboire": _pourboire,
     "fausse_piste": _fausse_piste, "collet": _collet, "contre_espionnage": _contre_espionnage,
     "croupier_endormi": _croupier_endormi, "dette_de_jeu": _dette_de_jeu,
-    "fumee_de_pipe": _fumee_de_pipe, "silence_du_cercle": _silence_du_cercle, "lune_noire": _lune_noire,
+    "fumee_de_pipe": _fumee_de_pipe, "fumee_de_pipe2": _fumee_de_pipe2, "silence_du_cercle": _silence_du_cercle, "lune_noire": _lune_noire,
     "coeur_de_zinneke": _coeur_de_zinneke, "brouillard_de_la_senne": _brouillard,
     "treizieme_carte": _treizieme_carte,
     "defausse_discrete": _defausse_discrete, "la_tournee": _la_tournee,
