@@ -1,1 +1,1 @@
---camps def,decl --validate 8 --others expert
+--camps decl --trigger emb_draw --validate 8 --others expert,joueur_0927,bruite25

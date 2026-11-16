@@ -55,7 +55,16 @@ def new_game(contract, hands, dealer, bidding, whisted):
     return dispatch_play_phase2(contract, [list(h) for h in hands], dealer, bidding.bid_summary, whisted)
 
 
-def adv_wins_trick(game, seat):
+def emb_draw(game, seat, card=None):
+    """Conseil 16/11 (plafond) : PIMC seulement quand l'emballeur ExpertBot ENTAMERAIT atout."""
+    return (not game.current_trick and card is not None and suit_of(card) == game.trump_suit
+            and game.public_contract().get("type") == "emballage" and seat in set(dds.side_seats(game)))
+
+
+TRIGGERS = {"all": None, "emb_draw": emb_draw}
+
+
+def adv_wins_trick(game, seat, card=None):
     """Pli entame et gagne (pour l'instant) par un adversaire de `seat`."""
     trick = game.current_trick
     return bool(trick) and trick_winner(trick, game.trump_suit) not in teammates(game, seat)
@@ -72,7 +81,7 @@ def play(game, pimc_seats, score_fn, rng, samples, diffs, trigger=None, validate
         seat = game.turn
         card = expert_bot.choose_card(game, seat)
         trou_lead = getattr(game, "trou_pending", lambda: False)() and seat == game.partner
-        if seat in pimc_seats and not trou_lead and (trigger is None or trigger(game, seat)):  # l'entame du bouche-trou fixe le Trou (regle) : jamais PIMC
+        if seat in pimc_seats and not trou_lead and (trigger is None or trigger(game, seat, card)):  # l'entame du bouche-trou fixe le Trou (regle) : jamais PIMC
             legal = [c for c, ok in enumerate(game.legal_action_mask(seat)) if ok]
             if len(legal) > 1 and game.trump_suit is not None and dds.supported(game):
                 t_dec = time.perf_counter()
@@ -112,7 +121,8 @@ def sit_key(game, seat, card):
 
 
 def worker(args):
-    seed, samples, deadline, camps, validate, others = args
+    seed, samples, deadline, camps, validate, others, trig = args
+    trigger = TRIGGERS[trig]
     expert_bot.set_bid_params(dict(expert_bot.PROFILES[others]))  # ExpertBot (base + sieges non PIMC) sous ce profil
     rng = random.Random(seed)
     play_rng = random.Random(seed + 1)
@@ -133,6 +143,8 @@ def worker(args):
         chain.finish_played(base, dealer, contract["type"])
         if contract["type"] not in ("emballage", "solo", "trou") or base.trump_suit is None:
             continue
+        if trig == "emb_draw" and contract["type"] != "emballage":
+            continue
         pts_base = real_points_by_seat(role, base, contract)
         side = set(dds.side_seats(base))
 
@@ -142,7 +154,7 @@ def worker(args):
             if name not in camps:
                 continue
             g = new_game(contract, hands, dealer, bidding, whisted)
-            n = play(g, set(seats), score_fn, play_rng, samples, diffs[name], validate=validate, vrng=vrng)
+            n = play(g, set(seats), score_fn, play_rng, samples, diffs[name], trigger, validate=validate, vrng=vrng)
             pts = real_points_by_seat(role, g, contract)
             gain = sum(pts[s] - pts_base[s] for s in seats) / len(seats)
             rows.append((name, contract["type"], gain, n))
@@ -229,6 +241,7 @@ def main():
     parser.add_argument("--oracle", action="store_true", help="defense d emballage seule, variantes def/trig, par profil")
     parser.add_argument("--camps", default="def,decl", help="camps PIMC mesures (def, decl)")
     parser.add_argument("--validate", type=int, default=0, help="re-estime chaque ecart sur N mondes neufs (gap sans biais)")
+    parser.add_argument("--trigger", default="all", choices=sorted(TRIGGERS), help="hors --oracle : quand PIMC remplace ExpertBot (emb_draw = entame d atout de l emballeur, conseil 16/11)")
     parser.add_argument("--others", default="expert", help="profils ExpertBot (expert_bot.PROFILES), virgules ; hors --oracle : duree partagee")
     args = parser.parse_args()
     if args.oracle:
@@ -245,7 +258,7 @@ def run_profile(args, others, minutes):
     deadline = t0 + minutes * 60
     with mp.Pool(args.workers) as pool:
         parts = pool.map(worker, [(args.seed * 1000 + w, args.samples, deadline, set(args.camps.split(",")), args.validate,
-                                   others) for w in range(args.workers)])
+                                   others, args.trigger) for w in range(args.workers)])
     rows = [r for p, _, _ in parts for r in p]
     diffs = {k: [d for _, ds, _ in parts for d in ds[k]] for k in ("def", "decl")}
     times = sorted(t for _, _, ts in parts for t in ts)
