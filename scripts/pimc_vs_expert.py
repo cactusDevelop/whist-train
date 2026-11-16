@@ -69,7 +69,15 @@ def emb_draw(game, seat, card=None):
             and game.public_contract().get("type") == "emballage" and seat in set(dds.side_seats(game)))
 
 
-TRIGGERS = {"all": None, "emb_draw": emb_draw}
+def emb_draw2(game, seat, card=None):
+    """Conseil 16/11 soir : emb_draw restreint a l'emballeur avec exactement 2 atouts en main
+    (seule situation dont le gap tient avec suite ExpertBot : +0.43 z7.6 / +0.52 z12.8, run 43883236250).
+    Confirmation sur donnes neuves, critere fixe d'avance : gain decl z > 2 ET gain donnes changees > +0.10."""
+    return (emb_draw(game, seat, card)
+            and sum(1 for c in game.hands[seat] if suit_of(c) == game.trump_suit) == 2)
+
+
+TRIGGERS = {"all": None, "emb_draw": emb_draw, "emb_draw2": emb_draw2}
 
 
 def adv_wins_trick(game, seat, card=None):
@@ -183,7 +191,7 @@ def worker(args):
         chain.finish_played(base, dealer, contract["type"])
         if contract["type"] not in ("emballage", "solo", "trou") or base.trump_suit is None:
             continue
-        if trig == "emb_draw" and contract["type"] != "emballage":
+        if trig in ("emb_draw", "emb_draw2") and contract["type"] != "emballage":
             continue
         pts_base = real_points_by_seat(role, base, contract)
         side = set(dds.side_seats(base))
