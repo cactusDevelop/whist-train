@@ -7,7 +7,11 @@ M="${FREE_MINUTES:-150}"
 # 10/11 (conseil) : minutes suffixees par « s » (ex. 150s) = graines NEUVES (run id) pour confirmer un ecart.
 SEED_ARG=()
 if [[ "$M" == *s ]]; then M="${M%s}"; SEED_ARG=(--seed "$(( ${GITHUB_RUN_ID:-1} % 100000000 + 7000000 ))"); fi
-if [[ "$M" == *v ]]; then
+if [[ "$M" == *e ]]; then
+  # 16/11 (whist-4-it) : minutes suffixees par « e » = decomposition des moteurs (scripts/joker_engines.py)
+  python -u scripts/joker_engines.py --minutes "${M%e}" --workers 4 --k 2
+  gh release upload checkpoint-latest joker_engines.json joker_engines_summary.md --clobber
+elif [[ "$M" == *v ]]; then
   python -u scripts/joker_moments.py --minutes "${M%v}" --workers 4 --k 2 --value-only
   gh release upload checkpoint-latest joker_values.json joker_values_summary.md --clobber
 else
