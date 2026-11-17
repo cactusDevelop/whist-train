@@ -1262,6 +1262,8 @@ def _lead(v):
                 few_trumps = len(v.unseen_in(trump)) <= 2
                 if DEF0_RENOM == "high_cond" and late0 and (before or few_trumps):
                     return _tag(v, "renom", _highest(cards), ("_av" if before else "") + ("_t2" if few_trumps else ""))
+                if DEF0_RENOM == "high_t2low" and not declaring:  # a38 : plus haute, sauf <= 2 atouts non vus (coequipier peut-etre sans atout)
+                    return _tag(v, "renom", _lowest(cards) if few_trumps else _highest(cards), "_t2" if few_trumps else "")
                 if DEF0_RENOM == "high_all" and not declaring or DEF0_RENOM == "high" and late0:
                     return _tag(v, "renom", _highest(cards))
                 if DEF0_RENOM == "master" and late0:

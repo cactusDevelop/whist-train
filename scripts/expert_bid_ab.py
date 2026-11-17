@@ -74,8 +74,16 @@ VARIANT_SETS["a37"] = {  # 17/11 nuit conseil : branche renom (diag 44116701435 
     "RENOM_HIGH_COND": {"DEF0_RENOM": "high_cond"},
     "RENOM_SKIP": {"DEF0_RENOM": "skip"},
 }
+VARIANT_SETS["a38"] = {  # 17/11 soir conseil apres a37 accepte : base = high_all ; controle + couleur d entame defense
+    "IDENTITE": {},
+    "RENOM_NONE": {"DEF0_RENOM": None},  # controle : doit perdre ~0.13..0.20 (a37)
+    "RENOM_T2LOW": {"DEF0_RENOM": "high_t2low"},
+    "LEAD_SEQ_ANY": {"DEF_LEAD_SEQ_ANY": True},
+    "LEAD_PASSIVE": {"DEF_LEAD_PASSIVE": True},
+    "LEAD_SHORT": {"DEF_LEAD_SHORT": True},
+}
 # placements par defaut d un jeu (knob de JEU -> "camp" = vrais camps du contrat de reference ; encheres -> "single")
-SET_SEATS = {"a34": "camp", "a35": "camp", "a36": "camp", "a37": "camp"}
+SET_SEATS = {"a34": "camp", "a35": "camp", "a36": "camp", "a37": "camp", "a38": "camp"}
 # AB_SET (env, herite par les workers) : jeu de variantes ; defaut = le plus recent
 VARIANTS = VARIANT_SETS[os.environ.get("AB_SET", max(VARIANT_SETS))]
 # 11/11 (11e conseil, critique) : pour un knob d ENCHERES, placer la variante sur les camps du contrat de
