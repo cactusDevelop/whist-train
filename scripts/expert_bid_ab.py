@@ -59,8 +59,15 @@ VARIANT_SETS["a35"] = {  # 17/11 nuit emb_draw2 acceptee (decl z~45) : l emballe
     "NODRAW2": {"DRAW_MIN_TRUMPS": 3},
     "NODRAW2_NM": {"DRAW_MIN_TRUMPS": 3, "DRAW_MIN_MASTER_OK": True},
 }
+VARIANT_SETS["a36"] = {  # 17/11 soir conseil : defenseur SANS atout, pli 6+ (emb_def_lead0 confirme z 28.9, PIMC entame plus bas)
+    "IDENTITE": {},
+    "CASH_K1": {"DEF0_CASH_MARGIN": 1},
+    "PARTNER_LOW": {"DEF0_PARTNER_LOW": True},
+    "LONG_LOW": {"DEF0_LONG_LOW": True},
+    "LOW_BOTH": {"DEF0_PARTNER_LOW": True, "DEF0_LONG_LOW": True},
+}
 # placements par defaut d un jeu (knob de JEU -> "camp" = vrais camps du contrat de reference ; encheres -> "single")
-SET_SEATS = {"a34": "camp", "a35": "camp"}
+SET_SEATS = {"a34": "camp", "a35": "camp", "a36": "camp"}
 # AB_SET (env, herite par les workers) : jeu de variantes ; defaut = le plus recent
 VARIANTS = VARIANT_SETS[os.environ.get("AB_SET", max(VARIANT_SETS))]
 # 11/11 (11e conseil, critique) : pour un knob d ENCHERES, placer la variante sur les camps du contrat de

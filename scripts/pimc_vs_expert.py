@@ -110,6 +110,7 @@ def expert_values(game, seat, cards, score_fn, rng, samples):
 
 
 DUMP_EX = 4  # --dump N : exemples par situation (N > 4 : tous les ecarts, pas seulement gap >= 1)
+BRANCH_KEY = False  # --branch-key (conseil 17/11 soir) : branche d entame ExpertBot (+ _M si maitresse) ajoutee a la situation
 PIMC_TIMES = []  # secondes par decision PIMC (dds_values, hors --validate) : budget CPU avant tout port
 
 
@@ -122,6 +123,7 @@ def play(game, pimc_seats, score_fn, rng, samples, diffs, trigger=None, validate
     while not game.done:
         seat = game.turn
         card = expert_bot.choose_card(game, seat)
+        branch = expert_bot.LEAD_BRANCH if BRANCH_KEY and not game.current_trick else None
         trou_lead = getattr(game, "trou_pending", lambda: False)() and seat == game.partner
         if seat in pimc_seats and not trou_lead and (trigger is None or trigger(game, seat, card)):  # l'entame du bouche-trou fixe le Trou (regle) : jamais PIMC
             legal = [c for c, ok in enumerate(game.legal_action_mask(seat)) if ok]
@@ -139,6 +141,7 @@ def play(game, pimc_seats, score_fn, rng, samples, diffs, trigger=None, validate
                     qe = q[legal.index(card)]
                     if best - qe > 1e-6:  # ExpertBot garde la main a egalite
                         pick = legal[q.index(best)]
+                        key = sit_key(game, seat, card) + ("" if branch is None else " b:" + branch)
                         vgap = egap = None
                         if validate:
                             vstate = vrng.getstate()
@@ -154,18 +157,26 @@ def play(game, pimc_seats, score_fn, rng, samples, diffs, trigger=None, validate
                             acc["vgap"] += vgap or 0.0
                             acc["egap"] += egap or 0.0
                             if egap is not None:
-                                acc["e"].append((sit_key(game, seat, card), egap, vgap))
-                        diffs.append((sit_key(game, seat, card), best - qe, vgap,
+                                acc["e"].append((key, egap, vgap))
+                        diffs.append((key, best - qe, vgap,
                                       "%s | siege %d | pli %s | main %s | expert %s (%.1f) pimc %s (%.1f)" % (
                                           describe(game.public_contract()), seat,
                                           " ".join("%d:%s" % (s, card_txt(c)) for s, c in game.current_trick) or "-",
                                           " ".join(card_txt(c) for c in sorted(game.hands[seat])),
                                           card_txt(card), qe, card_txt(pick), best)
                                       + ("" if vgap is None else " | valide dds %+.1f" % vgap)
-                                      + ("" if egap is None else " expert %+.1f" % egap)))
+                                      + ("" if egap is None else " expert %+.1f" % egap)
+                                      + ("" if branch is None else " | atout %d branche %s pimc %s" % (
+                                          game.trump_suit, branch, "M" if _is_master_now(game, seat, pick) else "-"))))
                         card = pick
         game.step(seat, card)
     return n
+
+
+def _is_master_now(game, seat, card):
+    """Carte maitresse vue du siege (meme definition qu ExpertBot.PublicView.is_master)."""
+    v = expert_bot.PublicView(game, seat)
+    return v.is_master(expert_bot.mirror_card(card) if v.mirrored else card)
 
 
 def sit_key(game, seat, card):
@@ -310,10 +321,12 @@ def main():
     parser.add_argument("--expert-q", action="store_true", help="avec --validate : gap aussi re-estime avec suite ExpertBot (Q realiste, conseil 16/11)")
     parser.add_argument("--control", action="store_true", help="variante rnd : carte legale au hasard aux memes declenchements (camp declarant)")
     parser.add_argument("--others", default="expert", help="profils ExpertBot (expert_bot.PROFILES), virgules ; hors --oracle : duree partagee")
+    parser.add_argument("--branch-key", action="store_true", help="entames : situation + branche ExpertBot (diagnostic conseil 17/11 soir)")
     parser.add_argument("--dump", type=int, default=4, help="exemples imprimes par situation (conseil 17/11 : toutes les paires)")
     args = parser.parse_args()
-    global DUMP_EX
+    global DUMP_EX, BRANCH_KEY
     DUMP_EX = args.dump
+    BRANCH_KEY = args.branch_key
     if args.oracle:
         return oracle_main(args)
     profiles = args.others.split(",")
