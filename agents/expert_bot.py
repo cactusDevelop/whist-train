@@ -216,11 +216,15 @@ DRAW_STOP_OUTSTANDING = 0  # contrat d'equipe : ne plus tirer quand il reste au 
 # 15/11 (conseil 14/11, etape 2 ; diag decl 43638797757 : entame d atout emballage decl, PIMC tire l As d atout la ou
 # ExpertBot joue a cote) -- A/B, defaut inchange :
 DRAW_COUNT_RAW = False  # contrat d equipe, decision de tirer : compter TOUS les atouts non vus (sans retirer ceux supposes chez le partenaire)
+# 17/11 (nuit emb_draw2 43927348993+43978150867+44016357303 : PIMC a l entame d atout de l emballeur avec 2 atouts,
+# decl +0.249/donne z~45, donnes changees +0.55 ; PIMC joue a cote) -- A/B a35, defauts inchanges :
+DRAW_MIN_TRUMPS = 0  # contrat d equipe : ne pas tirer l atout avec moins de ce nombre d atouts en main (s il reste de l annexe)
+DRAW_MIN_MASTER_OK = False  # ... sauf avec un atout maitre
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
               "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "CASH_BEFORE_DRAW", "LAST_LEAD_MASTER", "DUCK_RUFF_SECOND", "RUFF_RISK_VOID_ONLY", "PARTNER_SUIT_TOP_SHORT", "PARTNER_SUIT_HIGH", "DISCARD_SHORT_WHEN_MATE", "RUFF_HIGH_IF_UNSAFE", "NO_OVERTAKE_POS", "DEF_LEAD_SEQ_ANY", "DEF_LEAD_PASSIVE", "NO_RUFF_PARTNER_2ND", "DECL_LEAD_STRONG", "DISCARD_LONG_TOP", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
               "LEAD_PARTNER_SUIT", "KEEP_TRUMPS_VS_VOID", "DRAW_STOP_OUTSTANDING",
               "NO_OVERTAKE_POS_SIDE", "DECL_2ND_TAKE_SAFE", "DRAW_NEED_MASTER", "DRAW_COUNT_RAW", "UNBLOCK_2ND", "DEF_NT_KEEP_MASTERS",
-              "RAISE_MARGIN_AT", "SOLO_MARGIN_AT", "OPP_SUIT_CAP")
+              "RAISE_MARGIN_AT", "SOLO_MARGIN_AT", "OPP_SUIT_CAP", "DRAW_MIN_TRUMPS", "DRAW_MIN_MASTER_OK")
 
 # Profils CONCURRENTS de l'ExpertBot (utilisateur 2026-10-27 : « mets les regles que je viens
 # de te donner en concurrent a l'ExpertBot, pas en remplacement, idem pour toutes les autres
@@ -1195,6 +1199,9 @@ def _lead(v):
         else:  # solo : 3 adversaires, tirer tant que 2+ peuvent encore en avoir
             keep_drawing = outstanding > 0 and len(opps_with_trumps) >= (1 if SOLO_DRAW_ALL else 2)
         masters = [c for c in my_trumps if v.is_master(c)]
+        if (keep_drawing and v.team_contract and len(my_trumps) < DRAW_MIN_TRUMPS and len(my_trumps) < len(v.legal)
+                and not (DRAW_MIN_MASTER_OK and masters)):
+            keep_drawing = False
         if keep_drawing and DRAW_NEED_MASTER and v.team_contract and not masters:
             keep_drawing = False
         if keep_drawing:
