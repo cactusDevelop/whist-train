@@ -227,7 +227,7 @@ DEF0_CASH_MARGIN = None  # n encaisser une maitresse que s il reste >= (adversai
 DEF0_PARTNER_LOW = False  # couleur du coequipier : la plus petite (au lieu de la tete de sequence / la plus haute)
 DEF0_LONG_LOW = False  # couleur longue par defaut : la plus petite (pas de tete de sequence)
 # Conseil 17/11 nuit (diag 44116701435) : branche renom, PIMC joue la MEME couleur plus HAUT dans 39 % des paires (gap +1.14).
-DEF0_RENOM = None  # None = plus petite ; "high" = plus haute (late0) ; "master" = maitresse si possible sinon plus petite (late0) ; "high_all" = plus haute, tout defenseur
+DEF0_RENOM = "high_all"  # defaut depuis A/B a37 (12/12 champs, +0.13..+0.20 pts/donne, z 6.8..10) ; None = plus petite ; "high" = plus haute (late0) ; "master" = maitresse si possible sinon plus petite (late0) ; "high_all" = plus haute, tout defenseur
 # "skip" = pas de renom (late0, on passe a la suite) ; "high_cond" = plus haute si un adversaire joue entre moi et le
 # coequipier ou s il reste <= 2 atouts non vus (coequipier peut-etre sans atout) -- critique du conseil 17/11 nuit
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
