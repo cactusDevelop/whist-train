@@ -226,12 +226,16 @@ DRAW_MIN_MASTER_OK = True  # ... sauf avec un atout maitre
 DEF0_CASH_MARGIN = None  # n encaisser une maitresse que s il reste >= (adversaires + k) cartes non vues dans la couleur
 DEF0_PARTNER_LOW = False  # couleur du coequipier : la plus petite (au lieu de la tete de sequence / la plus haute)
 DEF0_LONG_LOW = False  # couleur longue par defaut : la plus petite (pas de tete de sequence)
+# Conseil 17/11 nuit (diag 44116701435) : branche renom, PIMC joue la MEME couleur plus HAUT dans 39 % des paires (gap +1.14).
+DEF0_RENOM = None  # None = plus petite ; "high" = plus haute (late0) ; "master" = maitresse si possible sinon plus petite (late0) ; "high_all" = plus haute, tout defenseur
+# "skip" = pas de renom (late0, on passe a la suite) ; "high_cond" = plus haute si un adversaire joue entre moi et le
+# coequipier ou s il reste <= 2 atouts non vus (coequipier peut-etre sans atout) -- critique du conseil 17/11 nuit
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
               "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "CASH_BEFORE_DRAW", "LAST_LEAD_MASTER", "DUCK_RUFF_SECOND", "RUFF_RISK_VOID_ONLY", "PARTNER_SUIT_TOP_SHORT", "PARTNER_SUIT_HIGH", "DISCARD_SHORT_WHEN_MATE", "RUFF_HIGH_IF_UNSAFE", "NO_OVERTAKE_POS", "DEF_LEAD_SEQ_ANY", "DEF_LEAD_PASSIVE", "NO_RUFF_PARTNER_2ND", "DECL_LEAD_STRONG", "DISCARD_LONG_TOP", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
               "LEAD_PARTNER_SUIT", "KEEP_TRUMPS_VS_VOID", "DRAW_STOP_OUTSTANDING",
               "NO_OVERTAKE_POS_SIDE", "DECL_2ND_TAKE_SAFE", "DRAW_NEED_MASTER", "DRAW_COUNT_RAW", "UNBLOCK_2ND", "DEF_NT_KEEP_MASTERS",
               "RAISE_MARGIN_AT", "SOLO_MARGIN_AT", "OPP_SUIT_CAP", "DRAW_MIN_TRUMPS", "DRAW_MIN_MASTER_OK",
-              "DEF0_CASH_MARGIN", "DEF0_PARTNER_LOW", "DEF0_LONG_LOW")
+              "DEF0_CASH_MARGIN", "DEF0_PARTNER_LOW", "DEF0_LONG_LOW", "DEF0_RENOM")
 
 # Profils CONCURRENTS de l'ExpertBot (utilisateur 2026-10-27 : « mets les regles que je viens
 # de te donner en concurrent a l'ExpertBot, pas en remplacement, idem pour toutes les autres
@@ -1186,9 +1190,9 @@ def _mate_likely_wins(v, led, mates_later, later):
 LEAD_BRANCH = None  # derniere branche d entame (diagnostic pimc_vs_expert --branch-key ; aucun effet sur le jeu)
 
 
-def _tag(v, branch, card):
+def _tag(v, branch, card, info=""):
     global LEAD_BRANCH
-    LEAD_BRANCH = branch + ("_M" if v.is_master(card) else "")
+    LEAD_BRANCH = branch + ("_M" if v.is_master(card) else "") + info
     return card
 
 
@@ -1252,7 +1256,19 @@ def _lead(v):
             order = [(v.seat + i) % NUM_PLAYERS for i in range(1, NUM_PLAYERS)]
             after_mate = order[order.index(m) + 1:]
             if not any(v.may_ruff(o, s) for o in after_mate if o in opps):
-                return _tag(v, "renom", _lowest(cards))
+                if DEF0_RENOM == "skip" and late0:
+                    continue
+                before = any(o in opps for o in order[:order.index(m)])
+                few_trumps = len(v.unseen_in(trump)) <= 2
+                if DEF0_RENOM == "high_cond" and late0 and (before or few_trumps):
+                    return _tag(v, "renom", _highest(cards), ("_av" if before else "") + ("_t2" if few_trumps else ""))
+                if DEF0_RENOM == "high_all" and not declaring or DEF0_RENOM == "high" and late0:
+                    return _tag(v, "renom", _highest(cards))
+                if DEF0_RENOM == "master" and late0:
+                    top = [c for c in cards if v.is_master(c)]
+                    if top:
+                        return _tag(v, "renom", _highest(top))
+                return _tag(v, "renom", _lowest(cards), ("_av" if before else "") + ("_t2" if few_trumps else ""))
 
     # 3. encaisser une carte maitresse dans une couleur ou aucun adversaire ne coupe
     def ruff_risk(s):
