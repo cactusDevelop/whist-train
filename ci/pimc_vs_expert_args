@@ -1,1 +1,1 @@
---camps def --validate 32 --expert-q --control --others expert
+--camps def --validate 32 --expert-q --control --others expert --trigger emb_def_lead0 --dump 400

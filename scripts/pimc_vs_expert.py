@@ -77,7 +77,16 @@ def emb_draw2(game, seat, card=None):
             and sum(1 for c in game.hands[seat] if suit_of(c) == game.trump_suit) == 2)
 
 
-TRIGGERS = {"all": None, "emb_draw": emb_draw, "emb_draw2": emb_draw2}
+def emb_def_lead0(game, seat, card=None):
+    """Conseil 17/11 : defenseur d'emballage SANS atout a l'entame, pli 6+ (8 cartes ou moins) -- seul gap
+    defense RETENU (run 44055110607 : +0.26 +- 0.06 z 4.2 suite ExpertBot). Confirmation sur donnes neuves,
+    critere fige : gain def emballage sur donnes changees > +0.10 ET z > 2, controle rnd tres negatif."""
+    return (not game.current_trick and game.trump_suit is not None
+            and game.public_contract().get("type") == "emballage" and seat not in set(dds.side_seats(game))
+            and len(game.hands[seat]) <= 8 and not any(suit_of(c) == game.trump_suit for c in game.hands[seat]))
+
+
+TRIGGERS = {"all": None, "emb_draw": emb_draw, "emb_draw2": emb_draw2, "emb_def_lead0": emb_def_lead0}
 
 
 def adv_wins_trick(game, seat, card=None):
@@ -100,6 +109,7 @@ def expert_values(game, seat, cards, score_fn, rng, samples):
     return q
 
 
+DUMP_EX = 4  # --dump N : exemples par situation (N > 4 : tous les ecarts, pas seulement gap >= 1)
 PIMC_TIMES = []  # secondes par decision PIMC (dds_values, hors --validate) : budget CPU avant tout port
 
 
@@ -150,7 +160,9 @@ def play(game, pimc_seats, score_fn, rng, samples, diffs, trigger=None, validate
                                           describe(game.public_contract()), seat,
                                           " ".join("%d:%s" % (s, card_txt(c)) for s, c in game.current_trick) or "-",
                                           " ".join(card_txt(c) for c in sorted(game.hands[seat])),
-                                          card_txt(card), qe, card_txt(pick), best)))
+                                          card_txt(card), qe, card_txt(pick), best)
+                                      + ("" if vgap is None else " | valide dds %+.1f" % vgap)
+                                      + ("" if egap is None else " expert %+.1f" % egap)))
                         card = pick
         game.step(seat, card)
     return n
@@ -191,7 +203,7 @@ def worker(args):
         chain.finish_played(base, dealer, contract["type"])
         if contract["type"] not in ("emballage", "solo", "trou") or base.trump_suit is None:
             continue
-        if trig in ("emb_draw", "emb_draw2") and contract["type"] != "emballage":
+        if trig in ("emb_draw", "emb_draw2", "emb_def_lead0") and contract["type"] != "emballage":
             continue
         pts_base = real_points_by_seat(role, base, contract)
         side = set(dds.side_seats(base))
@@ -199,8 +211,8 @@ def worker(args):
         def score_fn(g):
             return real_points_by_seat(role, g, contract)
         variants = [("def", [s for s in range(NUM_PLAYERS) if s not in side]), ("decl", sorted(side))]
-        if control:
-            variants.append(("rnd", sorted(side)))
+        if control:  # controle sur le camp mesure (defense si --camps def seul)
+            variants.append(("rnd", sorted(side) if "decl" in camps else variants[0][1]))
         for name, seats in variants:
             if name not in camps and name != "rnd":
                 continue
@@ -298,7 +310,10 @@ def main():
     parser.add_argument("--expert-q", action="store_true", help="avec --validate : gap aussi re-estime avec suite ExpertBot (Q realiste, conseil 16/11)")
     parser.add_argument("--control", action="store_true", help="variante rnd : carte legale au hasard aux memes declenchements (camp declarant)")
     parser.add_argument("--others", default="expert", help="profils ExpertBot (expert_bot.PROFILES), virgules ; hors --oracle : duree partagee")
+    parser.add_argument("--dump", type=int, default=4, help="exemples imprimes par situation (conseil 17/11 : toutes les paires)")
     args = parser.parse_args()
+    global DUMP_EX
+    DUMP_EX = args.dump
     if args.oracle:
         return oracle_main(args)
     profiles = args.others.split(",")
@@ -368,7 +383,7 @@ def run_profile(args, others, minutes):
             a["gap"] += gap
             if vgap is not None:
                 a["v"].append(vgap)
-            if len(a["ex"]) < 4 and gap >= 1.0:
+            if len(a["ex"]) < DUMP_EX and (gap >= 1.0 or DUMP_EX > 4):
                 a["ex"].append(ex)
         print("\n=== %s : ecarts PIMC / ExpertBot par situation (Q gap cumule) ===" % name)
         for sit in sorted(agg, key=lambda k: -agg[k]["gap"])[:30]:
