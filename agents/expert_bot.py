@@ -218,8 +218,8 @@ DRAW_STOP_OUTSTANDING = 0  # contrat d'equipe : ne plus tirer quand il reste au 
 DRAW_COUNT_RAW = False  # contrat d equipe, decision de tirer : compter TOUS les atouts non vus (sans retirer ceux supposes chez le partenaire)
 # 17/11 (nuit emb_draw2 43927348993+43978150867+44016357303 : PIMC a l entame d atout de l emballeur avec 2 atouts,
 # decl +0.249/donne z~45, donnes changees +0.55 ; PIMC joue a cote) -- A/B a35, defauts inchanges :
-DRAW_MIN_TRUMPS = 0  # contrat d equipe : ne pas tirer l atout avec moins de ce nombre d atouts en main (s il reste de l annexe)
-DRAW_MIN_MASTER_OK = False  # ... sauf avec un atout maitre
+DRAW_MIN_TRUMPS = 3  # contrat d equipe : ne pas tirer l atout avec moins de ce nombre d atouts en main (s il reste de l annexe)
+DRAW_MIN_MASTER_OK = True  # ... sauf avec un atout maitre
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
               "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "CASH_BEFORE_DRAW", "LAST_LEAD_MASTER", "DUCK_RUFF_SECOND", "RUFF_RISK_VOID_ONLY", "PARTNER_SUIT_TOP_SHORT", "PARTNER_SUIT_HIGH", "DISCARD_SHORT_WHEN_MATE", "RUFF_HIGH_IF_UNSAFE", "NO_OVERTAKE_POS", "DEF_LEAD_SEQ_ANY", "DEF_LEAD_PASSIVE", "NO_RUFF_PARTNER_2ND", "DECL_LEAD_STRONG", "DISCARD_LONG_TOP", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
               "LEAD_PARTNER_SUIT", "KEEP_TRUMPS_VS_VOID", "DRAW_STOP_OUTSTANDING",

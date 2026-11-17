@@ -1,1 +1,1 @@
---camps decl --trigger emb_draw2 --others expert
+--camps def --validate 32 --expert-q --control --others expert
