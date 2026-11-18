@@ -1,1 +1,1 @@
---camps def --validate 32 --expert-q --others expert --trigger emb_def_lead0 --branch-key --dump 200
+--camps def,decl --validate 32 --expert-q --others expert --trigger all --branch-key
