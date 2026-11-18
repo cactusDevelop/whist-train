@@ -82,8 +82,16 @@ VARIANT_SETS["a38"] = {  # 17/11 soir conseil apres a37 accepte : base = high_al
     "LEAD_PASSIVE": {"DEF_LEAD_PASSIVE": True},
     "LEAD_SHORT": {"DEF_LEAD_SHORT": True},
 }
+VARIANT_SETS["a39"] = {  # 18/11 apres-midi conseil : diag general 44262105035 (base high_all), fournir coequipier gagnant + defausse sur coupe
+    "IDENTITE": {},
+    "CTRL_NO_OVERTAKE": {"NO_OVERTAKE": True},  # controle negatif : doit perdre (A/B 21/22)
+    "SAFE_LAX": {"PARTNER_SAFE_LAX": True},
+    "UNBLOCK2_LOOSE": {"UNBLOCK_2ND_LOOSE": True},
+    "RUFFED_SHORT": {"DISCARD_RUFFED_SHORT": True},
+    "LAX_UNBLOCK": {"PARTNER_SAFE_LAX": True, "UNBLOCK_2ND_LOOSE": True},
+}
 # placements par defaut d un jeu (knob de JEU -> "camp" = vrais camps du contrat de reference ; encheres -> "single")
-SET_SEATS = {"a34": "camp", "a35": "camp", "a36": "camp", "a37": "camp", "a38": "camp"}
+SET_SEATS = {"a34": "camp", "a35": "camp", "a36": "camp", "a37": "camp", "a38": "camp", "a39": "camp"}
 # AB_SET (env, herite par les workers) : jeu de variantes ; defaut = le plus recent
 VARIANTS = VARIANT_SETS[os.environ.get("AB_SET", max(VARIANT_SETS))]
 # 11/11 (11e conseil, critique) : pour un knob d ENCHERES, placer la variante sur les camps du contrat de

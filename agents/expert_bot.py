@@ -230,12 +230,17 @@ DEF0_LONG_LOW = False  # couleur longue par defaut : la plus petite (pas de tete
 DEF0_RENOM = "high_all"  # defaut depuis A/B a37 (12/12 champs, +0.13..+0.20 pts/donne, z 6.8..10) ; None = plus petite ; "high" = plus haute (late0) ; "master" = maitresse si possible sinon plus petite (late0) ; "high_all" = plus haute, tout defenseur
 # "skip" = pas de renom (late0, on passe a la suite) ; "high_cond" = plus haute si un adversaire joue entre moi et le
 # coequipier ou s il reste <= 2 atouts non vus (coequipier peut-etre sans atout) -- critique du conseil 17/11 nuit
+# Conseil 18/11 apres-midi (diag general 44262105035, base high_all) -- A/B a39, defauts inchanges :
+PARTNER_SAFE_LAX = False  # _partner_safe : carte du coequipier >= Dame et <= 1 carte plus haute non vue -> l adversaire ne le bat pas (cible « 3e PREND »)
+UNBLOCK_2ND_LOOSE = False  # 2e, coequipier gagnant, <= 3 cartes fournies, choix par defaut = plus petite : la plus haute NON maitresse sous sa carte (cible « 2e laisse »)
+DISCARD_RUFFED_SHORT = False  # defausse quand un adversaire gagne le pli en coupant : couleur la plus COURTE (non maitresse), sinon longue
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
               "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "CASH_BEFORE_DRAW", "LAST_LEAD_MASTER", "DUCK_RUFF_SECOND", "RUFF_RISK_VOID_ONLY", "PARTNER_SUIT_TOP_SHORT", "PARTNER_SUIT_HIGH", "DISCARD_SHORT_WHEN_MATE", "RUFF_HIGH_IF_UNSAFE", "NO_OVERTAKE_POS", "DEF_LEAD_SEQ_ANY", "DEF_LEAD_PASSIVE", "NO_RUFF_PARTNER_2ND", "DECL_LEAD_STRONG", "DISCARD_LONG_TOP", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
               "LEAD_PARTNER_SUIT", "KEEP_TRUMPS_VS_VOID", "DRAW_STOP_OUTSTANDING",
               "NO_OVERTAKE_POS_SIDE", "DECL_2ND_TAKE_SAFE", "DRAW_NEED_MASTER", "DRAW_COUNT_RAW", "UNBLOCK_2ND", "DEF_NT_KEEP_MASTERS",
               "RAISE_MARGIN_AT", "SOLO_MARGIN_AT", "OPP_SUIT_CAP", "DRAW_MIN_TRUMPS", "DRAW_MIN_MASTER_OK",
-              "DEF0_CASH_MARGIN", "DEF0_PARTNER_LOW", "DEF0_LONG_LOW", "DEF0_RENOM")
+              "DEF0_CASH_MARGIN", "DEF0_PARTNER_LOW", "DEF0_LONG_LOW", "DEF0_RENOM",
+              "PARTNER_SAFE_LAX", "UNBLOCK_2ND_LOOSE", "DISCARD_RUFFED_SHORT")
 
 # Profils CONCURRENTS de l'ExpertBot (utilisateur 2026-10-27 : « mets les regles que je viens
 # de te donner en concurrent a l'ExpertBot, pas en remplacement, idem pour toutes les autres
@@ -1070,6 +1075,10 @@ def _discard(v):
     side_ok = DISCARD_SIDE is None or (DISCARD_SIDE == "def") == (v.seat not in v.declarer_side)
     if DISCARD_SHORT_WHEN_MATE and v.current_trick and trick_winner(v.current_trick, v.trump) in v.teammates(v.seat):
         side_ok = False
+    if DISCARD_RUFFED_SHORT and v.current_trick and v.trump is not None:
+        led, w_seat, w_card = _trick_state(v)
+        if w_seat not in v.teammates(v.seat) and suit_of(w_card) == v.trump and led != v.trump:
+            return min(non_master, key=lambda c: (count[suit_of(c)], rank_of(c)))
     if DISCARD_LONG and side_ok:
         if DISCARD_LONG_TOP:
             top = {s: max((rank_of(c) for c in v.hand if suit_of(c) == s), default=-1) for s in range(NUM_SUITS)}
@@ -1115,6 +1124,10 @@ def _follow(v):
                     return _lowest(masters)
             if UNBLOCK_LAST and not later:
                 loose = [c for c in following if not v.is_master(c)]
+                if loose:
+                    return _highest(loose)
+            if UNBLOCK_2ND_LOOSE and pos == 2 and len(following) <= 3 and suit_of(win_card) == led:
+                loose = [c for c in following if not v.is_master(c) and rank_of(c) < rank_of(win_card)]
                 if loose:
                     return _highest(loose)
             return _lowest(following)
@@ -1169,7 +1182,8 @@ def _partner_safe(v, win_card, led, later):
                     return False
         else:
             if v.may_hold(s, led):
-                if any(rank_of(c) > rank_of(win_card) for c in v.unseen_in(led)):
+                higher = [c for c in v.unseen_in(led) if rank_of(c) > rank_of(win_card)]
+                if higher and not (PARTNER_SAFE_LAX and rank_of(win_card) >= QUEEN and len(higher) <= 1):
                     return False
             elif v.may_ruff(s, led):
                 return False
