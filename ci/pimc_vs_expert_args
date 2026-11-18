@@ -1,1 +1,1 @@
---camps def,decl --validate 32 --expert-q --others expert --trigger all --branch-key
+--camps def,decl --validate 32 --expert-q --control --others expert --trigger coeq_coupe --branch-key --dump 8

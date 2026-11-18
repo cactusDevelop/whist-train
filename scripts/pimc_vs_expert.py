@@ -86,7 +86,53 @@ def emb_def_lead0(game, seat, card=None):
             and len(game.hands[seat]) <= 8 and not any(suit_of(c) == game.trump_suit for c in game.hands[seat]))
 
 
-TRIGGERS = {"all": None, "emb_draw": emb_draw, "emb_draw2": emb_draw2, "emb_def_lead0": emb_def_lead0}
+def _view(game, seat, card):
+    v = expert_bot.PublicView(game, seat)
+    return v, (expert_bot.mirror_card(card) if (v.mirrored and card is not None) else card)
+
+
+def coeq_coupe(game, seat, card=None):
+    """Conseil 18/11 (2e tour, apres a39 rejete) : (1) coequipier gagnant le pli et on FOURNIT (>= 2 cartes de la
+    couleur) ; (2) un adversaire gagne le pli en COUPANT (couleur non atout entamee) et on ne fournit pas.
+    Dump des paires + branche (follow_branch) pour trouver une branche ETROITE avant toute regle."""
+    if not game.current_trick or game.trump_suit is None or card is None:
+        return False
+    v, c = _view(game, seat, card)
+    led, w_seat, w_card = expert_bot._trick_state(v)
+    following = [x for x in v.legal if suit_of(x) == led]
+    if w_seat in v.teammates(seat):
+        return len(following) >= 2
+    return not following and led != v.trump and suit_of(w_card) == v.trump
+
+
+def follow_branch(game, seat, card):
+    """Branche descriptive de la decision ExpertBot (cles de dump, aucun effet sur le jeu)."""
+    v, c = _view(game, seat, card)
+    led, w_seat, w_card = expert_bot._trick_state(v)
+    later = v.still_to_play()
+    mates = v.teammates(seat)
+    pos = len(v.current_trick) + 1
+    following = [x for x in v.legal if suit_of(x) == led]
+    if w_seat in mates:
+        safe = not any(s not in mates for s in later) or expert_bot._partner_safe(v, w_card, led, later)
+        sure = any(expert_bot._wins_now(v, x) and expert_bot._safe_win(v, x, later) for x in following)
+        act = "prend" if expert_bot._wins_now(v, c) else ("min" if c == min(following, key=expert_bot.rank_of) else "sous")
+        hon = "H" if expert_bot.rank_of(w_card) >= expert_bot.QUEEN else "b"
+        return "F p%d %s n%d %s coeq%s %s" % (pos, "sur" if safe else "nsur", min(len(following), 3),
+                                             "M" if sure else "-", hon, act)
+    mate_later = any(s in mates for s in later)
+    over = any(suit_of(x) == v.trump and expert_bot._wins_now(v, x) for x in v.legal)
+    count = {s: sum(1 for x in v.hand if suit_of(x) == s) for s in range(4) if s != v.trump}
+    lens = sorted(n for n in count.values() if n)
+    cs = count.get(suit_of(c), 0)
+    act = ("atout" if suit_of(c) == v.trump else
+           ("longue" if lens and cs == lens[-1] else ("courte" if lens and cs == lens[0] else "moy")))
+    return "D p%d %s %s exp:%s ncoul%d" % (pos, "coeq_apres" if mate_later else "-", "surcoupe" if over else "-",
+                                           act, len(lens))
+
+
+TRIGGERS = {"all": None, "emb_draw": emb_draw, "emb_draw2": emb_draw2, "emb_def_lead0": emb_def_lead0,
+            "coeq_coupe": coeq_coupe}
 
 
 def adv_wins_trick(game, seat, card=None):
@@ -124,6 +170,8 @@ def play(game, pimc_seats, score_fn, rng, samples, diffs, trigger=None, validate
         seat = game.turn
         card = expert_bot.choose_card(game, seat)
         branch = expert_bot.LEAD_BRANCH if BRANCH_KEY and not game.current_trick else None
+        if BRANCH_KEY and trigger is coeq_coupe and game.current_trick and coeq_coupe(game, seat, card):
+            branch = follow_branch(game, seat, card)
         trou_lead = getattr(game, "trou_pending", lambda: False)() and seat == game.partner
         if seat in pimc_seats and not trou_lead and (trigger is None or trigger(game, seat, card)):  # l'entame du bouche-trou fixe le Trou (regle) : jamais PIMC
             legal = [c for c, ok in enumerate(game.legal_action_mask(seat)) if ok]
