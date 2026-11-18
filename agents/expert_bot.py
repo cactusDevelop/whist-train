@@ -234,13 +234,17 @@ DEF0_RENOM = "high_all"  # defaut depuis A/B a37 (12/12 champs, +0.13..+0.20 pts
 PARTNER_SAFE_LAX = False  # _partner_safe : carte du coequipier >= Dame et <= 1 carte plus haute non vue -> l adversaire ne le bat pas (cible « 3e PREND »)
 UNBLOCK_2ND_LOOSE = False  # 2e, coequipier gagnant, <= 3 cartes fournies, choix par defaut = plus petite : la plus haute NON maitresse sous sa carte (cible « 2e laisse »)
 DISCARD_RUFFED_SHORT = False  # defausse quand un adversaire gagne le pli en coupant : couleur la plus COURTE (non maitresse), sinon longue
+# Conseil 18/11 2e tour (dump coeq_coupe 44335928563 : « fournit 2e/3e coeq gagne laisse nsur coeqb min » RETENUES,
+# gap +1.31..+1.50 z 10..15, PIMC joue la plus HAUTE de la couleur par-dessus le coequipier) -- A/B a40, defaut inchange :
+COVER_WEAK_PARTNER = None  # coequipier gagnant PAS sur, adversaire apres moi, pas de maitresse : None = plus petite ;
+# "beat" = plus haute qui bat sa carte ; "beat_low" = idem si sa carte <= 10 ; "high" = plus haute de la couleur
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
               "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "CASH_BEFORE_DRAW", "LAST_LEAD_MASTER", "DUCK_RUFF_SECOND", "RUFF_RISK_VOID_ONLY", "PARTNER_SUIT_TOP_SHORT", "PARTNER_SUIT_HIGH", "DISCARD_SHORT_WHEN_MATE", "RUFF_HIGH_IF_UNSAFE", "NO_OVERTAKE_POS", "DEF_LEAD_SEQ_ANY", "DEF_LEAD_PASSIVE", "NO_RUFF_PARTNER_2ND", "DECL_LEAD_STRONG", "DISCARD_LONG_TOP", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
               "LEAD_PARTNER_SUIT", "KEEP_TRUMPS_VS_VOID", "DRAW_STOP_OUTSTANDING",
               "NO_OVERTAKE_POS_SIDE", "DECL_2ND_TAKE_SAFE", "DRAW_NEED_MASTER", "DRAW_COUNT_RAW", "UNBLOCK_2ND", "DEF_NT_KEEP_MASTERS",
               "RAISE_MARGIN_AT", "SOLO_MARGIN_AT", "OPP_SUIT_CAP", "DRAW_MIN_TRUMPS", "DRAW_MIN_MASTER_OK",
               "DEF0_CASH_MARGIN", "DEF0_PARTNER_LOW", "DEF0_LONG_LOW", "DEF0_RENOM",
-              "PARTNER_SAFE_LAX", "UNBLOCK_2ND_LOOSE", "DISCARD_RUFFED_SHORT")
+              "PARTNER_SAFE_LAX", "UNBLOCK_2ND_LOOSE", "DISCARD_RUFFED_SHORT", "COVER_WEAK_PARTNER")
 
 # Profils CONCURRENTS de l'ExpertBot (utilisateur 2026-10-27 : « mets les regles que je viens
 # de te donner en concurrent a l'ExpertBot, pas en remplacement, idem pour toutes les autres
@@ -1130,6 +1134,13 @@ def _follow(v):
                 loose = [c for c in following if not v.is_master(c) and rank_of(c) < rank_of(win_card)]
                 if loose:
                     return _highest(loose)
+            if (COVER_WEAK_PARTNER and not partner_safe and suit_of(win_card) == led
+                    and any(s not in mates for s in later)
+                    and (COVER_WEAK_PARTNER != "beat_low" or rank_of(win_card) <= 8)):
+                cover = following if COVER_WEAK_PARTNER == "high" else [
+                    c for c in following if rank_of(c) > rank_of(win_card)]
+                if cover:
+                    return _highest(cover)
             return _lowest(following)
         # renom dans la couleur du partenaire qui n'est PAS sur de tenir le pli :
         # couper (signalement 2026-10-23 : « ne joue pas d'atout en renom »)

@@ -83,6 +83,7 @@ VARIANT_SETS["a38"] = {  # 17/11 soir conseil apres a37 accepte : base = high_al
     "LEAD_SHORT": {"DEF_LEAD_SHORT": True},
 }
 VARIANT_SETS["a39"] = {  # 18/11 apres-midi conseil : diag general 44262105035 (base high_all), fournir coequipier gagnant + defausse sur coupe
+    # RESULTAT run 44318627505 (7 champs, annule pour lenteur) : REJETE -- SAFE_LAX -0.06 z -4, UNBLOCK2_LOOSE -0.13 z -8, RUFFED_SHORT -0.03 z -2, LAX_UNBLOCK -0.19 ; controle NO_OVERTAKE -1.46 z -31 (banc OK)
     "IDENTITE": {},
     "CTRL_NO_OVERTAKE": {"NO_OVERTAKE": True},  # controle negatif : doit perdre (A/B 21/22)
     "SAFE_LAX": {"PARTNER_SAFE_LAX": True},
@@ -90,8 +91,15 @@ VARIANT_SETS["a39"] = {  # 18/11 apres-midi conseil : diag general 44262105035 (
     "RUFFED_SHORT": {"DISCARD_RUFFED_SHORT": True},
     "LAX_UNBLOCK": {"PARTNER_SAFE_LAX": True, "UNBLOCK_2ND_LOOSE": True},
 }
+VARIANT_SETS["a40"] = {  # 18/11 soir conseil 2e tour : dump coeq_coupe 44335928563, couvrir le coequipier faible (PIMC)
+    "IDENTITE": {},
+    "CTRL_NO_OVERTAKE": {"NO_OVERTAKE": True},  # controle negatif (a39 : -1.46 z -31)
+    "COVER_BEAT": {"COVER_WEAK_PARTNER": "beat"},
+    "COVER_BEAT_LOW": {"COVER_WEAK_PARTNER": "beat_low"},
+    "COVER_HIGH": {"COVER_WEAK_PARTNER": "high"},
+}
 # placements par defaut d un jeu (knob de JEU -> "camp" = vrais camps du contrat de reference ; encheres -> "single")
-SET_SEATS = {"a34": "camp", "a35": "camp", "a36": "camp", "a37": "camp", "a38": "camp", "a39": "camp"}
+SET_SEATS = {"a34": "camp", "a35": "camp", "a36": "camp", "a37": "camp", "a38": "camp", "a39": "camp", "a40": "camp"}
 # AB_SET (env, herite par les workers) : jeu de variantes ; defaut = le plus recent
 VARIANTS = VARIANT_SETS[os.environ.get("AB_SET", max(VARIANT_SETS))]
 # 11/11 (11e conseil, critique) : pour un knob d ENCHERES, placer la variante sur les camps du contrat de
