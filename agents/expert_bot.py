@@ -235,16 +235,22 @@ PARTNER_SAFE_LAX = False  # _partner_safe : carte du coequipier >= Dame et <= 1 
 UNBLOCK_2ND_LOOSE = False  # 2e, coequipier gagnant, <= 3 cartes fournies, choix par defaut = plus petite : la plus haute NON maitresse sous sa carte (cible « 2e laisse »)
 DISCARD_RUFFED_SHORT = False  # defausse quand un adversaire gagne le pli en coupant : couleur la plus COURTE (non maitresse), sinon longue
 # Conseil 18/11 2e tour (dump coeq_coupe 44335928563 : « fournit 2e/3e coeq gagne laisse nsur coeqb min » RETENUES,
-# gap +1.31..+1.50 z 10..15, PIMC joue la plus HAUTE de la couleur par-dessus le coequipier) -- A/B a40, defaut inchange :
-COVER_WEAK_PARTNER = None  # coequipier gagnant PAS sur, adversaire apres moi, pas de maitresse : None = plus petite ;
+# gap +1.31..+1.50 z 10..15, PIMC joue la plus HAUTE de la couleur par-dessus le coequipier) -- A/B a40 run 44412111730 :
+# beat_low ACCEPTE 12/12 champs (+0.09..+0.32/donne z 4.0..10.2), beat ~0 (z -2), high rejete (z +3.5) -> defaut beat_low
+COVER_WEAK_PARTNER = "beat_low"  # coequipier gagnant PAS sur, adversaire apres moi, pas de maitresse : None = plus petite ;
 # "beat" = plus haute qui bat sa carte ; "beat_low" = idem si sa carte <= 10 ; "high" = plus haute de la couleur
+# Conseil 18/11 suite (nuit pimc 44437340894, base pre-a40 : decl emballage « 2e coeq gagne sur M coeqb min/prend »
+# gap +3.3..+3.7 z 9..10, « 3e PREND nsur » +2.25 z 13 : PIMC brule la plus HAUTE carte gagnante, garde les petites
+# pour rendre la main au coequipier) -- A/B a41, defaut inchange :
+DECL_OVERTAKE_HIGH = None  # declarant, contrat d equipe, coequipier gagnant : "safe2" = 2e et coequipier SUR -> plus haute
+# fournie ; "masters" = je prends avec une carte sure -> la plus HAUTE sure au lieu de la plus petite ; "both" = les deux
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
               "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "CASH_BEFORE_DRAW", "LAST_LEAD_MASTER", "DUCK_RUFF_SECOND", "RUFF_RISK_VOID_ONLY", "PARTNER_SUIT_TOP_SHORT", "PARTNER_SUIT_HIGH", "DISCARD_SHORT_WHEN_MATE", "RUFF_HIGH_IF_UNSAFE", "NO_OVERTAKE_POS", "DEF_LEAD_SEQ_ANY", "DEF_LEAD_PASSIVE", "NO_RUFF_PARTNER_2ND", "DECL_LEAD_STRONG", "DISCARD_LONG_TOP", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
               "LEAD_PARTNER_SUIT", "KEEP_TRUMPS_VS_VOID", "DRAW_STOP_OUTSTANDING",
               "NO_OVERTAKE_POS_SIDE", "DECL_2ND_TAKE_SAFE", "DRAW_NEED_MASTER", "DRAW_COUNT_RAW", "UNBLOCK_2ND", "DEF_NT_KEEP_MASTERS",
               "RAISE_MARGIN_AT", "SOLO_MARGIN_AT", "OPP_SUIT_CAP", "DRAW_MIN_TRUMPS", "DRAW_MIN_MASTER_OK",
               "DEF0_CASH_MARGIN", "DEF0_PARTNER_LOW", "DEF0_LONG_LOW", "DEF0_RENOM",
-              "PARTNER_SAFE_LAX", "UNBLOCK_2ND_LOOSE", "DISCARD_RUFFED_SHORT", "COVER_WEAK_PARTNER")
+              "PARTNER_SAFE_LAX", "UNBLOCK_2ND_LOOSE", "DISCARD_RUFFED_SHORT", "COVER_WEAK_PARTNER", "DECL_OVERTAKE_HIGH")
 
 # Profils CONCURRENTS de l'ExpertBot (utilisateur 2026-10-27 : « mets les regles que je viens
 # de te donner en concurrent a l'ExpertBot, pas en remplacement, idem pour toutes les autres
@@ -1116,6 +1122,9 @@ def _follow(v):
                      "maitre_sure" if any(_wins_now(v, c) and _safe_win(v, c, later) for c in following) else "-",
                      "gagne" if any(_wins_now(v, c) for c in following) else "-", min(len(following), 3))
                 FOLLOW_TRACE[k] = FOLLOW_TRACE.get(k, 0) + 1
+            decl_high = DECL_OVERTAKE_HIGH if declaring and v.team_contract else None
+            if decl_high in ("safe2", "both") and pos == 2 and partner_safe and any(s not in mates for s in later):
+                return _highest(following)
             if (UNBLOCK_2ND and pos == 2 and partner_safe and len(following) <= 2
                     and (UNBLOCK_2ND == "all" or declaring)):
                 tops = [c for c in following if v.is_master(c)]
@@ -1125,7 +1134,7 @@ def _follow(v):
             if not partner_safe and not NO_OVERTAKE and not no_pos:
                 masters = [c for c in following if _wins_now(v, c) and _safe_win(v, c, later)]
                 if masters:
-                    return _lowest(masters)
+                    return _highest(masters) if decl_high in ("masters", "both") else _lowest(masters)
             if UNBLOCK_LAST and not later:
                 loose = [c for c in following if not v.is_master(c)]
                 if loose:

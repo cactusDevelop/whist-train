@@ -98,8 +98,15 @@ VARIANT_SETS["a40"] = {  # 18/11 soir conseil 2e tour : dump coeq_coupe 44335928
     "COVER_BEAT_LOW": {"COVER_WEAK_PARTNER": "beat_low"},
     "COVER_HIGH": {"COVER_WEAK_PARTNER": "high"},
 }
+VARIANT_SETS["a41"] = {  # 19/11 matin : nuit pimc 44437340894, decl emballeur brule la plus haute (coequipier gagnant)
+    "IDENTITE": {},
+    "CTRL_NO_OVERTAKE": {"NO_OVERTAKE": True},  # controle negatif (a39/a40)
+    "DECL_SAFE2": {"DECL_OVERTAKE_HIGH": "safe2"},
+    "DECL_MASTERS": {"DECL_OVERTAKE_HIGH": "masters"},
+    "DECL_BOTH": {"DECL_OVERTAKE_HIGH": "both"},
+}
 # placements par defaut d un jeu (knob de JEU -> "camp" = vrais camps du contrat de reference ; encheres -> "single")
-SET_SEATS = {"a34": "camp", "a35": "camp", "a36": "camp", "a37": "camp", "a38": "camp", "a39": "camp", "a40": "camp"}
+SET_SEATS = {"a34": "camp", "a35": "camp", "a36": "camp", "a37": "camp", "a38": "camp", "a39": "camp", "a40": "camp", "a41": "camp"}
 # AB_SET (env, herite par les workers) : jeu de variantes ; defaut = le plus recent
 VARIANTS = VARIANT_SETS[os.environ.get("AB_SET", max(VARIANT_SETS))]
 # 11/11 (11e conseil, critique) : pour un knob d ENCHERES, placer la variante sur les camps du contrat de
