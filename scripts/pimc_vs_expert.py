@@ -131,8 +131,39 @@ def follow_branch(game, seat, card):
                                            act, len(lens))
 
 
+def decl_safe_cover(game, seat, card=None):
+    """Conseil 19/11 (palier apres a41 REJETE : « toujours la plus haute » -0.4..-1.25/donne) : camp DECLARANT,
+    coequipier gagnant le pli et SUR (ou plus d adversaire apres moi), je fournis >= 2 cartes. Dump enrichi de la
+    carte PIMC (rang parmi les fournies, maitresse, maitresses tenues) + taux de base (decisions sans ecart)."""
+    if not game.current_trick or game.trump_suit is None or card is None or seat not in set(dds.side_seats(game)):
+        return False
+    v, c = _view(game, seat, card)
+    led, w_seat, w_card = expert_bot._trick_state(v)
+    if w_seat not in v.teammates(seat) or sum(1 for x in v.legal if suit_of(x) == led) < 2:
+        return False
+    later = v.still_to_play()
+    return not any(s not in v.teammates(seat) for s in later) or expert_bot._partner_safe(v, w_card, led, later)
+
+
+def pick_feat(game, seat, pick):
+    """Carte PIMC (dump decl_safe_cover) : rang parmi les fournies (top/2e/mid/min), maitresse M/-, nb de
+    maitresses tenues dans la couleur, pli 1-4/5-8/9+, atouts en main 0/1-2/3+."""
+    v, c = _view(game, seat, pick)
+    led = expert_bot._trick_state(v)[0]
+    fol = sorted((x for x in v.legal if suit_of(x) == led), key=expert_bot.rank_of, reverse=True)
+    i = fol.index(c)
+    pos = "top" if i == 0 else ("min" if i == len(fol) - 1 else ("2e" if i == 1 else "mid"))
+    nm = sum(1 for x in fol if v.is_master(x))
+    nt = sum(1 for x in v.hand if suit_of(x) == v.trump)
+    pli = 13 - len(v.hand) + 1
+    return "pk:%s%s nM%s pl%s at%s" % (pos, "M" if v.is_master(c) else "-", min(nm, 2) if nm < 2 else "2+",
+                                       "1-4" if pli <= 4 else ("5-8" if pli <= 8 else "9+"),
+                                       "0" if nt == 0 else ("1-2" if nt <= 2 else "3+"))
+
+
+TRIG_BASE = {}  # cle sans pk -> [decisions PIMC, ecarts] (taux de base, conseil 19/11)
 TRIGGERS = {"all": None, "emb_draw": emb_draw, "emb_draw2": emb_draw2, "emb_def_lead0": emb_def_lead0,
-            "coeq_coupe": coeq_coupe}
+            "coeq_coupe": coeq_coupe, "decl_safe_cover": decl_safe_cover}
 
 
 def adv_wins_trick(game, seat, card=None):
@@ -170,7 +201,8 @@ def play(game, pimc_seats, score_fn, rng, samples, diffs, trigger=None, validate
         seat = game.turn
         card = expert_bot.choose_card(game, seat)
         branch = expert_bot.LEAD_BRANCH if BRANCH_KEY and not game.current_trick else None
-        if BRANCH_KEY and trigger is coeq_coupe and game.current_trick and coeq_coupe(game, seat, card):
+        if (BRANCH_KEY and trigger in (coeq_coupe, decl_safe_cover) and game.current_trick
+                and trigger(game, seat, card)):
             branch = follow_branch(game, seat, card)
         trou_lead = getattr(game, "trou_pending", lambda: False)() and seat == game.partner
         if seat in pimc_seats and not trou_lead and (trigger is None or trigger(game, seat, card)):  # l'entame du bouche-trou fixe le Trou (regle) : jamais PIMC
@@ -187,9 +219,16 @@ def play(game, pimc_seats, score_fn, rng, samples, diffs, trigger=None, validate
                     n += 1
                     best = max(q)
                     qe = q[legal.index(card)]
+                    base_key = sit_key(game, seat, card) + ("" if branch is None else " b:" + branch)
+                    tb = TRIG_BASE.setdefault(base_key, [0, 0]) if trigger is decl_safe_cover else None
+                    if tb is not None:
+                        tb[0] += 1
                     if best - qe > 1e-6:  # ExpertBot garde la main a egalite
                         pick = legal[q.index(best)]
-                        key = sit_key(game, seat, card) + ("" if branch is None else " b:" + branch)
+                        key = base_key
+                        if tb is not None:
+                            tb[1] += 1
+                            key += " " + pick_feat(game, seat, pick)
                         vgap = egap = None
                         if validate:
                             vstate = vrng.getstate()
@@ -284,7 +323,7 @@ def worker(args):
             rows.append((name, contract["type"], gain, n, acc["changed"], acc["vgap"], acc["egap"]))
             if time.time() >= deadline:
                 break
-    return rows, diffs, list(PIMC_TIMES), egaps
+    return rows, diffs, list(PIMC_TIMES), egaps, dict(TRIG_BASE)
 
 
 def oracle_worker(args):
@@ -394,6 +433,12 @@ def run_profile(args, others, minutes):
     diffs = {k: [d for p in parts for d in p[1][k]] for k in ("def", "decl")}
     times = sorted(t for p in parts for t in p[2])
     egaps = [e for p in parts for e in p[3]]
+    base = {}
+    for p in parts:
+        for k, (d, e) in p[4].items():
+            b = base.setdefault(k, [0, 0])
+            b[0] += d
+            b[1] += e
     print("=== profil %s : PIMC (%d mondes) vs ExpertBot, duplicate, %.0f s ===" % (others, args.samples, time.time() - t0))
     if times:
         print("temps/decision PIMC (Python, runner) : n %d mediane %.0f ms p90 %.0f ms max %.0f ms" % (
@@ -436,6 +481,10 @@ def run_profile(args, others, minutes):
             print("%-58s n %5d  dds %+.2f +- %.2f  | expert %+.2f +- %.2f (z %+.1f)%s" % (
                 sit, en, vm, vse, em, ese, em / ese if ese > 0 else 0.0,
                 "  RETENUE" if en >= 100 and ese > 0 and em > 3 * ese else ""))
+    if base:
+        print("\n=== taux de base (trigger %s) : decisions PIMC / ecarts par branche ===" % args.trigger)
+        for k in sorted(base, key=lambda k: -base[k][0])[:30]:
+            print("%-70s decisions %6d  ecarts %5d (%4.1f %%)" % (k, base[k][0], base[k][1], 100.0 * base[k][1] / base[k][0]))
     for name in ("def", "decl"):
         agg = {}
         for sit, gap, vgap, ex in diffs[name]:

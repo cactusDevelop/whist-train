@@ -241,7 +241,8 @@ COVER_WEAK_PARTNER = "beat_low"  # coequipier gagnant PAS sur, adversaire apres 
 # "beat" = plus haute qui bat sa carte ; "beat_low" = idem si sa carte <= 10 ; "high" = plus haute de la couleur
 # Conseil 18/11 suite (nuit pimc 44437340894, base pre-a40 : decl emballage « 2e coeq gagne sur M coeqb min/prend »
 # gap +3.3..+3.7 z 9..10, « 3e PREND nsur » +2.25 z 13 : PIMC brule la plus HAUTE carte gagnante, garde les petites
-# pour rendre la main au coequipier) -- A/B a41, defaut inchange :
+# pour rendre la main au coequipier) -- A/B a41 REJETE (run 44488651902, 12/12 champs) : safe2/both -0.42..-1.25/donne
+# z -11.5..-31.6 (decl emballage + trou), masters ~0 (0-0.5 % donnes changees) -> defaut None garde :
 DECL_OVERTAKE_HIGH = None  # declarant, contrat d equipe, coequipier gagnant : "safe2" = 2e et coequipier SUR -> plus haute
 # fournie ; "masters" = je prends avec une carte sure -> la plus HAUTE sure au lieu de la plus petite ; "both" = les deux
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
