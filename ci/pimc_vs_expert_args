@@ -1,1 +1,1 @@
---camps def --validate 32 --expert-q --control --others expert --trigger all --dump 12
+--camps def --validate 32 --expert-q --control --others expert --trigger def_lead_ts --branch-key --dump 12

@@ -161,9 +161,30 @@ def pick_feat(game, seat, pick):
                                        "0" if nt == 0 else ("1-2" if nt <= 2 else "3+"))
 
 
+def def_lead_ts(game, seat, card=None):
+    """Conseil 20/11 (diag defense 3 maillons, metrique calibree ratio ~0.65) : ENTAME d'un defenseur en trou ou
+    solo -- trou atouts1-2 pli6+ +2.0..2.6/decision, solo atouts0 pli6+ +0.25 n 1338. Dump : carte PIMC vs ExpertBot."""
+    return (not game.current_trick and card is not None and game.trump_suit is not None
+            and game.public_contract().get("type") in ("trou", "solo") and seat not in set(dds.side_seats(game)))
+
+
+def lead_feat(game, seat, c):
+    """Entame (dump def_lead_ts) : couleur atout/longue/courte/moy, rang dans la couleur top/2e/mid/min, maitresse."""
+    v, c = _view(game, seat, c)
+    s = suit_of(c)
+    count = {t: sum(1 for x in v.hand if suit_of(x) == t) for t in range(4) if t != v.trump}
+    lens = sorted(n for n in count.values() if n)
+    cat = ("atout" if s == v.trump else
+           ("longue" if lens and count[s] == lens[-1] else ("courte" if lens and count[s] == lens[0] else "moy")))
+    fol = sorted((x for x in v.hand if suit_of(x) == s), key=expert_bot.rank_of, reverse=True)
+    i = fol.index(c)
+    pos = "top" if i == 0 else ("min" if i == len(fol) - 1 else ("2e" if i == 1 else "mid"))
+    return "%s/%s%s" % (cat, pos, "M" if v.is_master(c) else "-")
+
+
 TRIG_BASE = {}  # cle sans pk -> [decisions PIMC, ecarts] (taux de base, conseil 19/11)
 TRIGGERS = {"all": None, "emb_draw": emb_draw, "emb_draw2": emb_draw2, "emb_def_lead0": emb_def_lead0,
-            "coeq_coupe": coeq_coupe, "decl_safe_cover": decl_safe_cover}
+            "coeq_coupe": coeq_coupe, "decl_safe_cover": decl_safe_cover, "def_lead_ts": def_lead_ts}
 
 
 def adv_wins_trick(game, seat, card=None):
@@ -220,7 +241,7 @@ def play(game, pimc_seats, score_fn, rng, samples, diffs, trigger=None, validate
                     best = max(q)
                     qe = q[legal.index(card)]
                     base_key = sit_key(game, seat, card) + ("" if branch is None else " b:" + branch)
-                    tb = TRIG_BASE.setdefault(base_key, [0, 0]) if trigger is decl_safe_cover else None
+                    tb = TRIG_BASE.setdefault(base_key, [0, 0]) if trigger in (decl_safe_cover, def_lead_ts) else None
                     if tb is not None:
                         tb[0] += 1
                     if best - qe > 1e-6:  # ExpertBot garde la main a egalite
@@ -228,7 +249,8 @@ def play(game, pimc_seats, score_fn, rng, samples, diffs, trigger=None, validate
                         key = base_key
                         if tb is not None:
                             tb[1] += 1
-                            key += " " + pick_feat(game, seat, pick)
+                            key += " " + (pick_feat(game, seat, pick) if trigger is decl_safe_cover else
+                                          "exp:%s pk:%s" % (lead_feat(game, seat, card), lead_feat(game, seat, pick)))
                         vgap = egap = None
                         if validate:
                             vstate = vrng.getstate()
