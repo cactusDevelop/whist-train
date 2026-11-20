@@ -253,7 +253,8 @@ DEF_TROU_TRUMP_LEAD = "p6_12"  # defenseur du trou, entame, plus haut atout mait
 # Conseil 20/11 soir (dump def_ruff2 44759251024 : defenseur 2e en renonce, adversaire gagne, trou/solo ; ExpertBot coupe,
 # PIMC defausse sa longue/min ; gap valide +3..+6/decision z 15..75, donnes changees reel +4.17 z 70, pente 0.85 ;
 # carte gagnante HONNEUR maitresse : ~1 % d ecarts) -- A/B a43 (DUCK_RUFF_SECOND general rejete -0.18 le 09/11) :
-DEF_DUCK_RUFF2 = None  # defenseur 2e, trou/solo, coequipier apres, carte gagnante adverse hors atout : defausser au lieu
+# A/B a43 ACCEPTE (run 44808427558) : low +0.03..+0.12/donne z 1.8..6.3 sur 12/12 champs (solo def +0.68 z 6.2) ; all negatif
+DEF_DUCK_RUFF2 = "low"  # defenseur 2e, trou/solo, coequipier apres, carte gagnante adverse hors atout : defausser au lieu
 # de couper ; "low" = carte gagnante < dame et pas maitresse ; "nonHM" = sauf honneur (>= dame) maitresse ; "all" = toujours
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
               "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "CASH_BEFORE_DRAW", "LAST_LEAD_MASTER", "DUCK_RUFF_SECOND", "RUFF_RISK_VOID_ONLY", "PARTNER_SUIT_TOP_SHORT", "PARTNER_SUIT_HIGH", "DISCARD_SHORT_WHEN_MATE", "RUFF_HIGH_IF_UNSAFE", "NO_OVERTAKE_POS", "DEF_LEAD_SEQ_ANY", "DEF_LEAD_PASSIVE", "NO_RUFF_PARTNER_2ND", "DECL_LEAD_STRONG", "DISCARD_LONG_TOP", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
