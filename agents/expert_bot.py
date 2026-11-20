@@ -245,13 +245,18 @@ COVER_WEAK_PARTNER = "beat_low"  # coequipier gagnant PAS sur, adversaire apres 
 # z -11.5..-31.6 (decl emballage + trou), masters ~0 (0-0.5 % donnes changees) -> defaut None garde :
 DECL_OVERTAKE_HIGH = None  # declarant, contrat d equipe, coequipier gagnant : "safe2" = 2e et coequipier SUR -> plus haute
 # fournie ; "masters" = je prends avec une carte sure -> la plus HAUTE sure au lieu de la plus petite ; "both" = les deux
+# Conseil 20/11 (dump def_lead_ts 44693519485 : PIMC en entame def trou +0.67/siege z 3.5 ; pli 6+ avec 1-2 atouts
+# PIMC entame l ATOUT MAITRE la ou ExpertBot joue sa longue/min, gap valide +6.7..+17.8/decision z 3..6) -- A/B a42 :
+DEF_TROU_TRUMP_LEAD = None  # defenseur du trou, entame, plus haut atout maitre : "p6_12" = pli 6+ et 1-2 atouts ;
+# "p2_12" = pli 2+ et 1-2 atouts ; "p6_123" = pli 6+ et 1-3 atouts
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
               "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "CASH_BEFORE_DRAW", "LAST_LEAD_MASTER", "DUCK_RUFF_SECOND", "RUFF_RISK_VOID_ONLY", "PARTNER_SUIT_TOP_SHORT", "PARTNER_SUIT_HIGH", "DISCARD_SHORT_WHEN_MATE", "RUFF_HIGH_IF_UNSAFE", "NO_OVERTAKE_POS", "DEF_LEAD_SEQ_ANY", "DEF_LEAD_PASSIVE", "NO_RUFF_PARTNER_2ND", "DECL_LEAD_STRONG", "DISCARD_LONG_TOP", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
               "LEAD_PARTNER_SUIT", "KEEP_TRUMPS_VS_VOID", "DRAW_STOP_OUTSTANDING",
               "NO_OVERTAKE_POS_SIDE", "DECL_2ND_TAKE_SAFE", "DRAW_NEED_MASTER", "DRAW_COUNT_RAW", "UNBLOCK_2ND", "DEF_NT_KEEP_MASTERS",
               "RAISE_MARGIN_AT", "SOLO_MARGIN_AT", "OPP_SUIT_CAP", "DRAW_MIN_TRUMPS", "DRAW_MIN_MASTER_OK",
               "DEF0_CASH_MARGIN", "DEF0_PARTNER_LOW", "DEF0_LONG_LOW", "DEF0_RENOM",
-              "PARTNER_SAFE_LAX", "UNBLOCK_2ND_LOOSE", "DISCARD_RUFFED_SHORT", "COVER_WEAK_PARTNER", "DECL_OVERTAKE_HIGH")
+              "PARTNER_SAFE_LAX", "UNBLOCK_2ND_LOOSE", "DISCARD_RUFFED_SHORT", "COVER_WEAK_PARTNER", "DECL_OVERTAKE_HIGH",
+              "DEF_TROU_TRUMP_LEAD")
 
 # Profils CONCURRENTS de l'ExpertBot (utilisateur 2026-10-27 : « mets les regles que je viens
 # de te donner en concurrent a l'ExpertBot, pas en remplacement, idem pour toutes les autres
@@ -1241,6 +1246,11 @@ def _lead(v):
     declaring = v.seat in v.declarer_side
     # defenseur SANS atout, contrat d equipe, pli 6+ (situation emb_def_lead0, conseil 17/11 soir)
     late0 = not declaring and trump is not None and not my_trumps and v.team_contract and len(v.hand) <= 8
+    if DEF_TROU_TRUMP_LEAD and not declaring and my_trumps and v.contract.get("type") == "trou":
+        late = len(v.hand) <= (8 if DEF_TROU_TRUMP_LEAD.startswith("p6") else 12)
+        top = _highest(my_trumps)
+        if late and len(my_trumps) <= (3 if DEF_TROU_TRUMP_LEAD.endswith("123") else 2) and v.is_master(top):
+            return _tag(v, "trou_atM", top)
 
     # 1. declarant : tirer les atouts adverses
     if declaring and my_trumps:

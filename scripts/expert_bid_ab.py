@@ -105,8 +105,15 @@ VARIANT_SETS["a41"] = {  # 19/11 matin : nuit pimc 44437340894, decl emballeur b
     "DECL_MASTERS": {"DECL_OVERTAKE_HIGH": "masters"},
     "DECL_BOTH": {"DECL_OVERTAKE_HIGH": "both"},
 }
+VARIANT_SETS["a42"] = {  # 20/11 : dump def_lead_ts 44693519485, defenseur du trou entame l atout maitre (fin de donne)
+    "IDENTITE": {},
+    "CTRL_NO_OVERTAKE": {"NO_OVERTAKE": True},  # controle negatif
+    "TROU_P6_12": {"DEF_TROU_TRUMP_LEAD": "p6_12"},
+    "TROU_P2_12": {"DEF_TROU_TRUMP_LEAD": "p2_12"},
+    "TROU_P6_123": {"DEF_TROU_TRUMP_LEAD": "p6_123"},
+}
 # placements par defaut d un jeu (knob de JEU -> "camp" = vrais camps du contrat de reference ; encheres -> "single")
-SET_SEATS = {"a34": "camp", "a35": "camp", "a36": "camp", "a37": "camp", "a38": "camp", "a39": "camp", "a40": "camp", "a41": "camp"}
+SET_SEATS = {"a34": "camp", "a35": "camp", "a36": "camp", "a37": "camp", "a38": "camp", "a39": "camp", "a40": "camp", "a41": "camp", "a42": "camp"}
 # AB_SET (env, herite par les workers) : jeu de variantes ; defaut = le plus recent
 VARIANTS = VARIANT_SETS[os.environ.get("AB_SET", max(VARIANT_SETS))]
 # 11/11 (11e conseil, critique) : pour un knob d ENCHERES, placer la variante sur les camps du contrat de
