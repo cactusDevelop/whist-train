@@ -182,9 +182,48 @@ def lead_feat(game, seat, c):
     return "%s/%s%s" % (cat, pos, "M" if v.is_master(c) else "-")
 
 
+def def_ruff2(game, seat, card=None):
+    """Conseil 20/11 (diag defense : 'renonce 2e adv gagne' solo/trou +2..3.6/decision, heterogene coupe vs
+    defausse) : defenseur en 2e, renonce avec coupe possible, adversaire gagne le pli, contrat trou ou solo."""
+    if (not game.current_trick or len(game.current_trick) != 1 or card is None or game.trump_suit is None
+            or game.public_contract().get("type") not in ("trou", "solo") or seat in set(dds.side_seats(game))):
+        return False
+    return situation(game, seat, card).startswith("def/renonce 2e/adv gagne")
+
+
+def ruff_ctx(game, seat):
+    """Contexte (cle de base def_ruff2) : carte entamee honneur H (>= dame) / b, maitresse M/-, atouts en main,
+    pli, surcoupe possible (adversaire apres moi connu sans la couleur et pas connu sans atout)."""
+    v, _c = _view(game, seat, None)
+    led, _w_seat, w_card = expert_bot._trick_state(v)
+    nt = sum(1 for x in v.hand if suit_of(x) == v.trump)
+    pli = 13 - len(v.hand) + 1
+    risk = any(s not in v.teammates(seat) and v.void[s][led] and not v.void[s][v.trump] for s in v.still_to_play())
+    return "w:%s%s at%s pl%s %s" % ("H" if expert_bot.rank_of(w_card) >= expert_bot.QUEEN else "b",
+                                    "M" if v.is_master(w_card) else "-", nt if nt < 3 else "3+",
+                                    "1-4" if pli <= 4 else ("5-8" if pli <= 8 else "9+"), "surc" if risk else "-")
+
+
+def ruff_feat(game, seat, c):
+    """Carte (dump def_ruff2) : coupe -> rang parmi mes atouts top/2e/mid/min + maitresse ; defausse ->
+    couleur longue/courte/moy (hors atout) + rang dans la couleur."""
+    v, c = _view(game, seat, c)
+    s = suit_of(c)
+    fol = sorted((x for x in v.hand if suit_of(x) == s), key=expert_bot.rank_of, reverse=True)
+    i = fol.index(c)
+    pos = "top" if i == 0 else ("min" if i == len(fol) - 1 else ("2e" if i == 1 else "mid"))
+    if s == v.trump:
+        return "coupe/%s%s" % (pos, "M" if v.is_master(c) else "-")
+    count = {t: sum(1 for x in v.hand if suit_of(x) == t) for t in range(4) if t != v.trump}
+    lens = sorted(n for n in count.values() if n)
+    cat = "longue" if count[s] == lens[-1] else ("courte" if count[s] == lens[0] else "moy")
+    return "def/%s/%s" % (cat, pos)
+
+
 TRIG_BASE = {}  # cle sans pk -> [decisions PIMC, ecarts] (taux de base, conseil 19/11)
 TRIGGERS = {"all": None, "emb_draw": emb_draw, "emb_draw2": emb_draw2, "emb_def_lead0": emb_def_lead0,
-            "coeq_coupe": coeq_coupe, "decl_safe_cover": decl_safe_cover, "def_lead_ts": def_lead_ts}
+            "coeq_coupe": coeq_coupe, "decl_safe_cover": decl_safe_cover, "def_lead_ts": def_lead_ts,
+            "def_ruff2": def_ruff2}
 
 
 def adv_wins_trick(game, seat, card=None):
@@ -241,7 +280,10 @@ def play(game, pimc_seats, score_fn, rng, samples, diffs, trigger=None, validate
                     best = max(q)
                     qe = q[legal.index(card)]
                     base_key = sit_key(game, seat, card) + ("" if branch is None else " b:" + branch)
-                    tb = TRIG_BASE.setdefault(base_key, [0, 0]) if trigger in (decl_safe_cover, def_lead_ts) else None
+                    if trigger is def_ruff2:
+                        base_key += " " + ruff_ctx(game, seat) + " exp:" + ruff_feat(game, seat, card)
+                    tb = (TRIG_BASE.setdefault(base_key, [0, 0]) if trigger in (decl_safe_cover, def_lead_ts, def_ruff2)
+                          else None)
                     if tb is not None:
                         tb[0] += 1
                     if best - qe > 1e-6:  # ExpertBot garde la main a egalite
@@ -250,6 +292,7 @@ def play(game, pimc_seats, score_fn, rng, samples, diffs, trigger=None, validate
                         if tb is not None:
                             tb[1] += 1
                             key += " " + (pick_feat(game, seat, pick) if trigger is decl_safe_cover else
+                                          "pk:" + ruff_feat(game, seat, pick) if trigger is def_ruff2 else
                                           "exp:%s pk:%s" % (lead_feat(game, seat, card), lead_feat(game, seat, pick)))
                         vgap = egap = None
                         if validate:
