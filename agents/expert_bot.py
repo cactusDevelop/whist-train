@@ -250,6 +250,11 @@ DECL_OVERTAKE_HIGH = None  # declarant, contrat d equipe, coequipier gagnant : "
 # A/B a42 ACCEPTE (run 44740273216) : p6_12 +0.08..+0.23/donne z 2.6..6.9 sur 12/12 champs (p2_12/p6_123 equivalents)
 DEF_TROU_TRUMP_LEAD = "p6_12"  # defenseur du trou, entame, plus haut atout maitre : "p6_12" = pli 6+ et 1-2 atouts ;
 # "p2_12" = pli 2+ et 1-2 atouts ; "p6_123" = pli 6+ et 1-3 atouts
+# Conseil 20/11 soir (dump def_ruff2 44759251024 : defenseur 2e en renonce, adversaire gagne, trou/solo ; ExpertBot coupe,
+# PIMC defausse sa longue/min ; gap valide +3..+6/decision z 15..75, donnes changees reel +4.17 z 70, pente 0.85 ;
+# carte gagnante HONNEUR maitresse : ~1 % d ecarts) -- A/B a43 (DUCK_RUFF_SECOND general rejete -0.18 le 09/11) :
+DEF_DUCK_RUFF2 = None  # defenseur 2e, trou/solo, coequipier apres, carte gagnante adverse hors atout : defausser au lieu
+# de couper ; "low" = carte gagnante < dame et pas maitresse ; "nonHM" = sauf honneur (>= dame) maitresse ; "all" = toujours
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
               "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "CASH_BEFORE_DRAW", "LAST_LEAD_MASTER", "DUCK_RUFF_SECOND", "RUFF_RISK_VOID_ONLY", "PARTNER_SUIT_TOP_SHORT", "PARTNER_SUIT_HIGH", "DISCARD_SHORT_WHEN_MATE", "RUFF_HIGH_IF_UNSAFE", "NO_OVERTAKE_POS", "DEF_LEAD_SEQ_ANY", "DEF_LEAD_PASSIVE", "NO_RUFF_PARTNER_2ND", "DECL_LEAD_STRONG", "DISCARD_LONG_TOP", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
               "LEAD_PARTNER_SUIT", "KEEP_TRUMPS_VS_VOID", "DRAW_STOP_OUTSTANDING",
@@ -257,7 +262,7 @@ BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_I
               "RAISE_MARGIN_AT", "SOLO_MARGIN_AT", "OPP_SUIT_CAP", "DRAW_MIN_TRUMPS", "DRAW_MIN_MASTER_OK",
               "DEF0_CASH_MARGIN", "DEF0_PARTNER_LOW", "DEF0_LONG_LOW", "DEF0_RENOM",
               "PARTNER_SAFE_LAX", "UNBLOCK_2ND_LOOSE", "DISCARD_RUFFED_SHORT", "COVER_WEAK_PARTNER", "DECL_OVERTAKE_HIGH",
-              "DEF_TROU_TRUMP_LEAD")
+              "DEF_TROU_TRUMP_LEAD", "DEF_DUCK_RUFF2")
 
 # Profils CONCURRENTS de l'ExpertBot (utilisateur 2026-10-27 : « mets les regles que je viens
 # de te donner en concurrent a l'ExpertBot, pas en remplacement, idem pour toutes les autres
@@ -1193,9 +1198,24 @@ def _follow(v):
             return _discard(v)
         if DUCK_RUFF_SECOND and mates_later and len(v.current_trick) == 1:
             return _discard(v)
+        if (DEF_DUCK_RUFF2 and mates_later and len(v.current_trick) == 1 and v.seat not in v.declarer_side
+                and v.contract.get("type") in ("trou", "solo") and _duck_ruff2(v)):
+            return _discard(v)
         safe = [c for c in ruffs if _safe_win(v, c, later)]
         return _lowest(safe) if safe else (_highest(ruffs) if RUFF_HIGH_IF_UNSAFE else _lowest(ruffs))
     return _discard(v)
+
+
+def _duck_ruff2(v):
+    _led, _w_seat, w_card = _trick_state(v)
+    if suit_of(w_card) == v.trump:
+        return False
+    honor, master = rank_of(w_card) >= QUEEN, v.is_master(w_card)
+    if DEF_DUCK_RUFF2 == "low":
+        return not honor and not master
+    if DEF_DUCK_RUFF2 == "nonHM":
+        return not (honor and master)
+    return True
 
 
 def _partner_safe(v, win_card, led, later):
