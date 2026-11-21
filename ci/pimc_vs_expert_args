@@ -1,1 +1,1 @@
---camps def --validate 32 --expert-q --others expert --trigger def_follow2 --dump 12
+--camps def,decl --trigger all --single

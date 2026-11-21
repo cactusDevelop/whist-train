@@ -384,6 +384,54 @@ def sit_key(game, seat, card):
     return "%s %s" % (typ, sit)
 
 
+def card_feat(game, seat, c):
+    """Carte generique (--single) : entame -> lead_feat ; fournit -> follow2_feat ; renonce -> ruff_feat."""
+    if not game.current_trick:
+        return lead_feat(game, seat, c)
+    v, _c = _view(game, seat, None)
+    led = expert_bot._trick_state(v)[0]
+    if any(suit_of(x) == led for x in v.legal):
+        return follow2_feat(game, seat, c)
+    return ruff_feat(game, seat, c)
+
+
+def single_deviations(g, seats, name, score_fn, rng, samples, trigger, role, contract, half):
+    """Conseil 22/11 (unanime) : gain REEL par situation. Ligne principale = ExpertBot aux 4 sieges ; a chaque
+    decision du camp ou PIMC s'ecarte d'ExpertBot, contrefactuel : UNE seule carte PIMC puis ExpertBot jusqu'a la
+    fin, compare a la ligne ExpertBot (meme donne, memes mains). -> (decisions PIMC, [(camp, cle, cle fine, gain,
+    gap Q, moitie)])."""
+    n, devs = 0, []
+    while not g.done:
+        seat = g.turn
+        card = expert_bot.choose_card(g, seat)
+        trou_lead = getattr(g, "trou_pending", lambda: False)() and seat == g.partner
+        if seat in seats and not trou_lead and (trigger is None or trigger(g, seat, card)):
+            legal = [c for c, ok in enumerate(g.legal_action_mask(seat)) if ok]
+            if len(legal) > 1 and g.trump_suit is not None and dds.supported(g):
+                q = dds_values(g, seat, legal, score_fn, rng, samples)
+                if q is not None:
+                    n += 1
+                    best, qe = max(q), q[legal.index(card)]
+                    if best - qe > 1e-6:
+                        pick = legal[q.index(best)]
+                        h = clone_with_hands(g, g.hands)
+                        h.step(seat, pick)
+                        while not h.done:
+                            h.step(h.turn, expert_bot.choose_card(h, h.turn))
+                        pts = real_points_by_seat(role, h, contract)
+                        coarse = sit_key(g, seat, card)
+                        fine = "%s exp:%s pk:%s" % (coarse, card_feat(g, seat, card), card_feat(g, seat, pick))
+                        devs.append([name, coarse, fine, pts, best - qe, half])
+        g.step(seat, card)
+    pts_e = real_points_by_seat(role, g, contract)
+    for d in devs:
+        d[3] = sum(d[3][s] - pts_e[s] for s in seats) / len(seats)
+    return n, [tuple(d) for d in devs]
+
+
+SINGLE = False  # --single (conseil 22/11)
+
+
 def worker(args):
     seed, samples, deadline, camps, validate, others, trig, expert_q, control = args
     trigger = TRIGGERS[trig]
@@ -395,6 +443,7 @@ def worker(args):
     rows = []  # (variante, type contrat, gain moyen par siege PIMC, decisions, changees, somme vgap, somme egap)
     diffs = {"def": [], "decl": []}
     egaps = []  # (situation, gap expert, gap dds) sur mondes neufs
+    singles = []  # --single : (type, camp, cle, cle fine, gain reel, gap Q, moitie)
     while time.time() < deadline:
         hands, dealer, whisted = chain.deal(rng)
         bidding = run_bot_bidding(hands, dealer)
@@ -422,6 +471,14 @@ def worker(args):
             if name not in camps and name != "rnd":
                 continue
             g = new_game(contract, hands, dealer, bidding, whisted)
+            if SINGLE:
+                n, devs = single_deviations(g, set(seats), name, score_fn, play_rng, samples, trigger, role, contract,
+                                            seed % 2)
+                singles.extend((contract["type"],) + d for d in devs)
+                rows.append((name, contract["type"], sum(d[3] for d in devs), n, len(devs), 0.0, 0.0))
+                if time.time() >= deadline:
+                    break
+                continue
             acc = {"changed": 0, "vgap": 0.0, "egap": 0.0, "e": egaps}
             n = play(g, set(seats), score_fn, play_rng, samples, diffs.get(name, []), trigger, validate=validate,
                      vrng=vrng, acc=acc, expert_q=expert_q, randomize=(name == "rnd"))
@@ -430,7 +487,7 @@ def worker(args):
             rows.append((name, contract["type"], gain, n, acc["changed"], acc["vgap"], acc["egap"]))
             if time.time() >= deadline:
                 break
-    return rows, diffs, list(PIMC_TIMES), [e + (seed % 2,) for e in egaps], dict(TRIG_BASE)  # moitie A/B (conseil 21/11 : reproduire sur 2 groupes de graines)
+    return rows, diffs, list(PIMC_TIMES), [e + (seed % 2,) for e in egaps], dict(TRIG_BASE), singles  # moitie A/B (conseil 21/11 : reproduire sur 2 groupes de graines)
 
 
 def oracle_worker(args):
@@ -516,10 +573,12 @@ def main():
     parser.add_argument("--control", action="store_true", help="variante rnd : carte legale au hasard aux memes declenchements (camp declarant)")
     parser.add_argument("--others", default="expert", help="profils ExpertBot (expert_bot.PROFILES), virgules ; hors --oracle : duree partagee")
     parser.add_argument("--branch-key", action="store_true", help="entames : situation + branche ExpertBot (diagnostic conseil 17/11 soir)")
+    parser.add_argument("--single", action="store_true", help="conseil 22/11 : gain REEL par situation (1 carte PIMC par contrefactuel, ExpertBot ensuite)")
     parser.add_argument("--dump", type=int, default=4, help="exemples imprimes par situation (conseil 17/11 : toutes les paires)")
     args = parser.parse_args()
-    global DUMP_EX, BRANCH_KEY
+    global DUMP_EX, BRANCH_KEY, SINGLE
     DUMP_EX = args.dump
+    SINGLE = args.single
     BRANCH_KEY = args.branch_key
     if args.oracle:
         return oracle_main(args)
@@ -546,6 +605,10 @@ def run_profile(args, others, minutes):
             b = base.setdefault(k, [0, 0])
             b[0] += d
             b[1] += e
+    singles = [x for p in parts for x in p[5]]
+    if SINGLE:
+        print_singles(singles, others, args, time.time() - t0, times)
+        return
     print("=== profil %s : PIMC (%d mondes) vs ExpertBot, duplicate, %.0f s ===" % (others, args.samples, time.time() - t0))
     if times:
         print("temps/decision PIMC (Python, runner) : n %d mediane %.0f ms p90 %.0f ms max %.0f ms" % (
@@ -618,6 +681,44 @@ def run_profile(args, others, minutes):
             for ex in a["ex"]:
                 print("     " + ex)
 
+
+
+def print_singles(singles, others, args, secs, times):
+    """--single : gain reel d'UNE carte PIMC (vs ExpertBot) par situation, moities de graines (reproduction).
+    RETENUE = n >= 200, z >= 4 et les 2 moities positives a z >= 2 (conseil 22/11 : comparaisons multiples)."""
+    print("=== --single profil %s : gain REEL d'une carte PIMC (%d mondes) vs ExpertBot, %.0f s, %d ecarts ===" % (
+        others, args.samples, secs, len(singles)))
+    if times:
+        print("temps/decision PIMC : n %d mediane %.0f ms" % (len(times), 1000 * times[len(times) // 2]))
+    for camp in ("def", "decl"):
+        for typ in ("emballage", "solo", "trou", None):
+            xs = [x[4] for x in singles if x[1] == camp and (typ is None or x[0] == typ)]
+            n, m, se = stats(xs)
+            if n:
+                print("%-5s %-10s ecarts %6d  gain reel/ecart %+.3f +- %.3f (z %+.1f)  somme %+.1f" % (
+                    camp, typ or "TOUT", n, m, se, m / se if se else 0.0, m * n))
+    for level, idx, top in (("situation", 2, 60), ("situation + cartes", 3, 60)):
+        for camp in ("def", "decl"):
+            agg = {}
+            for x in singles:
+                if x[1] == camp:
+                    a = agg.setdefault(x[idx], ([], [], [], []))
+                    a[0].append(x[4])
+                    a[1].append(x[5])
+                    a[2 + x[6]].append(x[4])
+            print("\n=== --single %s : %s (tri gain reel cumule) ===" % (camp, level))
+            for k in sorted(agg, key=lambda k: -sum(agg[k][0]))[:top]:
+                n, m, se = stats(agg[k][0])
+                h = [stats(agg[k][2]), stats(agg[k][3])]
+                z = m / se if se > 0 else 0.0
+                hz = [hm / hse if hse > 0 else 0.0 for _hn, hm, hse in h]
+                keep = n >= 200 and z >= 4 and all(x >= 2 for x in hz)
+                print("%-78s n %5d  reel %+.3f +- %.3f (z %+.1f) cumul %+.1f  gapQ %.2f | moities %s%s" % (
+                    k, n, m, se, z, m * n, sum(agg[k][1]) / n,
+                    " / ".join("%+.2f (z %+.1f, n %d)" % (hm, zz, hn) for (hn, hm, _), zz in zip(h, hz)),
+                    "  RETENUE" if keep else ""))
+            neg = sorted(agg, key=lambda k: sum(agg[k][0]))[:8]
+            print("   -- plus negatives : " + " ; ".join("%s %+.1f (n %d)" % (k, sum(agg[k][0]), len(agg[k][0])) for k in neg))
 
 if __name__ == "__main__":
     main()
