@@ -257,7 +257,7 @@ DEF_TROU_TRUMP_LEAD = "p6_12"  # defenseur du trou, entame, plus haut atout mait
 DEF_DUCK_RUFF2 = "low"  # defenseur 2e, trou/solo, coequipier apres, carte gagnante adverse hors atout : defausser au lieu
 # de couper ; "low" = carte gagnante < dame et pas maitresse ; "nonHM" = sauf honneur (>= dame) maitresse ; "all" = toujours
 # Conseil 21/11 (dump def_follow2 44906927444 : defenseur d emballage 2e, fournit, adversaire gagne, je peux battre ;
-# reproduit sur 2 moities de graines z > 3) -- A/B a44 :
+# reproduit sur 2 moities de graines z > 3) -- A/B a44 REJETE 22/11 (12/12 champs negatifs, keep -0.04..-0.13, top -0.06..-0.23) :
 DEF_FOLLOW2 = None  # "keep" = seule gagnante sure = maitresse -> plus petite fournie (ExpertBot prend/topM, PIMC min,
 # +0.23..+0.97/decision) ; "top" = pas de gagnante sure -> prendre avec la plus haute (ExpertBot petite, PIMC prend/top,
 # +0.26..+0.50) ; "both" = les deux

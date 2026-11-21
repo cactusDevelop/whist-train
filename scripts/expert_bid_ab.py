@@ -120,6 +120,7 @@ VARIANT_SETS["a43"] = {  # 20/11 soir : dump def_ruff2 44759251024, defenseur 2e
     "DUCK2_ALL": {"DEF_DUCK_RUFF2": "all"},
 }
 VARIANT_SETS["a44"] = {  # 21/11 : dump def_follow2 44906927444, defenseur d emballage 2e fournit, adversaire gagne
+    # RESULTAT 12 runs paralleles 44959372075..44959416817 : REJETE 12/12 -- KEEP -0.04..-0.13 z -5..-7, TOP -0.06..-0.23 z -4..-13, BOTH -0.11..-0.38 ; controle NO_OVERTAKE -0.00..-0.19
     "IDENTITE": {},
     "CTRL_NO_OVERTAKE": {"NO_OVERTAKE": True},  # controle negatif
     "F2_KEEP": {"DEF_FOLLOW2": "keep"},
