@@ -15,11 +15,15 @@ on:
         description: "ppo_free : duree en minutes (vide = bloc long) ; free_match : donnes par ligne"
         type: string
         default: ""
+      part:
+        description: "expert_bid_audit : un seul champ '<jeu> <decalage> <adversaires>' (runs paralleles)"
+        type: string
+        default: ""
   schedule:
     - cron: "17 */6 * * *"
 
 concurrency:
-  group: train-${{ inputs.mode || 'ppo' }}
+  group: train-${{ inputs.mode || 'ppo' }}-${{ inputs.part }}
   cancel-in-progress: false
 
 permissions:
@@ -38,6 +42,7 @@ jobs:
       STATE: ${{ (inputs.mode == 'free_match' || inputs.mode == 'bid_route_export' || inputs.mode == 'free_emb_diag' || inputs.mode == 'free_misere_diag' || inputs.mode == 'obs_check') && 'ppo_free' || (inputs.mode == 'play_fixtures' || inputs.mode == 'expert_bid_audit' || inputs.mode == 'pimc_vs_expert' || inputs.mode == 'pimc_oracle' || inputs.mode == 'bid_audit' || inputs.mode == 'dds_test' || inputs.mode == 'ppo_smoke' || inputs.mode == 'ai_insights') && 'ppo' || (inputs.mode == 'jokers_small' || inputs.mode == 'jokers_eval' || inputs.mode == 'jokers_defence' || inputs.mode == 'jokers_test' || inputs.mode == 'jokers_duel' || inputs.mode == 'jokers_misere' || inputs.mode == 'jokers_pairs' || inputs.mode == 'jokers_diag' || inputs.mode == 'jokers_rules' || inputs.mode == 'jokers_profit') && 'jokers' || inputs.mode || 'ppo' }}
       INIT: ${{ inputs.init || false }}
       FREE_MINUTES: ${{ inputs.minutes }}
+      AB_PART: ${{ inputs.part }}
       GH_TOKEN: ${{ github.token }}
       STATE_KEY: ${{ secrets.STATE_KEY }}
     defaults:
@@ -90,8 +95,9 @@ jobs:
       - name: Upload eval log
         if: always() && steps.pause.outputs.paused != 'true' && env.MEASURE == 'true'
         run: |
-          cp "train_log_$MODE.txt" "log-$MODE.txt" 2>/dev/null || echo "pas de log (Train non lance)" > "log-$MODE.txt"
-          gh release upload checkpoint-latest "log-$MODE.txt" --clobber
+          L="log-$MODE${AB_PART:+-${AB_PART// /_}}.txt"
+          cp "train_log_$MODE.txt" "$L" 2>/dev/null || echo "pas de log (Train non lance)" > "$L"
+          gh release upload checkpoint-latest "$L" --clobber
 
       - name: Save state
         if: always() && steps.restore.outcome == 'success' && env.MEASURE != 'true'

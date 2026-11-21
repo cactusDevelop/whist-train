@@ -4,10 +4,12 @@ set -euo pipefail
 # ci/expert_ab_others (optionnel) : profils PROFILES des adversaires, un passage par profil.
 # ci/expert_ab_sets (optionnel, 12/11) : lignes "<jeu> <decalage de graine>" enchainees dans le meme run
 # (meme jeu + autre decalage = confirmation sur graines neuves). Defaut : "a27 0".
+# AB_PART (input part, 21/11) : un seul champ "<jeu> <decalage> <adversaires>" -> runs paralleles (1 champ par runner).
 SETS=$(cat ci/expert_ab_sets 2>/dev/null || echo "a27 0")
+[ -n "${AB_PART:-}" ] && SETS="${AB_PART% *}"
 while read -r set off; do
   [ -z "${set:-}" ] && continue
-  for o in $(cat ci/expert_ab_others 2>/dev/null || echo expert); do
+  for o in $([ -n "${AB_PART:-}" ] && echo "${AB_PART##* }" || cat ci/expert_ab_others 2>/dev/null || echo expert); do
     echo "### jeu $set decalage $off adversaires : $o"
     AB_SET="$set" python -u scripts/expert_bid_ab.py --deals "${FREE_MINUTES:-30000}" --workers 4 --others "$o" --seed "$(( (${GITHUB_RUN_ID:-20261109} + off) % 1000000007 ))" $([ -f ci/expert_ab_trace ] && echo --trace)
   done
