@@ -220,10 +220,48 @@ def ruff_feat(game, seat, c):
     return "def/%s/%s" % (cat, pos)
 
 
+def def_follow2(game, seat, card=None):
+    """Conseil 21/11 (nuit a42+a43 : def residuel +0.35/siege ; 'fournit 2e adv gagne prend/petite' emballage
+    retenues dans les 2 maillons, +0.2..0.74/decision) : defenseur d'emballage en 2e, FOURNIT, adversaire gagne."""
+    if (not game.current_trick or len(game.current_trick) != 1 or card is None or game.trump_suit is None
+            or game.public_contract().get("type") != "emballage" or seat in set(dds.side_seats(game))):
+        return False
+    return situation(game, seat, card).startswith("def/fournit 2e adv gagne")
+
+
+def follow2_ctx(game, seat):
+    """Contexte (cle de base def_follow2) : carte entamee H (>= dame)/b + maitresse, couleur atout ou non, cartes
+    fournies 1/2/3+, je peux battre b+/-, maitresse tenue M/-, 3e (adversaire) connu sans la couleur r3,
+    atouts en main 0/1-2/3+, pli 1-4/5-8/9+."""
+    v, _c = _view(game, seat, None)
+    led, _w_seat, w_card = expert_bot._trick_state(v)
+    fol = [x for x in v.legal if suit_of(x) == led]
+    beat = any(expert_bot._wins_now(v, x) for x in fol)
+    later = v.still_to_play()
+    r3 = bool(later) and later[0] not in v.teammates(seat) and v.void[later[0]][led]
+    nt = sum(1 for x in v.hand if suit_of(x) == v.trump)
+    pli = 13 - len(v.hand) + 1
+    return "w:%s%s%s n%s b%s %s%s at%s pl%s" % (
+        "H" if expert_bot.rank_of(w_card) >= expert_bot.QUEEN else "b", "M" if v.is_master(w_card) else "-",
+        "T" if led == v.trump else "", min(len(fol), 3) if len(fol) < 3 else "3+", "+" if beat else "-",
+        "M" if any(v.is_master(x) for x in fol) else "-", " r3" if r3 else "",
+        "0" if nt == 0 else ("1-2" if nt <= 2 else "3+"), "1-4" if pli <= 4 else ("5-8" if pli <= 8 else "9+"))
+
+
+def follow2_feat(game, seat, c):
+    """Carte (dump def_follow2) : prend/petite + rang parmi les fournies top/2e/mid/min + maitresse."""
+    v, c = _view(game, seat, c)
+    led = expert_bot._trick_state(v)[0]
+    fol = sorted((x for x in v.legal if suit_of(x) == led), key=expert_bot.rank_of, reverse=True)
+    i = fol.index(c)
+    pos = "top" if i == 0 else ("min" if i == len(fol) - 1 else ("2e" if i == 1 else "mid"))
+    return "%s/%s%s" % ("prend" if expert_bot._wins_now(v, c) else "petite", pos, "M" if v.is_master(c) else "-")
+
+
 TRIG_BASE = {}  # cle sans pk -> [decisions PIMC, ecarts] (taux de base, conseil 19/11)
 TRIGGERS = {"all": None, "emb_draw": emb_draw, "emb_draw2": emb_draw2, "emb_def_lead0": emb_def_lead0,
             "coeq_coupe": coeq_coupe, "decl_safe_cover": decl_safe_cover, "def_lead_ts": def_lead_ts,
-            "def_ruff2": def_ruff2}
+            "def_ruff2": def_ruff2, "def_follow2": def_follow2}
 
 
 def adv_wins_trick(game, seat, card=None):
@@ -282,7 +320,10 @@ def play(game, pimc_seats, score_fn, rng, samples, diffs, trigger=None, validate
                     base_key = sit_key(game, seat, card) + ("" if branch is None else " b:" + branch)
                     if trigger is def_ruff2:
                         base_key += " " + ruff_ctx(game, seat) + " exp:" + ruff_feat(game, seat, card)
-                    tb = (TRIG_BASE.setdefault(base_key, [0, 0]) if trigger in (decl_safe_cover, def_lead_ts, def_ruff2)
+                    if trigger is def_follow2:
+                        base_key += " " + follow2_ctx(game, seat) + " exp:" + follow2_feat(game, seat, card)
+                    tb = (TRIG_BASE.setdefault(base_key, [0, 0])
+                          if trigger in (decl_safe_cover, def_lead_ts, def_ruff2, def_follow2)
                           else None)
                     if tb is not None:
                         tb[0] += 1
@@ -293,6 +334,7 @@ def play(game, pimc_seats, score_fn, rng, samples, diffs, trigger=None, validate
                             tb[1] += 1
                             key += " " + (pick_feat(game, seat, pick) if trigger is decl_safe_cover else
                                           "pk:" + ruff_feat(game, seat, pick) if trigger is def_ruff2 else
+                                          "pk:" + follow2_feat(game, seat, pick) if trigger is def_follow2 else
                                           "exp:%s pk:%s" % (lead_feat(game, seat, card), lead_feat(game, seat, pick)))
                         vgap = egap = None
                         if validate:
@@ -388,7 +430,7 @@ def worker(args):
             rows.append((name, contract["type"], gain, n, acc["changed"], acc["vgap"], acc["egap"]))
             if time.time() >= deadline:
                 break
-    return rows, diffs, list(PIMC_TIMES), egaps, dict(TRIG_BASE)
+    return rows, diffs, list(PIMC_TIMES), [e + (seed % 2,) for e in egaps], dict(TRIG_BASE)  # moitie A/B (conseil 21/11 : reproduire sur 2 groupes de graines)
 
 
 def oracle_worker(args):
@@ -535,9 +577,11 @@ def run_profile(args, others, minutes):
     if egaps:
         print("\n=== gap valide dds vs suite ExpertBot (memes mondes neufs) par situation ===")
         agg = {}
-        for sit, eg, vg in egaps:
+        halves = {}
+        for sit, eg, vg, half in egaps:
             a = agg.setdefault(sit, ([], []))
             a[0].append(eg)
+            halves.setdefault(sit, ([], []))[half].append(eg)
             if vg is not None:
                 a[1].append(vg)
         for sit in sorted(agg, key=lambda k: -len(agg[k][0])):
@@ -545,7 +589,9 @@ def run_profile(args, others, minutes):
             vn, vm, vse = stats(agg[sit][1])
             print("%-58s n %5d  dds %+.2f +- %.2f  | expert %+.2f +- %.2f (z %+.1f)%s" % (
                 sit, en, vm, vse, em, ese, em / ese if ese > 0 else 0.0,
-                "  RETENUE" if en >= 100 and ese > 0 and em > 3 * ese else ""))
+                "  RETENUE" if en >= 100 and ese > 0 and em > 3 * ese else "")
+                  + "  | moities %s" % " / ".join("%+.2f (z %+.1f, n %d)" % (m, m / se if se > 0 else 0.0, n)
+                                                 for n, m, se in (stats(h) for h in halves[sit])))
     if base:
         print("\n=== taux de base (trigger %s) : decisions PIMC / ecarts par branche ===" % args.trigger)
         for k in sorted(base, key=lambda k: -base[k][0])[:30]:
