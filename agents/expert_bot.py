@@ -256,6 +256,11 @@ DEF_TROU_TRUMP_LEAD = "p6_12"  # defenseur du trou, entame, plus haut atout mait
 # A/B a43 ACCEPTE (run 44808427558) : low +0.03..+0.12/donne z 1.8..6.3 sur 12/12 champs (solo def +0.68 z 6.2) ; all negatif
 DEF_DUCK_RUFF2 = "low"  # defenseur 2e, trou/solo, coequipier apres, carte gagnante adverse hors atout : defausser au lieu
 # de couper ; "low" = carte gagnante < dame et pas maitresse ; "nonHM" = sauf honneur (>= dame) maitresse ; "all" = toujours
+# Conseil 21/11 (dump def_follow2 44906927444 : defenseur d emballage 2e, fournit, adversaire gagne, je peux battre ;
+# reproduit sur 2 moities de graines z > 3) -- A/B a44 :
+DEF_FOLLOW2 = None  # "keep" = seule gagnante sure = maitresse -> plus petite fournie (ExpertBot prend/topM, PIMC min,
+# +0.23..+0.97/decision) ; "top" = pas de gagnante sure -> prendre avec la plus haute (ExpertBot petite, PIMC prend/top,
+# +0.26..+0.50) ; "both" = les deux
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
               "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "CASH_BEFORE_DRAW", "LAST_LEAD_MASTER", "DUCK_RUFF_SECOND", "RUFF_RISK_VOID_ONLY", "PARTNER_SUIT_TOP_SHORT", "PARTNER_SUIT_HIGH", "DISCARD_SHORT_WHEN_MATE", "RUFF_HIGH_IF_UNSAFE", "NO_OVERTAKE_POS", "DEF_LEAD_SEQ_ANY", "DEF_LEAD_PASSIVE", "NO_RUFF_PARTNER_2ND", "DECL_LEAD_STRONG", "DISCARD_LONG_TOP", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
               "LEAD_PARTNER_SUIT", "KEEP_TRUMPS_VS_VOID", "DRAW_STOP_OUTSTANDING",
@@ -263,7 +268,7 @@ BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_I
               "RAISE_MARGIN_AT", "SOLO_MARGIN_AT", "OPP_SUIT_CAP", "DRAW_MIN_TRUMPS", "DRAW_MIN_MASTER_OK",
               "DEF0_CASH_MARGIN", "DEF0_PARTNER_LOW", "DEF0_LONG_LOW", "DEF0_RENOM",
               "PARTNER_SAFE_LAX", "UNBLOCK_2ND_LOOSE", "DISCARD_RUFFED_SHORT", "COVER_WEAK_PARTNER", "DECL_OVERTAKE_HIGH",
-              "DEF_TROU_TRUMP_LEAD", "DEF_DUCK_RUFF2")
+              "DEF_TROU_TRUMP_LEAD", "DEF_DUCK_RUFF2", "DEF_FOLLOW2")
 
 # Profils CONCURRENTS de l'ExpertBot (utilisateur 2026-10-27 : « mets les regles que je viens
 # de te donner en concurrent a l'ExpertBot, pas en remplacement, idem pour toutes les autres
@@ -1185,9 +1190,16 @@ def _follow(v):
                 and len(v.current_trick) == 1 and any(s in mates for s in later)):
             return _lowest(following)
         safe = [c for c in win_follow if _safe_win(v, c, later)]
+        f2 = (DEF_FOLLOW2 and len(v.current_trick) == 1 and v.seat not in v.declarer_side
+              and v.contract.get("type") == "emballage")
         if safe:
+            if (f2 and DEF_FOLLOW2 in ("keep", "both") and len(following) >= 2 and v.is_master(_lowest(safe))
+                    and not v.is_master(_lowest(following))):
+                return _lowest(following)  # garder la maitresse (dump def_follow2 : PIMC joue la plus petite)
             return _lowest(safe)
         if len(v.current_trick) == 1:
+            if f2 and DEF_FOLLOW2 in ("top", "both"):
+                return _highest(win_follow)  # pas de gagnante sure : prendre avec la plus haute (PIMC)
             return _lowest(following)  # second : petit
         return _lowest(win_follow) if THIRD_HAND_CHEAP else _highest(win_follow)  # troisieme : fort, forcer l'adversaire
     # renom dans la couleur demandee

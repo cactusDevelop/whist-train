@@ -119,8 +119,15 @@ VARIANT_SETS["a43"] = {  # 20/11 soir : dump def_ruff2 44759251024, defenseur 2e
     "DUCK2_NONHM": {"DEF_DUCK_RUFF2": "nonHM"},
     "DUCK2_ALL": {"DEF_DUCK_RUFF2": "all"},
 }
+VARIANT_SETS["a44"] = {  # 21/11 : dump def_follow2 44906927444, defenseur d emballage 2e fournit, adversaire gagne
+    "IDENTITE": {},
+    "CTRL_NO_OVERTAKE": {"NO_OVERTAKE": True},  # controle negatif
+    "F2_KEEP": {"DEF_FOLLOW2": "keep"},
+    "F2_TOP": {"DEF_FOLLOW2": "top"},
+    "F2_BOTH": {"DEF_FOLLOW2": "both"},
+}
 # placements par defaut d un jeu (knob de JEU -> "camp" = vrais camps du contrat de reference ; encheres -> "single")
-SET_SEATS = {"a34": "camp", "a35": "camp", "a36": "camp", "a37": "camp", "a38": "camp", "a39": "camp", "a40": "camp", "a41": "camp", "a42": "camp", "a43": "camp"}
+SET_SEATS = {"a34": "camp", "a35": "camp", "a36": "camp", "a37": "camp", "a38": "camp", "a39": "camp", "a40": "camp", "a41": "camp", "a42": "camp", "a43": "camp", "a44": "camp"}
 # AB_SET (env, herite par les workers) : jeu de variantes ; defaut = le plus recent
 VARIANTS = VARIANT_SETS[os.environ.get("AB_SET", max(VARIANT_SETS))]
 # 11/11 (11e conseil, critique) : pour un knob d ENCHERES, placer la variante sur les camps du contrat de
