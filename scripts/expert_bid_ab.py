@@ -41,7 +41,16 @@ from scripts.train import (MEASURE_WHISTED_RATIO, declarer_role_and_seats, descr
 #   a45 valide : D4_OFF perd z < -3 sur >= 5/6, aucun z > 2. Sinon a45 est retire avant ship.
 #   a46 candidat : MATE_ALL gagne z > 3 sur >= 5/6, aucune cellule < -2 SE -> confirmation sur graines neuves, meme
 #   critere, avant toute promotion. Sinon a46 clos. Le veto des champs classiques n est PAS retire apres coup.
+# Critere a48 fixe avant tout resultat (conseil pivot 22/11, docs/conseils/council-pivot-20261122.md) :
+# 4 champs (jeu, jeu_joueur_0927, jeu_joueur_1027, jeu_bruite25) x 2 decalages = 8 runs de 30000 donnes ; gain = variante - jeu.
+#   EN PLACE VALIDE : la variante perd z < -3 sur >= 7/8, aucun z > 3.
+#   CANDIDAT : gagne z > 3 sur >= 7/8, aucun z < -3, moyenne des 8 >= +0.3 -> le meilleur seul est confirme sur
+#   8 runs de graines neuves, meme critere, avant tout changement.
+#   Sinon NON CONCLUANT : rien ne change. Un seul cycle.
+# ROUTE (siege variante seulement, champ "jeu") : "off" = ExpertBot pur a l enchere ; "misere" / "autres" = ne garde que
+# les cellules de BID_ROUTE ou le reseau choisit une misere / autre chose.
 GAME_STATS = {"routees": 0, "encheres": 0, "cartes_reseau": 0}
+ROUTE_STATS = {}  # valeur de ROUTE -> [encheres routees, encheres]
 
 
 def field_profile(others):
@@ -178,6 +187,13 @@ VARIANT_SETS["a47"] = {  # 22/11 conseil : a45 + a46 remesures dans le champ "je
     "D4_OFF": {"DECL_DISCARD4": None},
     "MATE_ALL": {"DECL_DISCARD_MATE": "all"},
 }
+VARIANT_SETS["a48"] = {  # 22/11 conseil pivot : ce qui est EN PLACE, en conditions de jeu (critere : en tete de fichier)
+    "IDENTITE": {},
+    "ROUTE_OFF": {"ROUTE": "off"},
+    "ROUTE_MISERE": {"ROUTE": "misere"},
+    "ROUTE_AUTRES": {"ROUTE": "autres"},
+    "EMBALLER_MIN_4": {"EMBALLER_MIN": 4},
+}
 # placements par defaut d un jeu (knob de JEU -> "camp" = vrais camps du contrat de reference ; encheres -> "single")
 SET_SEATS = {"a34": "camp", "a35": "camp", "a36": "camp", "a37": "camp", "a38": "camp", "a39": "camp", "a40": "camp", "a41": "camp", "a42": "camp", "a43": "camp", "a44": "camp", "a45": "camp", "a46": "camp", "a47": "camp"}
 # AB_SET (env, herite par les workers) : jeu de variantes ; defaut = le plus recent
@@ -188,8 +204,23 @@ VARIANTS = VARIANT_SETS[os.environ.get("AB_SET", max(VARIANT_SETS))]
 # - reference ; cellules = contrat JOUE par la variante | camp du siege variante.
 SEATS = os.environ.get("AB_SEATS", SET_SEATS.get(os.environ.get("AB_SET", max(VARIANT_SETS)), "single"))
 
+def route_cells(mode):
+    cells = game_ai.bid_route.BID_ROUTE
+    if mode is None:
+        return cells
+    if mode == "off":
+        return frozenset()
+    if mode not in ("misere", "autres"):
+        raise ValueError("ROUTE inconnu : %r" % (mode,))
+    return frozenset(c for c in cells if c[1].startswith("misere") == (mode == "misere"))
+
+
 def play_deal(hands, dealer, whisted, params_by_seat, ingame=False, human=None):
     """-> (points des 4 sieges, contrat ou None, jeu ou None)."""
+    modes = [p.get("ROUTE") for p in params_by_seat]
+    if not ingame and any(modes):
+        raise ValueError("ROUTE : champ jeu seulement")
+    params_by_seat = [{k: v for k, v in p.items() if k != "ROUTE"} for p in params_by_seat]  # pas un reglage ExpertBot
     bidding = Bidding(dealer)
     trou = detect_trou(hands)
     if trou is not None:
@@ -199,7 +230,11 @@ def play_deal(hands, dealer, whisted, params_by_seat, ingame=False, human=None):
         expert_bot.set_bid_params(params_by_seat[seat])
         if ingame and seat != human:
             e = expert_bot.choose_bid(bidding, seat, hands[seat])
-            choice = game_ai.bid_route.route(e, game_ai.BIDDER.decide(bidding, seat, hands[seat]))
+            choice = game_ai.bid_route.route(e, game_ai.BIDDER.decide(bidding, seat, hands[seat]),
+                                             route_cells(modes[seat]))
+            count = ROUTE_STATS.setdefault(modes[seat] or "jeu", [0, 0])
+            count[0] += choice != e
+            count[1] += 1
             GAME_STATS["encheres"] += 1
             GAME_STATS["routees"] += choice != e
             if not expert_bot.apply_choice(bidding, seat, choice):
@@ -282,13 +317,16 @@ def worker(args):
         if bgame is None:
             chain.finish_unplayed(hands, dealer)
         else:
-            chain.finish_played(bgame, dealer, bc["type"])
+            # en jeu le Brimborion est decoche par defaut (whist_table.DEFAULT_BRIMBORION) : apres un trou, donne whistee
+            chain.finish_played(bgame, dealer, None if ingame else bc["type"])
     if expert_bot.FOLLOW_TRACE is not None:  # diagnostic 10/11 : branches "coequipier gagnant, on fournit"
         for k, c in sorted(expert_bot.FOLLOW_TRACE.items(), key=lambda kv: -kv[1])[:60]:
             print("TRACE %d %s %d" % (seed, " ".join(map(str, k)), c), flush=True)
     if ingame:
         print("JEU %d : %d donnes, %d/%d encheres routees, %d cartes reseau" % (
             seed, n, GAME_STATS["routees"], GAME_STATS["encheres"], GAME_STATS["cartes_reseau"]), flush=True)
+        print("ROUTE %d : %s ; %d donnes whistees, %d uniformes" % (seed, " ".join(
+            "%s %d/%d" % (k, r, t) for k, (r, t) in sorted(ROUTE_STATS.items())), chain.whisted_deals, chain.uniform_deals), flush=True)
     return out, base_rows
 
 
