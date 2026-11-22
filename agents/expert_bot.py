@@ -261,6 +261,9 @@ DEF_DUCK_RUFF2 = "low"  # defenseur 2e, trou/solo, coequipier apres, carte gagna
 DEF_FOLLOW2 = None  # "keep" = seule gagnante sure = maitresse -> plus petite fournie (ExpertBot prend/topM, PIMC min,
 # +0.23..+0.97/decision) ; "top" = pas de gagnante sure -> prendre avec la plus haute (ExpertBot petite, PIMC prend/top,
 # +0.26..+0.50) ; "both" = les deux
+DECL_DISCARD4 = None  # A/B a45 (pimc --single 22/11, 6 runs 44961682555..44961703337 : +0.799/ecart n 368 z 5.5) : camp
+# declarant d emballage, 4e en renonce, coequipier gagne, coupe possible -> defausse dans la couleur la plus COURTE :
+# "low" = sa plus petite, "high" = sa plus haute (hors maitresses), "single" = seulement si elle est singleton
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
               "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "CASH_BEFORE_DRAW", "LAST_LEAD_MASTER", "DUCK_RUFF_SECOND", "RUFF_RISK_VOID_ONLY", "PARTNER_SUIT_TOP_SHORT", "PARTNER_SUIT_HIGH", "DISCARD_SHORT_WHEN_MATE", "RUFF_HIGH_IF_UNSAFE", "NO_OVERTAKE_POS", "DEF_LEAD_SEQ_ANY", "DEF_LEAD_PASSIVE", "NO_RUFF_PARTNER_2ND", "DECL_LEAD_STRONG", "DISCARD_LONG_TOP", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
               "LEAD_PARTNER_SUIT", "KEEP_TRUMPS_VS_VOID", "DRAW_STOP_OUTSTANDING",
@@ -268,7 +271,7 @@ BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_I
               "RAISE_MARGIN_AT", "SOLO_MARGIN_AT", "OPP_SUIT_CAP", "DRAW_MIN_TRUMPS", "DRAW_MIN_MASTER_OK",
               "DEF0_CASH_MARGIN", "DEF0_PARTNER_LOW", "DEF0_LONG_LOW", "DEF0_RENOM",
               "PARTNER_SAFE_LAX", "UNBLOCK_2ND_LOOSE", "DISCARD_RUFFED_SHORT", "COVER_WEAK_PARTNER", "DECL_OVERTAKE_HIGH",
-              "DEF_TROU_TRUMP_LEAD", "DEF_DUCK_RUFF2", "DEF_FOLLOW2")
+              "DEF_TROU_TRUMP_LEAD", "DEF_DUCK_RUFF2", "DEF_FOLLOW2", "DECL_DISCARD4")
 
 # Profils CONCURRENTS de l'ExpertBot (utilisateur 2026-10-27 : « mets les regles que je viens
 # de te donner en concurrent a l'ExpertBot, pas en remplacement, idem pour toutes les autres
@@ -1115,6 +1118,19 @@ def _discard(v):
     return min(non_master, key=lambda c: (count[suit_of(c)], rank_of(c)))
 
 
+def _short_discard(v):
+    """DECL_DISCARD4 : carte non maitresse de la couleur annexe la plus courte ; None = regle ordinaire."""
+    cards = [c for c in v.legal if suit_of(c) != v.trump and not v.is_master(c)]
+    if not cards:
+        return None
+    count = {s: sum(1 for c in v.hand if suit_of(c) == s) for s in range(NUM_SUITS)}
+    n = min(count[suit_of(c)] for c in cards)
+    if DECL_DISCARD4 == "single" and n > 1:
+        return None
+    sign = -1 if DECL_DISCARD4 == "high" else 1
+    return min(cards, key=lambda c: (count[suit_of(c)], sign * rank_of(c)))
+
+
 def _follow(v):
     led, winner_seat, win_card = _trick_state(v)
     later = v.still_to_play()
@@ -1176,6 +1192,12 @@ def _follow(v):
         if ruffs:
             safe = [c for c in ruffs if _safe_win(v, c, later)]
             return _lowest(safe) if safe else _lowest(ruffs)
+        if (DECL_DISCARD4 and len(v.current_trick) == 3 and v.seat in v.declarer_side
+                and v.contract.get("type") == "emballage" and v.trump is not None and led != v.trump
+                and any(suit_of(c) == v.trump and _wins_now(v, c) for c in v.legal)):
+            short = _short_discard(v)
+            if short is not None:
+                return short
         return _discard(v)
 
     winners = [c for c in v.legal if _wins_now(v, c)]

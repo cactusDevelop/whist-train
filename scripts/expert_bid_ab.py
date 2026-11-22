@@ -127,8 +127,16 @@ VARIANT_SETS["a44"] = {  # 21/11 : dump def_follow2 44906927444, defenseur d emb
     "F2_TOP": {"DEF_FOLLOW2": "top"},
     "F2_BOTH": {"DEF_FOLLOW2": "both"},
 }
+VARIANT_SETS["a45"] = {  # 22/11 : pimc --single (gain reel), emballeur/proposeur 4e defausse, coequipier gagne
+    "IDENTITE": {},
+    "CTRL_NO_OVERTAKE": {"NO_OVERTAKE": True},  # controle negatif
+    "D4_LOW": {"DECL_DISCARD4": "low"},
+    "D4_HIGH": {"DECL_DISCARD4": "high"},
+    "D4_SINGLE": {"DECL_DISCARD4": "single"},
+    "SHORT_WHEN_MATE": {"DISCARD_SHORT_WHEN_MATE": True},  # A/B 13 (09/11) : rejete sous placements biaises, jamais retente
+}
 # placements par defaut d un jeu (knob de JEU -> "camp" = vrais camps du contrat de reference ; encheres -> "single")
-SET_SEATS = {"a34": "camp", "a35": "camp", "a36": "camp", "a37": "camp", "a38": "camp", "a39": "camp", "a40": "camp", "a41": "camp", "a42": "camp", "a43": "camp", "a44": "camp"}
+SET_SEATS = {"a34": "camp", "a35": "camp", "a36": "camp", "a37": "camp", "a38": "camp", "a39": "camp", "a40": "camp", "a41": "camp", "a42": "camp", "a43": "camp", "a44": "camp", "a45": "camp"}
 # AB_SET (env, herite par les workers) : jeu de variantes ; defaut = le plus recent
 VARIANTS = VARIANT_SETS[os.environ.get("AB_SET", max(VARIANT_SETS))]
 # 11/11 (11e conseil, critique) : pour un knob d ENCHERES, placer la variante sur les camps du contrat de
