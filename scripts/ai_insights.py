@@ -1,7 +1,7 @@
 """Stats IA pour le joueur (demande whist-4-it 14/11, conseil de 3 avis) :
 game/ai_insights.json, onglet Parametres > Stats IA. Mesure seule, cloud.
 
-Les 4 sieges jouent COMME DANS LE JEU 1.2.25 : enchere ExpertBot + routage
+Les 4 sieges jouent COMME DANS LE JEU (GAME_VERSION) : enchere ExpertBot + routage
 d'enchere (agents/bid_route.BID_ROUTE, encherisseur = poids publies),
 cartes ExpertBot sauf reseaux libre_* sur les miseres (piccolo, grande,
 etalee : tous les sieges ; petite : defense seulement) et le camp declarant
@@ -50,7 +50,7 @@ from scripts.champion_play import mean_se
 from scripts.godot_weights import load_role
 from scripts.train import declarer_role_and_seats, dispatch_play_phase2, real_points_by_seat
 
-GAME_VERSION = "1.2.25"
+GAME_VERSION = "1.2.33+"  # master apres 1.2.33 (a45 + a50), avant le prochain ship
 SEED = 20261114
 WHISTED_RATIO = 1.0  # en jeu, chaque donne vient du paquet ramasse de la precedente
 MIN_N = 200  # seuil d'affichage (conseil) : en dessous, la cellule n'est pas exportee
@@ -183,7 +183,7 @@ def chunk(args):
             c = bidding.locked_contract
             game, role, decl, pts = play(bidding, hands, dealer, whisted)
             base_pts = pts
-            chain.finish_played(game, dealer, c["type"])
+            chain.finish_played(game, dealer)  # Brimborion decoche par defaut : apres un trou, donne whistee comme en jeu
             key = contract_key(c)
             mains = c["declarers"] if c["type"] == "misere" else [c["declarer"]]
             for s in mains:  # plusieurs miseres simultanees : chaque declarant compte
@@ -375,7 +375,7 @@ def main():
     meta = {"source": "whist-ai scripts/ai_insights.py", "commit": commit, "game_version": GAME_VERSION,
             "rules_fingerprint": fingerprint(args.weights), "seed": args.seed,
             "date": time.strftime("%Y-%m-%d"), "run_id": os.environ.get("GITHUB_RUN_ID", "local"),
-            "mention": "ExpertBot contre ExpertBot (IA du jeu 1.2.25 aux 4 sieges), pas contre des humains",
+            "mention": "ExpertBot contre ExpertBot (IA du jeu %s aux 4 sieges), pas contre des humains" % GAME_VERSION,
             "definitions": {
                 "ev": "vrais points moyens du declarant par contrat annonce (biaise : le bot n'annonce que les bonnes mains)",
                 "atouts/honneurs": "main du declarant : cartes dans la couleur d'atout, dont Valet et plus",

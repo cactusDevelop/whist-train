@@ -476,7 +476,7 @@ def worker(args):
         else:
             base = new_game(contract, hands, dealer, bidding, whisted)
             play(base, (), None, play_rng, samples, [])
-        chain.finish_played(base, dealer, contract["type"])
+        chain.finish_played(base, dealer, None if INGAME else contract["type"])  # en jeu : whistee apres un trou
         if contract["type"] not in ("emballage", "solo", "trou") or base.trump_suit is None:
             continue
         if trig in ("emb_draw", "emb_draw2", "emb_def_lead0") and contract["type"] != "emballage":
@@ -531,7 +531,7 @@ def oracle_worker(args):
         role, _decl = declarer_role_and_seats(contract)
         base = new_game(contract, hands, dealer, bidding, whisted)
         play(base, (), None, play_rng, samples, [])
-        chain.finish_played(base, dealer, contract["type"])
+        chain.finish_played(base, dealer, None if INGAME else contract["type"])  # en jeu : whistee apres un trou
         if contract["type"] != "emballage" or base.trump_suit is None:
             continue
         pts_base = real_points_by_seat(role, base, contract)
