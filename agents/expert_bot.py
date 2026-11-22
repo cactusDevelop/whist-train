@@ -261,7 +261,8 @@ DEF_DUCK_RUFF2 = "low"  # defenseur 2e, trou/solo, coequipier apres, carte gagna
 DEF_FOLLOW2 = None  # "keep" = seule gagnante sure = maitresse -> plus petite fournie (ExpertBot prend/topM, PIMC min,
 # +0.23..+0.97/decision) ; "top" = pas de gagnante sure -> prendre avec la plus haute (ExpertBot petite, PIMC prend/top,
 # +0.26..+0.50) ; "both" = les deux
-DECL_DISCARD4 = None  # A/B a45 (pimc --single 22/11, 6 runs 44961682555..44961703337 : +0.799/ecart n 368 z 5.5) : camp
+DECL_DISCARD4 = "low"  # defaut depuis A/B a45 (12/12 champs, +0.029..+0.113 pts/donne, z 4.3..9.5) ; None = ancienne regle
+# A/B a45 (pimc --single 22/11, 6 runs 44961682555..44961703337 : +0.799/ecart n 368 z 5.5) : camp
 # declarant d emballage, 4e en renonce, coequipier gagne, coupe possible -> defausse dans la couleur la plus COURTE :
 # "low" = sa plus petite, "high" = sa plus haute (hors maitresses), "single" = seulement si elle est singleton
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",

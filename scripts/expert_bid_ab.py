@@ -128,6 +128,8 @@ VARIANT_SETS["a44"] = {  # 21/11 : dump def_follow2 44906927444, defenseur d emb
     "F2_BOTH": {"DEF_FOLLOW2": "both"},
 }
 VARIANT_SETS["a45"] = {  # 22/11 : pimc --single (gain reel), emballeur/proposeur 4e defausse, coequipier gagne
+    # RESULTAT 12 runs paralleles 45006611454..45006690662 : D4_LOW ACCEPTE 12/12 (+0.029..+0.113 z 4.3..9.5, 0 cellule < -2 SE) ;
+    # HIGH 6/12 ; SINGLE 12/12 mais < LOW ; SHORT_WHEN_MATE ~0 (emballage decl +0.096/donne, perdu en defense -0.087)
     "IDENTITE": {},
     "CTRL_NO_OVERTAKE": {"NO_OVERTAKE": True},  # controle negatif
     "D4_LOW": {"DECL_DISCARD4": "low"},
