@@ -365,6 +365,8 @@ def v2_tests():
     oks.append(check("oeil : sanction points et jauge videe", (rules.score_bonus[0], state.suspicion), (-20, 0)))
     oks += review_20261014_tests()
     oks += dominion_tests()
+    oks += balance_55e9_tests()
+    oks += balance_3fed_tests()
     return oks
 
 
@@ -938,6 +940,94 @@ def jokers_joues_tests():
     return oks
 
 
+def balance_55e9_tests():
+    """55e9 (whist-4-it, equilibrage 15/11) : couts Double Valet / Lune Noire, 3 jokers recycles."""
+    oks = []
+    from agents import joker_expert as X
+    oks.append(check("55e9 : couts Double Valet 2, Lune Noire 1", (J.jcost("double_valet"), J.jcost("lune_noire")), (2, 1)))
+    new = sorted(J.BALANCE_REPLACED.values())
+    oks.append(check("55e9 : nouveaux au catalogue hors REPLACED, anciens dedans",
+                     [all(i in J.CATALOG and i not in J.REPLACED for i in new), all(o in J.REPLACED for o in J.BALANCE_REPLACED)],
+                     [True, True]))
+    oks.append(check("55e9 : CASTABLE du reseau inchange", J.CASTABLE,
+                     ["coup_de_vent", "coup_du_chapeau", "embuscade", "faux_pas", "inversion", "kermesse", "main_lourde"]))
+    oks.append(check("55e9 : regles du joueur simule", [j for j in new if j not in X.RULES], []))
+    oks.append(check("55e9 : Beau Valet2 dans la famille des valets", "beau_valet2" in J.VALET_FAMILY, True))
+    oks.append(check("55e9 : types/raretes/couts", [J.CATALOG[j][:3] for j in ("beau_valet2", "meche_courte2", "defausse_discrete2")],
+                     [("sort", "comptoir", 0), ("aura", "comptoir", 1), ("sort", "salle", 1)]))
+    # Beau Valet2 : une pioche par Valet (vraie carte), 3 max ; pointless sans Valet ou sans pioche
+    state, rules, game = combo_state(["beau_valet2"])
+    game.hands[0] = [card(s, 11) for s in range(4)] + [card(H, 2)]
+    state.draw_pile[0] = ["zero", "miroir", "kermesse", "traitre"]
+    eff = J.make_effect("beau_valet2", 0)
+    oks.append(check("beau valet2 : bot_wants avec Valets", (eff.pointless(rules), eff.bot_wants(rules)), (False, True)))
+    cast(state, rules, "beau_valet2")
+    oks.append(check("beau valet2 : 4 Valets -> 3 pioches", len(state.joker_hand[0]), 3))
+    state, rules, game = combo_state(["beau_valet2"])
+    game.hands[0] = [card(H, 2), card(S, 12)]
+    state.draw_pile[0] = ["zero"]
+    oks.append(check("beau valet2 : sans Valet = pointless no_jack",
+                     (J.make_effect("beau_valet2", 0).pointless(rules), J.make_effect("beau_valet2", 0).pointless_reason()), (True, "no_jack")))
+    state, rules, game = combo_state(["beau_valet2"])
+    game.hands[0] = [card(H, 11)]
+    state.dominion = True
+    state.draw_pile[0], state.discard[0] = [], ["zero"]
+    oks.append(check("beau valet2 : rien a piocher = pointless", J.make_effect("beau_valet2", 0).pointless(rules), True))
+    # Meche Courte2 : tout contrat, pli gagne par un adversaire (pas le partenaire), 3 max, pioche au 3e
+    state, rules, game = setup()  # emballage 0 + 2 contre 1 + 3
+    rules.play(0, "meche_courte2")
+    state.energy[0] = 0
+    state.joker_hand[0], state.draw_pile[0] = [], ["zero"]
+    rules.on_trick_resolved(2, [(0, card(H, 2)), (1, card(H, 3)), (2, card(H, 9)), (3, card(H, 4))])
+    oks.append(check("meche courte2 : pli du partenaire ne compte pas", state.energy[0], 0))
+    for _ in range(4):
+        rules.on_trick_resolved(1, [(0, card(H, 2)), (1, card(H, 9)), (2, card(H, 3)), (3, card(H, 4))])
+    oks.append(check("meche courte2 : +1 par pli perdu, 3 max, joker au 3e", (state.energy[0], state.joker_hand[0]), (3, ["zero"])))
+    oks.append(check("meche courte2 : jamais pointless", J.make_effect("meche_courte2", 0).pointless(rules), False))
+    # Defausse Discrete2 : tout contrat, ce pli -- toute la main, ma carte ne gagne pas
+    state, rules, game = setup()
+    hand0 = sorted(game.hands[0])
+    rules.play(0, "defausse_discrete2")
+    oks.append(check("defausse discrete2 : toute la main hors misere", len(rules.legal_cards(hand0, H, 0)), len(hand0)))
+    oks.append(check("defausse discrete2 : pas les autres", len(rules.legal_cards(game.hands[1], H, 1)),
+                     len(J.legal_plays(game.hands[1], H))))
+    plays = [(1, card(H, 5)), (2, card(H, 3)), (3, card(H, 4)), (0, card(H, 14))]
+    oks.append(check("defausse discrete2 : ma carte ne gagne pas", rules.trick_winner(plays, H, S), 1))
+    plays = [(1, card(H, 5)), (2, card(H, 3)), (3, card(H, 4)), (0, card(S, 14))]
+    oks.append(check("defausse discrete2 : meme ma coupe", rules.trick_winner(plays, H, S), 1))
+    rules.on_trick_resolved(1, plays)
+    oks.append(check("defausse discrete2 : portee du pli", len(rules.legal_cards(hand0, H, 0)), len(J.legal_plays(hand0, H))))
+    return oks
+
+
+def balance_3fed_tests():
+    """3fed (whist-4-it fe40498) : Fumee de Pipe2, contre tests/balance_jokers_runner.gd _fumee_de_pipe."""
+    oks = []
+    from agents import joker_expert as X
+    oks.append(check("3fed : catalogue, ancienne remplacee, hors CASTABLE",
+                     (J.CATALOG["fumee_de_pipe2"][:3], "fumee_de_pipe" in J.REPLACED, "fumee_de_pipe2" in J.CASTABLE, "fumee_de_pipe2" in X.RULES),
+                     (("aura", "comptoir", 1), True, False, True)))
+    state, rules, game = combo_state(["fumee_de_pipe2", "livre_de_comptes", "livre_de_comptes", "lune_noire"])
+    state.energy[0] = 9
+    state.draw_pile[0] = ["zero", "miroir", "kermesse"]
+    cast(state, rules, "fumee_de_pipe2")
+    oks.append(check("fumee2 : ne pioche rien elle-meme", state.joker_hand[0], ["livre_de_comptes", "livre_de_comptes", "lune_noire"]))
+    J.spend(state, 0, "livre_de_comptes", {})
+    oks.append(check("fumee2 : un joker qui chauffe -> jauge + 1 pioche", (state.suspicion, state.joker_hand[0]),
+                     (4, ["livre_de_comptes", "lune_noire", "kermesse"])))
+    J.spend(state, 0, "livre_de_comptes", {})
+    oks.append(check("fumee2 : un autre", (state.suspicion, state.joker_hand[0]), (8, ["lune_noire", "kermesse", "miroir"])))
+    J.spend(state, 0, "lune_noire", {})
+    oks.append(check("fumee2 : 2 max", (state.suspicion, state.joker_hand[0]), (10, ["kermesse", "miroir"])))
+    state, rules, game = combo_state(["fumee_de_pipe2", "kermesse"])
+    state.energy[0] = 9
+    state.draw_pile[0] = ["zero", "miroir"]
+    cast(state, rules, "fumee_de_pipe2")
+    J.spend(state, 0, "kermesse", {})
+    oks.append(check("fumee2 : un joker qui ne chauffe pas : rien", state.joker_hand[0], []))
+    return oks
+
+
 def combo_state(hand0=()):
     state, rules, game = setup()
     state.joker_hand[0] = list(hand0)
@@ -956,7 +1046,7 @@ def combo_tests():
     """Synergies 04a-04c (empreinte 6483), contre joker_effects.gd / match_state.gd."""
     oks = []
     from agents import joker_expert as X
-    oks.append(check("8ebd : Double Valet a 1", J.jcost("double_valet"), 1))
+    oks.append(check("55e9 : Double Valet a 2", J.jcost("double_valet"), 2))
     oks.append(check("04c : CASTABLE inchange", len(J.CASTABLE), 7))
     # Bal des Valets : au-dessus de l'As, jamais d'un atout, faible sous inversion
     state, rules, game = combo_state()
@@ -998,7 +1088,7 @@ def combo_tests():
     oks.append(check("valet de chambre : famille a 0", state.cost_of(0, "bal_des_valets"), 0))
     oks.append(check("valet de chambre : hors famille", state.cost_of(0, "kermesse"), 2))
     cast(state, rules, "bal_des_valets")
-    oks.append(check("valet de chambre : consomme", state.cost_of(0, "double_valet"), 1))  # 8ebd
+    oks.append(check("valet de chambre : consomme", state.cost_of(0, "double_valet"), 2))  # 55e9
     # Feu de Paille, Addition
     state, rules, game = combo_state(["feu_de_paille", "addition"])
     state.played_this_hand[0] = 2

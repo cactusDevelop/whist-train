@@ -44,14 +44,14 @@ PLAYER_PRIORITY = [
     # a76f : moteur Dominion en tete -- energie (Village/Marche), puis le doubleur avant le sort qu'il double,
     # les pioches, enfin ce qui trie la pioche (n'agit que sur les pioches suivantes)
     "chope_vide3", "addition2", "complice2", "ardoise2", "tournee_generale2", "valet_de_chambre2", "cendrier2",
-    "feu_de_paille2", "consigne2", "vieille_habitude2", "mauvais_perdant2", "poche_interieure2", "la_peche2",
+    "feu_de_paille2", "consigne2", "vieille_habitude2", "mauvais_perdant2", "poche_interieure2", "la_peche2", "beau_valet2", "fumee_de_pipe2",
     "complice", "valet_de_chambre", "ardoise", "verre_de_trop", "refrain",
     "main_de_fer", "horloge_arretee", "valet_borgne", "inversion", "brouillard_de_la_senne", "remonte_pli", "la_peche", "pli_refile2",
     "coup_de_vent",
     "manche_truquee", "gueule_de_bois", "dette_de_jeu", "lune_noire", "bal_des_valets", "beau_valet", "coup_du_chapeau", "kermesse",
     "treizieme_carte", "coeur_de_zinneke2", "silence_du_cercle", "embuscade", "collet", "fausse_piste", "faux_pas",
     "croupier_endormi2", "contre_espionnage", "fumee_de_pipe", "tournee_generale", "echange_de_manche",
-    "defausse_discrete", "la_tournee2", "cadeau_empoisonne2", "meche_courte",
+    "defausse_discrete", "la_tournee2", "cadeau_empoisonne2", "meche_courte", "meche_courte2", "defausse_discrete2",
     "faux_depart2",
     "borgne", "double_valet", "cameleon", "atout_errant", "traitre", "zero", "miroir",
     "courant_d_air", "main_lourde", "pourboire", "regard_furtif", "livre_de_comptes",
@@ -731,6 +731,37 @@ def _la_peche2(v):
     return (YES, "reprend_l_utile") if v["discard_wanted"] else (NO, "rien_a_reprendre")
 
 
+def _beau_valet2(v):
+    # 55e9 : une pioche par Valet (vraie carte) en main, 3 max ; tot, tant que les Valets sont en main
+    jacks = _count(v, lambda x: rank_of(x) == JACK)
+    if v["remaining"] < 2:
+        return NO, "trop_tard"
+    return (YES, "valets_en_main") if jacks else (NO, "pas_de_valet")
+
+
+def _meche_courte2(v):
+    # 55e9 : tout contrat, +1 ⚡ par pli perdu par mon camp (3 max, le 3e pioche) : tot dans la donne
+    if owned(v, "meche_courte2"):
+        return NO, "deja_arme"
+    return (YES, "plis_perdus_payes") if v["remaining"] >= 6 else (NO, "tard")
+
+
+def _defausse_discrete2(v):
+    # 55e9 : tout contrat, ce pli je ne fournis pas et ma carte ne gagne pas
+    if v["position"] == 0:
+        return NO, "entame_ou_demandee_inconnue"
+    off = [x for x in v["hand"] if suit_of(x) != v["led"]]
+    if not off or len(v["legal"]) == len(v["hand"]):
+        return NO, "deja_libre"
+    if v["misere_declarer"]:
+        return (YES, "sort_du_pli_force") if v["forced_win"] else (NO, "je_peux_passer_dessous")
+    if v["can_win_now"]:
+        return NO, "je_peux_gagner"
+    # le pli est perdu pour moi : garder un honneur de la demandee, jeter une petite ailleurs
+    low = min(rank_of(x) for x in v["legal"])
+    return (YES, "sauve_un_honneur") if low >= JACK and min(rank_of(x) for x in off) < low else (NO, "petite_a_fournir")
+
+
 def _consigne2(v):
     if v["remaining"] < 3:
         return NO, "trop_tard"
@@ -809,6 +840,16 @@ def _fumee_de_pipe(v):
     return (YES, "cache_le_soupcon") if v["suspicion"] >= 5 and suspects >= 1 else (NO, "inutile")
 
 
+def _fumee_de_pipe2(v):
+    # 3fed : avant les jokers qui chauffent (Arriere-salle/Cave) de ma main, chacun pioche (2 max)
+    if owned(v, "fumee_de_pipe2"):
+        return NO, "deja_arme"
+    heaters = sum(1 for j in v["joker_hand"] if J.jsuspicion(j) > 0)
+    if v["remaining"] < 2:
+        return NO, "trop_tard"
+    return (YES, "pioche_sur_la_chaleur") if heaters >= 1 else (NO, "rien_qui_chauffe")
+
+
 def _silence_du_cercle(v):
     return (YES, "bloque_les_adversaires") if v["enemy_jokers"] >= 2 and v["remaining"] >= 4 else (NO, "inutile")
 
@@ -885,7 +926,7 @@ RULES = {
     "pourboire": _pourboire,
     "fausse_piste": _fausse_piste, "collet": _collet, "contre_espionnage": _contre_espionnage,
     "croupier_endormi": _croupier_endormi, "dette_de_jeu": _dette_de_jeu,
-    "fumee_de_pipe": _fumee_de_pipe, "silence_du_cercle": _silence_du_cercle, "lune_noire": _lune_noire,
+    "fumee_de_pipe": _fumee_de_pipe, "fumee_de_pipe2": _fumee_de_pipe2, "silence_du_cercle": _silence_du_cercle, "lune_noire": _lune_noire,
     "coeur_de_zinneke": _coeur_de_zinneke, "brouillard_de_la_senne": _brouillard,
     "treizieme_carte": _treizieme_carte,
     "defausse_discrete": _defausse_discrete, "la_tournee": _la_tournee,
@@ -901,6 +942,7 @@ RULES = {
     "tournee_generale2": _tournee_generale2, "valet_de_chambre2": _valet_de_chambre2, "cendrier2": _cendrier2,
     "feu_de_paille2": _feu_de_paille2, "consigne2": _consigne2, "vieille_habitude2": _vieille_habitude2,
     "mauvais_perdant2": _mauvais_perdant2, "poche_interieure2": _poche_interieure2, "la_peche2": _la_peche2,
+    "beau_valet2": _beau_valet2, "meche_courte2": _meche_courte2, "defausse_discrete2": _defausse_discrete2,
 }
 
 
