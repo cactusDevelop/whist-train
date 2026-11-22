@@ -144,7 +144,8 @@ def test_no_short_emballage_20261030():
                 info = bid_action_to_dict(choice)
                 seen += 1
                 check("emballer : atouts", expert_bot.emballer_suit_ok(hands[seat], info["suit"]))
-                check("emballer : plis surs", estimate_tricks(hands[seat], info["suit"]) >= 4 + entry[choice] - 8)
+                # 3 = plancher utilisateur (27/10) et EMBALLER_MIN depuis 57f1f8b (13e conseil, 12/11 ; 4 avant)
+                check("emballer : plis surs", estimate_tricks(hands[seat], info["suit"]) >= 3 + entry[choice] - 8)
     check("emballages exerces %d" % seen, seen > 0)
 
 
