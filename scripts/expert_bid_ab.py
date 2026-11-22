@@ -231,7 +231,7 @@ def play_deal(hands, dealer, whisted, params_by_seat, ingame=False, human=None):
         if ingame and seat != human:
             e = expert_bot.choose_bid(bidding, seat, hands[seat])
             choice = game_ai.bid_route.route(e, game_ai.BIDDER.decide(bidding, seat, hands[seat]),
-                                             route_cells(modes[seat]))
+                                             hands[seat], route_cells(modes[seat]))
             count = ROUTE_STATS.setdefault(modes[seat] or "jeu", [0, 0])
             count[0] += choice != e
             count[1] += 1

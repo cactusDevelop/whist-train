@@ -37,6 +37,7 @@ from scripts.godot_weights import load_role
 SEED = 20261114
 ROUTED_DEALS = 400   # donnes avec au moins une decision routee
 PLAIN_DEALS = 100    # donnes sans decision routee
+REFUSED_DEALS = 150  # donnes ou net_emballer_ok refuse un emballage route (a50, 22/11)
 MAX_DEALS = 200000
 
 
@@ -66,22 +67,25 @@ def main():
 
     ruled = RuledBidder(published)
     rng = random.Random(SEED)
-    kept, routed_deals, plain_deals, cells = [], 0, 0, {}
+    kept, routed_deals, plain_deals, refused_deals, cells = [], 0, 0, 0, {}
     with torch.no_grad():
         for _ in range(MAX_DEALS):
-            if routed_deals >= ROUTED_DEALS and plain_deals >= PLAIN_DEALS:
+            if routed_deals >= ROUTED_DEALS and plain_deals >= PLAIN_DEALS and refused_deals >= REFUSED_DEALS:
                 break
             hands = deal(rng)
             if detect_trou(hands) is not None:
                 continue
             dealer = rng.randrange(4)
             b = Bidding(dealer)
-            steps, routed, rare = [], 0, False
+            steps, routed, refused, rare = [], 0, False, False
             while not b.finished:
                 seat = b.turn
                 e = expert_bot.choose_bid(b, seat, hands[seat])
                 n = ruled.decide(b, seat, hands[seat])
-                played = bid_route.route(e, n)
+                played = bid_route.route(e, n, hands[seat])
+                refused = refused or (played == e and bid_route.bid_label(n, False) == "emballer"
+                                      and bid_route.bid_label(n) != bid_route.bid_label(e)
+                                      and (bid_route.bid_label(e, False), "emballer") in bid_route.BID_ROUTE)
                 if played is n and bid_route.bid_label(n) != bid_route.bid_label(e):
                     routed += 1
                     cell = (bid_route.bid_label(e, False), bid_route.bid_label(n, False))
@@ -89,7 +93,9 @@ def main():
                     cells[cell] = cells.get(cell, 0) + 1
                 steps.append([seat, encode(e), encode(n), encode(played)])
                 assert expert_bot.apply_choice(b, seat, played), (seat, played)
-            if routed and (routed_deals < ROUTED_DEALS or rare):
+            if refused and refused_deals < REFUSED_DEALS:
+                refused_deals += 1
+            elif routed and (routed_deals < ROUTED_DEALS or rare):
                 routed_deals += 1
             elif not routed and plain_deals < PLAIN_DEALS:
                 plain_deals += 1
@@ -101,7 +107,8 @@ def main():
     with open(out, "w", encoding="utf-8") as f:
         json.dump({"source": "whist-ai scripts/export_bid_route.py", "seed": SEED,
                    "route": sorted("%s>%s" % c for c in bid_route.BID_ROUTE), "deals": kept}, f, separators=(",", ":"))
-    print("CAS %d donnes (%d routees, %d sans routage) -> %s" % (len(kept), routed_deals, plain_deals, out), flush=True)
+    print("CAS %d donnes (%d routees, %d sans routage, %d avec emballage refuse) -> %s" % (
+        len(kept), routed_deals, plain_deals, refused_deals, out), flush=True)
     for cell, k in sorted(cells.items(), key=lambda kv: -kv[1]):
         print("  cellule %-16s > %-16s : %d" % (cell[0], cell[1], k))
     missing = [c for c in bid_route.BID_ROUTE if c not in cells]

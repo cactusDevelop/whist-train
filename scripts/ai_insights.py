@@ -88,7 +88,7 @@ def run_bidding(hands, dealer, trou, force=None):
             choice = force[1]
         else:
             e = expert_bot.choose_bid(b, seat, hand)
-            choice = bid_route.route(e, BIDDER.decide(b, seat, hand))
+            choice = bid_route.route(e, BIDDER.decide(b, seat, hand), hand)
         if seat not in first:
             first[seat] = (choice, "apres_annonce" if b.contracts else ("premier" if not any(b.has_acted) else "apres_passe"))
         if not expert_bot.apply_choice(b, seat, choice):
@@ -215,7 +215,7 @@ def chunk(args):
         while not pre.finished and pre.turn != seat:
             s2 = pre.turn
             e = expert_bot.choose_bid(pre, s2, hands[s2])
-            expert_bot.apply_choice(pre, s2, bid_route.route(e, BIDDER.decide(pre, s2, hands[s2])))
+            expert_bot.apply_choice(pre, s2, bid_route.route(e, BIDDER.decide(pre, s2, hands[s2]), hands[s2]))
         if VALIDATE_KNOB and not pre.finished and pre.turn == seat:
             # validation conseil 14/11 : decisions que le knob (A/B 33 LONG5) changerait, gain contrefactuel
             # = points du siege (choix knob - choix du jeu) ; l A/B mesurait -0.047/donne pour 2.1 % changees
@@ -227,7 +227,7 @@ def chunk(args):
             finally:
                 for k, v in saved.items():
                     setattr(expert_bot, k, v)
-            alt = bid_route.route(e_on, BIDDER.decide(pre, seat, hand))
+            alt = bid_route.route(e_on, BIDDER.decide(pre, seat, hand), hand)
             if alt != played:
                 b3, _ = run_bidding(hands, dealer, None, force=(seat, alt))
                 push(acc["knob"], "changed", seat_points(b3, hands, dealer, whisted, seat) - base_pts[seat])
