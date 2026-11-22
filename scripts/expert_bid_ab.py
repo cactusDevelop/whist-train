@@ -30,8 +30,34 @@ from engine.trou import detect_trou
 from engine.whisted import DeckChain
 from scripts.eval_vs_random import declarer_successes
 from scripts.expert_bot_match import bot_player, play_out
+from scripts import ai_insights as game_ai  # champ "jeu" : memes fonctions que les Stats IA du jeu
 from scripts.train import (MEASURE_WHISTED_RATIO, declarer_role_and_seats, describe_contract,
                            dispatch_play_phase2, real_points_by_seat)
+
+# CHAMP "jeu" (conseil 22/11) : la table classique de whist-4-it -- enchere ExpertBot + BID_ROUTE, cartes hybrides
+# (miseres, camp demandeur du trou), poids publies (godot_weights_ingame), 100 % de donnes whistees. "jeu_<profil>" :
+# idem avec 1 siege HUMAIN tire au hasard qui joue le profil (ni routage, ni hybride, ni variante).
+# Critere a47 fixe avant tout resultat (2 decalages x jeu, jeu_bruite10, jeu_bruite25 = 6 runs) :
+#   a45 valide : D4_OFF perd z < -3 sur >= 5/6, aucun z > 2. Sinon a45 est retire avant ship.
+#   a46 candidat : MATE_ALL gagne z > 3 sur >= 5/6, aucune cellule < -2 SE -> confirmation sur graines neuves, meme
+#   critere, avant toute promotion. Sinon a46 clos. Le veto des champs classiques n est PAS retire apres coup.
+GAME_STATS = {"routees": 0, "encheres": 0, "cartes_reseau": 0}
+
+
+def field_profile(others):
+    """-> (champ jeu ?, profil du siege humain ou None, profil des autres sieges)."""
+    if others == "jeu" or others.startswith("jeu_"):
+        return True, (dict(expert_bot.PROFILES[others[4:]]) if others != "jeu" else None), {}
+    return False, None, dict(expert_bot.PROFILES[others])
+
+
+def load_game_ai(weights="godot_weights_ingame"):
+    """Avant le fork."""
+    game_ai.torch.set_num_threads(1)
+    game_ai.BIDDER = game_ai.RuledBidder(game_ai.load_role(weights, "encherisseur", game_ai.evolution.OBS_DIM))
+    for role in ("defenseur", "piccolo", "grande_misere", "petite_misere", "misere_etalee", "trou", "bouche_trou"):
+        game_ai.NETS[role] = game_ai.load_role(weights, "libre_" + role, game_ai.specialists.IMPLEMENTED[role][0])
+
 
 # Jeux de variantes : une variante = dict partiel de expert_bot.set_bid_params, appliquee PAR-DESSUS le profil
 # du champ ({**PROFILES[--others], **params}) ; IDENTITE = le profil lui-meme. Contre un profil qui fixe deja le
@@ -145,8 +171,13 @@ VARIANT_SETS["a46"] = {  # 22/11 : base = a45 ; defausse courte du camp declaran
     "MATE_ALL": {"DECL_DISCARD_MATE": "all"},
     "MATE_LAST": {"DECL_DISCARD_MATE": "last"},
 }
+VARIANT_SETS["a47"] = {  # 22/11 conseil : a45 + a46 remesures dans le champ "jeu" (critere : en tete de fichier)
+    "IDENTITE": {},
+    "D4_OFF": {"DECL_DISCARD4": None},
+    "MATE_ALL": {"DECL_DISCARD_MATE": "all"},
+}
 # placements par defaut d un jeu (knob de JEU -> "camp" = vrais camps du contrat de reference ; encheres -> "single")
-SET_SEATS = {"a34": "camp", "a35": "camp", "a36": "camp", "a37": "camp", "a38": "camp", "a39": "camp", "a40": "camp", "a41": "camp", "a42": "camp", "a43": "camp", "a44": "camp", "a45": "camp", "a46": "camp"}
+SET_SEATS = {"a34": "camp", "a35": "camp", "a36": "camp", "a37": "camp", "a38": "camp", "a39": "camp", "a40": "camp", "a41": "camp", "a42": "camp", "a43": "camp", "a44": "camp", "a45": "camp", "a46": "camp", "a47": "camp"}
 # AB_SET (env, herite par les workers) : jeu de variantes ; defaut = le plus recent
 VARIANTS = VARIANT_SETS[os.environ.get("AB_SET", max(VARIANT_SETS))]
 # 11/11 (11e conseil, critique) : pour un knob d ENCHERES, placer la variante sur les camps du contrat de
@@ -155,7 +186,7 @@ VARIANTS = VARIANT_SETS[os.environ.get("AB_SET", max(VARIANT_SETS))]
 # - reference ; cellules = contrat JOUE par la variante | camp du siege variante.
 SEATS = os.environ.get("AB_SEATS", SET_SEATS.get(os.environ.get("AB_SET", max(VARIANT_SETS)), "single"))
 
-def play_deal(hands, dealer, whisted, params_by_seat):
+def play_deal(hands, dealer, whisted, params_by_seat, ingame=False, human=None):
     """-> (points des 4 sieges, contrat ou None, jeu ou None)."""
     bidding = Bidding(dealer)
     trou = detect_trou(hands)
@@ -164,7 +195,15 @@ def play_deal(hands, dealer, whisted, params_by_seat):
     while not bidding.finished:
         seat = bidding.turn
         expert_bot.set_bid_params(params_by_seat[seat])
-        expert_bot.apply_bid(bidding, seat, hands[seat])
+        if ingame and seat != human:
+            e = expert_bot.choose_bid(bidding, seat, hands[seat])
+            choice = game_ai.bid_route.route(e, game_ai.BIDDER.decide(bidding, seat, hands[seat]))
+            GAME_STATS["encheres"] += 1
+            GAME_STATS["routees"] += choice != e
+            if not expert_bot.apply_choice(bidding, seat, choice):
+                raise AssertionError("enchere illegale %r siege %d" % (choice, seat))
+        else:
+            expert_bot.apply_bid(bidding, seat, hands[seat])
     expert_bot.set_bid_params({})
     if bidding.general_pass:
         return [0.0] * 4, None, None
@@ -173,6 +212,12 @@ def play_deal(hands, dealer, whisted, params_by_seat):
     game = dispatch_play_phase2(contract, [list(h) for h in hands], dealer, bidding.bid_summary, whisted)
     while not game.done:
         seat = game.turn
+        if ingame and seat != human and game_ai.hybrid_applies(contract, seat):
+            GAME_STATS["cartes_reseau"] += 1
+            mask = game_ai.torch.tensor(game.legal_action_mask(seat), dtype=game_ai.torch.bool)
+            obs = game_ai.torch.tensor(game.observation(seat), dtype=game_ai.torch.float32)
+            game.step(seat, game_ai.NETS[game.role_of(seat)].act_greedy(obs, mask))
+            continue
         expert_bot.set_bid_params(params_by_seat[seat])
         game.step(seat, expert_bot.choose_card(game, seat))
     expert_bot.set_bid_params({})
@@ -181,18 +226,20 @@ def play_deal(hands, dealer, whisted, params_by_seat):
 
 def worker(args):
     seed, n, others = args
-    from agents.expert_bot import PROFILES
-    other = dict(PROFILES[others])
+    ingame, human_prof, other = field_profile(others)
     if os.environ.get("FOLLOW_TRACE"):
         expert_bot.FOLLOW_TRACE = {}
     rng = random.Random(seed)
-    chain = DeckChain(MEASURE_WHISTED_RATIO, rng)
+    chain = DeckChain(game_ai.WHISTED_RATIO if ingame else MEASURE_WHISTED_RATIO, rng)
+    human_rng = random.Random(seed + 500)  # a part : ne change pas les donnes
     out = []  # (variante, gain, [(cle, ok, essais)] des contrats declares par la variante)
     base_rows = []
     for _ in range(n):
         hands, dealer, whisted = chain.deal(rng)
         hands = [list(h) for h in hands]
-        base, bc, bgame = play_deal(hands, dealer, whisted, [other] * 4)
+        human = human_rng.randrange(4) if human_prof is not None else None
+        ref = [human_prof if s == human else other for s in range(4)]
+        base, bc, bgame = play_deal(hands, dealer, whisted, ref, ingame, human)
         if bc is not None:
             _r, decl = declarer_role_and_seats(bc)
             oks = declarer_successes(bc, bgame, decl)
@@ -211,8 +258,8 @@ def worker(args):
             else:
                 placements = ((0, 2), (1, 3))
             for seats in placements:
-                pbs = [{**other, **params} if s in seats else other for s in range(4)]
-                pts, c, game = play_deal(hands, dealer, whisted, pbs)
+                pbs = [{**ref[s], **params} if s in seats and s != human else ref[s] for s in range(4)]
+                pts, c, game = play_deal(hands, dealer, whisted, pbs, ingame, human)
                 g = sum(pts[s] - base[s] for s in seats)
                 gain += g
                 if SEATS == "single":
@@ -237,6 +284,9 @@ def worker(args):
     if expert_bot.FOLLOW_TRACE is not None:  # diagnostic 10/11 : branches "coequipier gagnant, on fournit"
         for k, c in sorted(expert_bot.FOLLOW_TRACE.items(), key=lambda kv: -kv[1])[:60]:
             print("TRACE %d %s %d" % (seed, " ".join(map(str, k)), c), flush=True)
+    if ingame:
+        print("JEU %d : %d donnes, %d/%d encheres routees, %d cartes reseau" % (
+            seed, n, GAME_STATS["routees"], GAME_STATS["encheres"], GAME_STATS["cartes_reseau"]), flush=True)
     return out, base_rows
 
 
@@ -270,6 +320,9 @@ def main():
     args = parser.parse_args()
     if args.trace:
         os.environ["FOLLOW_TRACE"] = "1"
+    ingame, _human, prof = field_profile(args.others)
+    if ingame:
+        load_game_ai()
     t0 = time.time()
     per = args.deals // args.workers
     with mp.Pool(args.workers) as pool:
@@ -288,7 +341,6 @@ def main():
                         cells.setdefault(k, []).append(g)
         changed = sum(1 for g in gains if g != 0)
         m, se = stat(gains)
-        prof = expert_bot.PROFILES[args.others]
         eff = ["%s %s -> %s" % (k, prof.get(k, getattr(expert_bot, k, None)), v) for k, v in params.items()]
         if eff:
             print("\n  (valeurs effectives, profil %s -> variante : %s)" % (args.others, ", ".join(eff)))
