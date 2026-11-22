@@ -172,6 +172,8 @@ VARIANT_SETS["a46"] = {  # 22/11 : base = a45 ; defausse courte du camp declaran
     "MATE_LAST": {"DECL_DISCARD_MATE": "last"},
 }
 VARIANT_SETS["a47"] = {  # 22/11 conseil : a45 + a46 remesures dans le champ "jeu" (critere : en tete de fichier)
+    # RESULTAT 45010974418..45011003694 : a45 VALIDE (D4_OFF -0.055..-0.080 z -6.6..-8.6, 6/6) ;
+    # a46 CLOS (MATE_ALL +0.017..+0.044, z > 3 sur 3/6 seulement, il en fallait 5)
     "IDENTITE": {},
     "D4_OFF": {"DECL_DISCARD4": None},
     "MATE_ALL": {"DECL_DISCARD_MATE": "all"},
