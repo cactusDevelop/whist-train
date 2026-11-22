@@ -137,8 +137,14 @@ VARIANT_SETS["a45"] = {  # 22/11 : pimc --single (gain reel), emballeur/proposeu
     "D4_SINGLE": {"DECL_DISCARD4": "single"},
     "SHORT_WHEN_MATE": {"DISCARD_SHORT_WHEN_MATE": True},  # A/B 13 (09/11) : rejete sous placements biaises, jamais retente
 }
+VARIANT_SETS["a46"] = {  # 22/11 : base = a45 ; defausse courte du camp declarant d emballage etendue
+    "IDENTITE": {},
+    "CTRL_D4_OFF": {"DECL_DISCARD4": None},  # controle negatif (doit perdre ~0.03..0.11)
+    "MATE_ALL": {"DECL_DISCARD_MATE": "all"},
+    "MATE_LAST": {"DECL_DISCARD_MATE": "last"},
+}
 # placements par defaut d un jeu (knob de JEU -> "camp" = vrais camps du contrat de reference ; encheres -> "single")
-SET_SEATS = {"a34": "camp", "a35": "camp", "a36": "camp", "a37": "camp", "a38": "camp", "a39": "camp", "a40": "camp", "a41": "camp", "a42": "camp", "a43": "camp", "a44": "camp", "a45": "camp"}
+SET_SEATS = {"a34": "camp", "a35": "camp", "a36": "camp", "a37": "camp", "a38": "camp", "a39": "camp", "a40": "camp", "a41": "camp", "a42": "camp", "a43": "camp", "a44": "camp", "a45": "camp", "a46": "camp"}
 # AB_SET (env, herite par les workers) : jeu de variantes ; defaut = le plus recent
 VARIANTS = VARIANT_SETS[os.environ.get("AB_SET", max(VARIANT_SETS))]
 # 11/11 (11e conseil, critique) : pour un knob d ENCHERES, placer la variante sur les camps du contrat de

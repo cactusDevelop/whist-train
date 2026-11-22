@@ -265,6 +265,8 @@ DECL_DISCARD4 = "low"  # defaut depuis A/B a45 (12/12 champs, +0.029..+0.113 pts
 # A/B a45 (pimc --single 22/11, 6 runs 44961682555..44961703337 : +0.799/ecart n 368 z 5.5) : camp
 # declarant d emballage, 4e en renonce, coequipier gagne, coupe possible -> defausse dans la couleur la plus COURTE :
 # "low" = sa plus petite, "high" = sa plus haute (hors maitresses), "single" = seulement si elle est singleton
+DECL_DISCARD_MATE = None  # A/B a46 (cellule emballage decl de SHORT_WHEN_MATE en a45 : +0.096/donne) : camp declarant d emballage,
+# coequipier gagne, defausse COURTE (meme sans coupe possible) : "all" = toute position, "last" = 4e seulement
 BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
               "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "CASH_BEFORE_DRAW", "LAST_LEAD_MASTER", "DUCK_RUFF_SECOND", "RUFF_RISK_VOID_ONLY", "PARTNER_SUIT_TOP_SHORT", "PARTNER_SUIT_HIGH", "DISCARD_SHORT_WHEN_MATE", "RUFF_HIGH_IF_UNSAFE", "NO_OVERTAKE_POS", "DEF_LEAD_SEQ_ANY", "DEF_LEAD_PASSIVE", "NO_RUFF_PARTNER_2ND", "DECL_LEAD_STRONG", "DISCARD_LONG_TOP", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
               "LEAD_PARTNER_SUIT", "KEEP_TRUMPS_VS_VOID", "DRAW_STOP_OUTSTANDING",
@@ -272,7 +274,7 @@ BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_I
               "RAISE_MARGIN_AT", "SOLO_MARGIN_AT", "OPP_SUIT_CAP", "DRAW_MIN_TRUMPS", "DRAW_MIN_MASTER_OK",
               "DEF0_CASH_MARGIN", "DEF0_PARTNER_LOW", "DEF0_LONG_LOW", "DEF0_RENOM",
               "PARTNER_SAFE_LAX", "UNBLOCK_2ND_LOOSE", "DISCARD_RUFFED_SHORT", "COVER_WEAK_PARTNER", "DECL_OVERTAKE_HIGH",
-              "DEF_TROU_TRUMP_LEAD", "DEF_DUCK_RUFF2", "DEF_FOLLOW2", "DECL_DISCARD4")
+              "DEF_TROU_TRUMP_LEAD", "DEF_DUCK_RUFF2", "DEF_FOLLOW2", "DECL_DISCARD4", "DECL_DISCARD_MATE")
 
 # Profils CONCURRENTS de l'ExpertBot (utilisateur 2026-10-27 : « mets les regles que je viens
 # de te donner en concurrent a l'ExpertBot, pas en remplacement, idem pour toutes les autres
@@ -1106,6 +1108,10 @@ def _discard(v):
         return min(non_master, key=lambda c: (hon[suit_of(c)], -count[suit_of(c)], rank_of(c)))
     side_ok = DISCARD_SIDE is None or (DISCARD_SIDE == "def") == (v.seat not in v.declarer_side)
     if DISCARD_SHORT_WHEN_MATE and v.current_trick and trick_winner(v.current_trick, v.trump) in v.teammates(v.seat):
+        side_ok = False
+    if (DECL_DISCARD_MATE and v.current_trick and v.seat in v.declarer_side and v.contract.get("type") == "emballage"
+            and (DECL_DISCARD_MATE == "all" or len(v.current_trick) == 3)
+            and trick_winner(v.current_trick, v.trump) in v.teammates(v.seat)):
         side_ok = False
     if DISCARD_RUFFED_SHORT and v.current_trick and v.trump is not None:
         led, w_seat, w_card = _trick_state(v)

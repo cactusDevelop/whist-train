@@ -697,7 +697,7 @@ def print_singles(singles, others, args, secs, times):
             if n:
                 print("%-5s %-10s ecarts %6d  gain reel/ecart %+.3f +- %.3f (z %+.1f)  somme %+.1f" % (
                     camp, typ or "TOUT", n, m, se, m / se if se else 0.0, m * n))
-    for level, idx, top in (("situation", 2, 60), ("situation + cartes", 3, 60)):
+    for level, idx in (("situation", 2), ("situation + cartes", 3)):  # TOUTES les cles : cumulable entre runs (biais du top 60, nuit 22/11)
         for camp in ("def", "decl"):
             agg = {}
             for x in singles:
@@ -707,7 +707,7 @@ def print_singles(singles, others, args, secs, times):
                     a[1].append(x[5])
                     a[2 + x[6]].append(x[4])
             print("\n=== --single %s : %s (tri gain reel cumule) ===" % (camp, level))
-            for k in sorted(agg, key=lambda k: -sum(agg[k][0]))[:top]:
+            for k in sorted(agg, key=lambda k: -sum(agg[k][0])):
                 n, m, se = stats(agg[k][0])
                 h = [stats(agg[k][2]), stats(agg[k][3])]
                 z = m / se if se > 0 else 0.0
