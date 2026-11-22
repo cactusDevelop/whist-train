@@ -203,7 +203,8 @@ def run_bot_bidding(hands, dealer, match=None):
         if match is not None and seat == PLAYER:
             match.player.bidding_turn(match.state, match.rules, match.config.get("eye", ""), match.bosses)
         if match is not None and seat != PLAYER:
-            expert_bot.set_bid_params(bid_params(match.config.get("act"), bool(match.bosses)))
+            # duel : RogueMatch sans RogueRun, bot_bid_params = {} dans le jeu (duel_room.gd)
+            expert_bot.set_bid_params({} if match.config.get("kind") == "duel" else bid_params(match.config.get("act"), bool(match.bosses)))
             try:
                 choice = expert_bot.choose_bid(bidding, seat, hands[seat])
                 info = {"action": "raise"} if isinstance(choice, tuple) else bid_action_to_dict(choice)

@@ -299,6 +299,9 @@ def test_act1_backs_player_20261122():
     check("boss suivants : ExpertBot tel quel", bid_params(3, True) == {})
     check("remis a -1 entre deux encheres", expert_bot.PLAYER_PROPOSAL_MIN == -1)
     check("defaut : la main des 6 petits atouts n'emballe pas a 5", not backs(expert_bot.ACT1_BID_PARAMS, 0, six_trumps))
+    import inspect
+    from engine import joker_match
+    check("duel : encheres ExpertBot du jeu ({})", 'match.config.get("kind") == "duel"' in inspect.getsource(joker_match.run_bot_bidding))
 
 
 def main():
