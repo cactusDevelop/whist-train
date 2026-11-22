@@ -52,7 +52,9 @@ from agents import expert_bot
 from agents.rollouts import clone_with_hands, dds_values, determinize
 from engine import dds
 from engine.cards import NUM_PLAYERS, suit_of, trick_winner
+from engine.trou import detect_trou
 from engine.whisted import DeckChain
+from scripts import ai_insights as game_ai  # --ingame : memes fonctions que les Stats IA du jeu
 from scripts.expert_bot_match import run_bot_bidding
 from scripts.expert_play_audit import card_txt, describe, situation
 from scripts.team_errors import teammates
@@ -395,6 +397,15 @@ def card_feat(game, seat, c):
     return ruff_feat(game, seat, c)
 
 
+def table_card(g, seat, contract):
+    """Carte jouee a la table : ExpertBot ; --ingame : reseaux hybrides sur leurs sieges."""
+    if INGAME and game_ai.hybrid_applies(contract, seat):
+        mask = game_ai.torch.tensor(g.legal_action_mask(seat), dtype=game_ai.torch.bool)
+        obs = game_ai.torch.tensor(g.observation(seat), dtype=game_ai.torch.float32)
+        return game_ai.NETS[g.role_of(seat)].act_greedy(obs, mask)
+    return expert_bot.choose_card(g, seat)
+
+
 def single_deviations(g, seats, name, score_fn, rng, samples, trigger, role, contract, half):
     """Conseil 22/11 (unanime) : gain REEL par situation. Ligne principale = ExpertBot aux 4 sieges ; a chaque
     decision du camp ou PIMC s'ecarte d'ExpertBot, contrefactuel : UNE seule carte PIMC puis ExpertBot jusqu'a la
@@ -403,8 +414,12 @@ def single_deviations(g, seats, name, score_fn, rng, samples, trigger, role, con
     n, devs = 0, []
     while not g.done:
         seat = g.turn
-        card = expert_bot.choose_card(g, seat)
+        card = table_card(g, seat, contract)
         trou_lead = getattr(g, "trou_pending", lambda: False)() and seat == g.partner
+        # --ingame : un siege hybride ne joue pas ExpertBot, aucune regle a y apprendre
+        if INGAME and game_ai.hybrid_applies(contract, seat):
+            g.step(seat, card)
+            continue
         if seat in seats and not trou_lead and (trigger is None or trigger(g, seat, card)):
             legal = [c for c, ok in enumerate(g.legal_action_mask(seat)) if ok]
             if len(legal) > 1 and g.trump_suit is not None and dds.supported(g):
@@ -417,7 +432,7 @@ def single_deviations(g, seats, name, score_fn, rng, samples, trigger, role, con
                         h = clone_with_hands(g, g.hands)
                         h.step(seat, pick)
                         while not h.done:
-                            h.step(h.turn, expert_bot.choose_card(h, h.turn))
+                            h.step(h.turn, table_card(h, h.turn, contract))
                         pts = real_points_by_seat(role, h, contract)
                         coarse = sit_key(g, seat, card)
                         fine = "%s exp:%s pk:%s" % (coarse, card_feat(g, seat, card), card_feat(g, seat, pick))
@@ -430,6 +445,7 @@ def single_deviations(g, seats, name, score_fn, rng, samples, trigger, role, con
 
 
 SINGLE = False  # --single (conseil 22/11)
+INGAME = False  # --ingame (conseil 22/11 apres a46) : table classique du jeu (BID_ROUTE + hybride, 100 % whiste)
 
 
 def worker(args):
@@ -439,21 +455,27 @@ def worker(args):
     rng = random.Random(seed)
     play_rng = random.Random(seed + 1)
     vrng = random.Random(seed + 2)
-    chain = DeckChain(MEASURE_WHISTED_RATIO, rng)
+    chain = DeckChain(game_ai.WHISTED_RATIO if INGAME else MEASURE_WHISTED_RATIO, rng)
+    deal_id = 0
     rows = []  # (variante, type contrat, gain moyen par siege PIMC, decisions, changees, somme vgap, somme egap)
     diffs = {"def": [], "decl": []}
     egaps = []  # (situation, gap expert, gap dds) sur mondes neufs
     singles = []  # --single : (type, camp, cle, cle fine, gain reel, gap Q, moitie)
     while time.time() < deadline:
         hands, dealer, whisted = chain.deal(rng)
-        bidding = run_bot_bidding(hands, dealer)
+        deal_id += 1
+        bidding = (game_ai.run_bidding(hands, dealer, detect_trou(hands))[0] if INGAME
+                   else run_bot_bidding(hands, dealer))
         if bidding.general_pass:
             chain.finish_unplayed(hands, dealer)
             continue
         contract = bidding.locked_contract
         role, _decl = declarer_role_and_seats(contract)
-        base = new_game(contract, hands, dealer, bidding, whisted)
-        play(base, (), None, play_rng, samples, [])
+        if INGAME:
+            base = game_ai.play(bidding, hands, dealer, whisted)[0]
+        else:
+            base = new_game(contract, hands, dealer, bidding, whisted)
+            play(base, (), None, play_rng, samples, [])
         chain.finish_played(base, dealer, contract["type"])
         if contract["type"] not in ("emballage", "solo", "trou") or base.trump_suit is None:
             continue
@@ -474,7 +496,7 @@ def worker(args):
             if SINGLE:
                 n, devs = single_deviations(g, set(seats), name, score_fn, play_rng, samples, trigger, role, contract,
                                             seed % 2)
-                singles.extend((contract["type"],) + d for d in devs)
+                singles.extend((contract["type"],) + d + ((seed, deal_id),) for d in devs)
                 rows.append((name, contract["type"], sum(d[3] for d in devs), n, len(devs), 0.0, 0.0))
                 if time.time() >= deadline:
                     break
@@ -574,14 +596,21 @@ def main():
     parser.add_argument("--others", default="expert", help="profils ExpertBot (expert_bot.PROFILES), virgules ; hors --oracle : duree partagee")
     parser.add_argument("--branch-key", action="store_true", help="entames : situation + branche ExpertBot (diagnostic conseil 17/11 soir)")
     parser.add_argument("--single", action="store_true", help="conseil 22/11 : gain REEL par situation (1 carte PIMC par contrefactuel, ExpertBot ensuite)")
+    parser.add_argument("--ingame", action="store_true", help="avec --single : table classique du jeu (BID_ROUTE, hybride, poids publies)")
     parser.add_argument("--dump", type=int, default=4, help="exemples imprimes par situation (conseil 17/11 : toutes les paires)")
     args = parser.parse_args()
-    global DUMP_EX, BRANCH_KEY, SINGLE
+    global DUMP_EX, BRANCH_KEY, SINGLE, INGAME
     DUMP_EX = args.dump
     SINGLE = args.single
     BRANCH_KEY = args.branch_key
     if args.oracle:
         return oracle_main(args)
+    if args.ingame:
+        if not args.single or args.others != "expert":
+            raise SystemExit("--ingame : avec --single et --others expert seulement")
+        from scripts.expert_bid_ab import load_game_ai
+        load_game_ai()  # avant le fork
+        INGAME = True
     profiles = args.others.split(",")
     for others in profiles:
         run_profile(args, others, args.minutes / len(profiles))
@@ -683,17 +712,33 @@ def run_profile(args, others, minutes):
 
 
 
+def deal_stats(pairs):
+    """[(gain, donne)] -> n, moyenne, SE groupe par donne (les ecarts d une meme donne ne sont pas independants), donnes."""
+    n = len(pairs)
+    if not n:
+        return 0, 0.0, 0.0, 0
+    m = sum(x for x, _d in pairs) / n
+    by = {}
+    for x, d in pairs:
+        by[d] = by.get(d, 0.0) + x - m
+    k = len(by)
+    se = math.sqrt(k / (k - 1) * sum(v * v for v in by.values())) / n if k > 1 else 0.0
+    return n, m, se, k
+
+
 def print_singles(singles, others, args, secs, times):
     """--single : gain reel d'UNE carte PIMC (vs ExpertBot) par situation, moities de graines (reproduction).
     RETENUE = n >= 200, z >= 4 et les 2 moities positives a z >= 2 (conseil 22/11 : comparaisons multiples)."""
+    print("=== table %s ; z groupes par donne (%d donnes avec ecart) ===" % (
+        "DU JEU (BID_ROUTE + hybride)" if INGAME else "ExpertBot", len({x[7] for x in singles})))
     print("=== --single profil %s : gain REEL d'une carte PIMC (%d mondes) vs ExpertBot, %.0f s, %d ecarts ===" % (
         others, args.samples, secs, len(singles)))
     if times:
         print("temps/decision PIMC : n %d mediane %.0f ms" % (len(times), 1000 * times[len(times) // 2]))
     for camp in ("def", "decl"):
         for typ in ("emballage", "solo", "trou", None):
-            xs = [x[4] for x in singles if x[1] == camp and (typ is None or x[0] == typ)]
-            n, m, se = stats(xs)
+            xs = [(x[4], x[7]) for x in singles if x[1] == camp and (typ is None or x[0] == typ)]
+            n, m, se, _k = deal_stats(xs)
             if n:
                 print("%-5s %-10s ecarts %6d  gain reel/ecart %+.3f +- %.3f (z %+.1f)  somme %+.1f" % (
                     camp, typ or "TOUT", n, m, se, m / se if se else 0.0, m * n))
@@ -703,13 +748,14 @@ def print_singles(singles, others, args, secs, times):
             for x in singles:
                 if x[1] == camp:
                     a = agg.setdefault(x[idx], ([], [], [], []))
-                    a[0].append(x[4])
+                    a[0].append((x[4], x[7]))
                     a[1].append(x[5])
-                    a[2 + x[6]].append(x[4])
+                    a[2 + x[6]].append((x[4], x[7]))
             print("\n=== --single %s : %s (tri gain reel cumule) ===" % (camp, level))
-            for k in sorted(agg, key=lambda k: -sum(agg[k][0])):
-                n, m, se = stats(agg[k][0])
-                h = [stats(agg[k][2]), stats(agg[k][3])]
+            cumul = {k: sum(g for g, _d in agg[k][0]) for k in agg}
+            for k in sorted(agg, key=lambda k: -cumul[k]):
+                n, m, se, _k = deal_stats(agg[k][0])
+                h = [deal_stats(agg[k][2])[:3], deal_stats(agg[k][3])[:3]]
                 z = m / se if se > 0 else 0.0
                 hz = [hm / hse if hse > 0 else 0.0 for _hn, hm, hse in h]
                 keep = n >= 200 and z >= 4 and all(x >= 2 for x in hz)
@@ -717,8 +763,8 @@ def print_singles(singles, others, args, secs, times):
                     k, n, m, se, z, m * n, sum(agg[k][1]) / n,
                     " / ".join("%+.2f (z %+.1f, n %d)" % (hm, zz, hn) for (hn, hm, _), zz in zip(h, hz)),
                     "  RETENUE" if keep else ""))
-            neg = sorted(agg, key=lambda k: sum(agg[k][0]))[:8]
-            print("   -- plus negatives : " + " ; ".join("%s %+.1f (n %d)" % (k, sum(agg[k][0]), len(agg[k][0])) for k in neg))
+            neg = sorted(agg, key=lambda k: cumul[k])[:8]
+            print("   -- plus negatives : " + " ; ".join("%s %+.1f (n %d)" % (k, cumul[k], len(agg[k][0])) for k in neg))
 
 if __name__ == "__main__":
     main()
