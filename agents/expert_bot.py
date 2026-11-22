@@ -267,7 +267,7 @@ DECL_DISCARD4 = "low"  # defaut depuis A/B a45 (12/12 champs, +0.029..+0.113 pts
 # "low" = sa plus petite, "high" = sa plus haute (hors maitresses), "single" = seulement si elle est singleton
 DECL_DISCARD_MATE = None  # A/B a46 (cellule emballage decl de SHORT_WHEN_MATE en a45 : +0.096/donne) : camp declarant d emballage,
 # coequipier gagne, defausse COURTE (meme sans coupe possible) : "all" = toute position, "last" = 4e seulement
-BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
+BID_PARAMS = ("SOLO_MARGIN", "RAISE_MARGIN", "RAISE_CAP", "PLAYER_PROPOSAL_MIN", "NO_OVERTAKE", "RUFF_IF_OPP_LATER", "SECOND_HAND_LOW",
               "SECOND_HAND_LOW_DEF", "DISCARD_LONG", "DISCARD_SIDE", "DISCARD_WEAK", "DISCARD_KEEP_MATE", "THIRD_HAND_CHEAP", "UNBLOCK_LAST", "DEF_LEAD_SHORT", "SOLO_DRAW_ALL", "CASH_BEFORE_DRAW", "LAST_LEAD_MASTER", "DUCK_RUFF_SECOND", "RUFF_RISK_VOID_ONLY", "PARTNER_SUIT_TOP_SHORT", "PARTNER_SUIT_HIGH", "DISCARD_SHORT_WHEN_MATE", "RUFF_HIGH_IF_UNSAFE", "NO_OVERTAKE_POS", "DEF_LEAD_SEQ_ANY", "DEF_LEAD_PASSIVE", "NO_RUFF_PARTNER_2ND", "DECL_LEAD_STRONG", "DISCARD_LONG_TOP", "INFER_OPP_TRUMPS", "TRUMP_LEAD_SEQUENCE", "DRAW_WITH_LAST_TRUMP", "SIDE_LEAD_SEQUENCE",
               "LEAD_PARTNER_SUIT", "KEEP_TRUMPS_VS_VOID", "DRAW_STOP_OUTSTANDING",
               "NO_OVERTAKE_POS_SIDE", "DECL_2ND_TAKE_SAFE", "DRAW_NEED_MASTER", "DRAW_COUNT_RAW", "UNBLOCK_2ND", "DEF_NT_KEEP_MASTERS",
@@ -322,6 +322,12 @@ PROFILES = {
 # Adversaires de l'Acte I du roguelike (demande du 30/10) : difficulte, pas un concurrent de la ligue.
 # scripts/act1_bid_audit.py, run 41132837609 : joueur simule +0.892 contre -0.062 face a l'ExpertBot.
 ACT1_BID_PARAMS = {"SOLO_MARGIN": 1, "RAISE_MARGIN": 1, "RAISE_CAP": 8, "EMBALLER_MIN": 5, "SOLO_MIN": 7}
+# Acte I seul, en plus (decision utilisateur 22/11, whist-4-it b663bd2 ACT1_PARTNER_PARAMS) : les bots emballent la
+# proposition du JOUEUR (siege 0) au seuil normal, entre eux toujours 5. Runs 45064927446 + 45060631767.
+ACT1_PARTNER_PARAMS = {"PLAYER_PROPOSAL_MIN": 3}
+# Plis pour emballer une proposition du siege 0 (le joueur du roguelike), -1 = EMBALLER_MIN. Lu seulement par
+# l'emballage d'entree de choose_bid (attente, bascule en solo, specialite des elites : EMBALLER_MIN).
+PLAYER_PROPOSAL_MIN = -1
 
 
 def set_bid_params(params):
@@ -516,6 +522,14 @@ def misere_danger_score(hand):
     return misere_slack([c for c in hand if c != best_misere_discard(hand)])
 
 
+def _entry_emballer_min(bidding, suit):
+    """emballer_min, sauf pour la proposition du siege 0 si PLAYER_PROPOSAL_MIN >= 0 (WhistExpertBot._best_scored
+    player_min, whist-4-it b663bd2) : meme +1 par niveau d'entree."""
+    if PLAYER_PROPOSAL_MIN >= 0 and bidding.pending_proposals.get(suit) == 0:
+        return emballer_min(bidding, suit) - EMBALLER_MIN + PLAYER_PROPOSAL_MIN
+    return emballer_min(bidding, suit)
+
+
 def emballer_min(bidding, suit):
     """Plis surs exiges pour emballer `suit` : EMBALLER_MIN au niveau 8, +1
     par niveau d'entree au-dessus (regle 2026-09-29, voir
@@ -610,7 +624,7 @@ def _choose_bid_core(bidding, seat, hand):
                 return choice
     # 1. emballer une proposition si >= 3 plis (+1 par niveau au-dessus de 8 :
     #    l'emballage part au plus petit niveau qui depasse l'enchere en tete)
-    options = [(estimate_tricks(hand, info["suit"]), a, emballer_min(bidding, info["suit"]))
+    options = [(estimate_tricks(hand, info["suit"]), a, _entry_emballer_min(bidding, info["suit"]))
                for a, info in by_kind.get("emballer", [])]
     options = [o[:2] for o in options if o[0] >= o[2] and emballer_suit_ok(hand, infos[o[1]]["suit"])
                and bidding.emballage_entry_level(infos[o[1]]["suit"]) <= RAISE_CAP]

@@ -203,8 +203,7 @@ def run_bot_bidding(hands, dealer, match=None):
         if match is not None and seat == PLAYER:
             match.player.bidding_turn(match.state, match.rules, match.config.get("eye", ""), match.bosses)
         if match is not None and seat != PLAYER:
-            # 4d7d (rogue_run.gd) : enchere adoucie a l'acte I et dans tout match sans boss
-            expert_bot.set_bid_params(expert_bot.ACT1_BID_PARAMS if match.config.get("act") == 1 or not match.bosses else {})
+            expert_bot.set_bid_params(bid_params(match.config.get("act"), bool(match.bosses)))
             try:
                 choice = expert_bot.choose_bid(bidding, seat, hands[seat])
                 info = {"action": "raise"} if isinstance(choice, tuple) else bid_action_to_dict(choice)
@@ -225,6 +224,14 @@ def run_bot_bidding(hands, dealer, match=None):
             continue
         expert_bot.apply_bid(bidding, seat, hands[seat])
     return bidding
+
+
+def bid_params(act, boss):
+    """RogueRun.bid_params (whist-4-it b663bd2) : enchere adoucie a l'acte I (4d7d) et dans tout match sans boss ;
+    a l'acte I seul, en plus, les bots emballent la proposition du joueur des 3 plis (22/11)."""
+    if act == 1:
+        return {**expert_bot.ACT1_BID_PARAMS, **expert_bot.ACT1_PARTNER_PARAMS}
+    return expert_bot.ACT1_BID_PARAMS if not boss else {}
 
 
 def _best_scored(entries, needed_of, hand, propose):

@@ -144,7 +144,7 @@ def test_no_short_emballage_20261030():
                 info = bid_action_to_dict(choice)
                 seen += 1
                 check("emballer : atouts", expert_bot.emballer_suit_ok(hands[seat], info["suit"]))
-                # 3 = plancher utilisateur (27/10) et EMBALLER_MIN depuis 57f1f8b (13e conseil, 12/11 ; 4 avant)
+                # 3 = EMBALLER_MIN depuis 57f1f8b (13e conseil, 12/11 ; 4 avant)
                 check("emballer : plis surs", estimate_tricks(hands[seat], info["suit"]) >= 3 + entry[choice] - 8)
     check("emballages exerces %d" % seen, seen > 0)
 
@@ -269,8 +269,40 @@ def test_keep_trumps_vs_void_20261030():
     expert_bot.set_bid_params({})
 
 
+def test_act1_backs_player_20261122():
+    """Miroir de whist-4-it b663bd2 tests/expert_bot_parity_runner.gd _act1_backs_player (decision utilisateur 22/11,
+    « 6 petits atouts est un super emballage ») : a l'acte I, la proposition du joueur s'emballe des 3 plis."""
+    from engine.bidding import _PROPOSE_BASE, bid_action_to_dict
+    from engine.joker_match import bid_params
+    H, D, C, S = 0, 1, 2, 3
+    six_trumps = [card(H, r) for r in (5, 4, 3, 2, 1, 0)] + [card(C, r) for r in (7, 6, 5)] + [
+        card(D, 3), card(D, 2), card(S, 1), card(S, 0)]
+    four_small = [card(H, r) for r in (3, 2, 1, 0)] + [card(C, r) for r in (12, 11, 5)] + [
+        card(D, r) for r in (12, 2, 1)] + [card(S, r) for r in (12, 1, 0)]
+
+    def backs(params, proposer, hand):
+        bidding = Bidding((proposer + 3) % 4)
+        check("siege %d propose ♥" % proposer, bidding.apply(proposer, _PROPOSE_BASE + H))
+        expert_bot.set_bid_params(params)
+        try:
+            choice = expert_bot.choose_bid(bidding, proposer + 1, hand)
+        finally:
+            expert_bot.set_bid_params({})
+        return not isinstance(choice, tuple) and bid_action_to_dict(choice)["action"] == "emballer"
+
+    act_1 = bid_params(1, False)
+    check("acte I : 6 petits atouts emballent le joueur", backs(act_1, 0, six_trumps))
+    check("acte I : pas la proposition d'un bot", not backs(act_1, 1, six_trumps))
+    check("acte I : 4 atouts sans figure, personne", not backs(act_1, 0, four_small))
+    check("actes II-III : 5 plis comme avant", not backs(bid_params(2, False), 0, six_trumps))
+    check("boss de l'acte I aussi", bid_params(1, True) == act_1)
+    check("boss suivants : ExpertBot tel quel", bid_params(3, True) == {})
+    check("remis a -1 entre deux encheres", expert_bot.PLAYER_PROPOSAL_MIN == -1)
+    check("defaut : la main des 6 petits atouts n'emballe pas a 5", not backs(expert_bot.ACT1_BID_PARAMS, 0, six_trumps))
+
+
 def main():
-    for t in (test_hand_evaluation, test_bot_bidding_always_legal, test_hybrid_bidder_legal_and_guarded, test_user_bid_rules_20261027, test_no_short_emballage_20261030,
+    for t in (test_hand_evaluation, test_bot_bidding_always_legal, test_hybrid_bidder_legal_and_guarded, test_user_bid_rules_20261027, test_no_short_emballage_20261030, test_act1_backs_player_20261122,
               test_bot_play_legal_all_families_and_no_cheating, test_team_trump_rules_20261023, test_keep_trumps_vs_void_20261030):
         t()
         print("ok  %s" % t.__name__, flush=True)
