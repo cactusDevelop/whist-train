@@ -138,6 +138,8 @@ VARIANT_SETS["a45"] = {  # 22/11 : pimc --single (gain reel), emballeur/proposeu
     "SHORT_WHEN_MATE": {"DISCARD_SHORT_WHEN_MATE": True},  # A/B 13 (09/11) : rejete sous placements biaises, jamais retente
 }
 VARIANT_SETS["a46"] = {  # 22/11 : base = a45 ; defausse courte du camp declarant d emballage etendue
+    # RESULTAT 12 runs paralleles 45007930864..45007999738 : REJETE -- MATE_ALL +0.028..+0.085 sur 10 champs MAIS -0.056/-0.051
+    # (z -3.7/-3.4) contre expert_tune1027 ; MATE_LAST ~0 ; CTRL_D4_OFF perd 12/12 (-0.032..-0.129 : a45 confirme)
     "IDENTITE": {},
     "CTRL_D4_OFF": {"DECL_DISCARD4": None},  # controle negatif (doit perdre ~0.03..0.11)
     "MATE_ALL": {"DECL_DISCARD_MATE": "all"},
