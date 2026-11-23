@@ -4,6 +4,27 @@ set -euo pipefail
 # fin de match) + valeur d'un energie et d'une pioche. Input minutes = duree (defaut 150).
 # 8ebd : minutes suffixees par « v » (ex. 90v) = valeur du ⚡ / de la pioche seule (joker_values*).
 M="${FREE_MINUTES:-150}"
+# 23/11 (iter 17 / 1 acceptation sur 22) : input part = variante.
+#   part=confirm : contre-mesure iter 17 (jokers.pt) contre iter 56 (asset chiffre jokers_alt.pt.enc), graines neuves
+#   part=bots_alt : moments sous les regles actuelles avec les bots iter 56, sorties joker_moments_alt* (ne touche
+#                   pas joker_moments.json, celui du jeu) ; memes graines que la mesure precedente (apparie)
+if [ -n "${AB_PART:-}" ]; then
+  gh release download checkpoint-latest -p jokers_alt.pt.enc -D /tmp --clobber
+  openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass env:STATE_KEY -in /tmp/jokers_alt.pt.enc -out /tmp/jokers_alt.pt
+  if [ "$AB_PART" = confirm ]; then
+    python -u scripts/joker_confirm.py checkpoints_jokers/jokers.pt /tmp/jokers_alt.pt --minutes "$M" --workers 4       --seed "${GITHUB_RUN_ID:-1}"
+    gh release upload checkpoint-latest joker_confirm.json joker_confirm.md --clobber
+  elif [ "$AB_PART" = bots_alt ]; then
+    python -u scripts/joker_moments.py --minutes "$M" --workers 4 --k 2 --checkpoint /tmp/jokers_alt.pt --matches 5440 --out-prefix joker_moments_alt
+    gh release upload checkpoint-latest joker_moments_alt.json joker_moments_alt_summary.md --clobber
+    gh release download checkpoint-latest -p joker_moments.json --clobber || true
+    python -u scripts/joker_report.py --cur joker_moments_alt.json --prev joker_moments.json --out joker_report_alt.md || true
+    [ -f joker_report_alt.md ] && gh release upload checkpoint-latest joker_report_alt.md --clobber || true
+  else
+    echo "part inconnu : $AB_PART"; exit 1
+  fi
+  exit 0
+fi
 # 10/11 (conseil) : minutes suffixees par « s » (ex. 150s) = graines NEUVES (run id) pour confirmer un ecart.
 SEED_ARG=()
 if [[ "$M" == *s ]]; then M="${M%s}"; SEED_ARG=(--seed "$(( ${GITHUB_RUN_ID:-1} % 100000000 + 7000000 ))"); fi

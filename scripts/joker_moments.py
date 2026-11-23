@@ -461,11 +461,15 @@ def main():
     parser.add_argument("--seed", type=int, default=SEED)
     parser.add_argument("--matches", type=int, default=0, help="arret apres ce nombre de matchs (0 = au temps)")
     parser.add_argument("--value-only", action="store_true", help="8ebd : seulement la valeur du ⚡ / de la pioche")
+    parser.add_argument("--checkpoint", default=None, help="23/11 : bots = ce checkpoint (defaut : champion jokers.pt)")
+    parser.add_argument("--out-prefix", default=None, help="23/11 : sorties <prefix>.json / <prefix>_summary.md (ne pas ecraser la mesure du jeu)")
     args = parser.parse_args()
     global OUT_JSON, OUT_MD
     if args.value_only:
         OUT_JSON, OUT_MD = VALUE_JSON, VALUE_MD
-    ckpt = torch.load(CHECKPOINT, map_location="cpu", weights_only=False)
+    if args.out_prefix:
+        OUT_JSON, OUT_MD = args.out_prefix + ".json", args.out_prefix + "_summary.md"
+    ckpt = torch.load(args.checkpoint or CHECKPOINT, map_location="cpu", weights_only=False)
     net = PolicyValueNet(O.OBS_DIM, J.ACTION_DIM)
     net.load_state_dict(ckpt["net"])
     net.eval()
