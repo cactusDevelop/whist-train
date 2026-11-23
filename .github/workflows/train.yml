@@ -124,6 +124,11 @@ jobs:
           if [ "$MODE" = ppo_free ] && [ ! -f ci/ppo_free_chain ]; then exit 0; fi
           # ci/<mode>_stop_at (UTC AAAA-MM-JJTHH:MM) : pas de maillon qui commencerait a moins de 45 min de l'heure d'arret
           if [ -f "ci/${MODE}_stop_at" ] && [[ "$(date -u -d '+45 minutes' +%Y-%m-%dT%H:%M)" > "$(cat "ci/${MODE}_stop_at")" ]]; then
-            echo "arret de la chaine : $(cat "ci/${MODE}_stop_at")"; exit 0
+            echo "arret de la chaine : $(cat "ci/${MODE}_stop_at")"
+            # ci/jokers_confirm_at_stop : en fin de chaine jokers, contre-mesure du champion contre jokers_alt (80 min)
+            if [ "$MODE" = jokers ] && [ -f ci/jokers_confirm_at_stop ]; then
+              gh workflow run train.yml -f mode=jokers_moments -f part=confirm_night -f minutes=80
+            fi
+            exit 0
           fi
           gh workflow run train.yml -f mode="$MODE" -f init=false

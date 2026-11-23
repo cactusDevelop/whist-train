@@ -14,6 +14,10 @@ if [ -n "${AB_PART:-}" ]; then
   if [ "$AB_PART" = confirm ]; then
     python -u scripts/joker_confirm.py checkpoints_jokers/jokers.pt /tmp/jokers_alt.pt --minutes "$M" --workers 4       --seed "${GITHUB_RUN_ID:-1}"
     gh release upload checkpoint-latest joker_confirm.json joker_confirm.md --clobber
+  elif [ "$AB_PART" = confirm_night ]; then
+    # 24/11 : chaine en fin de nuit jokers : champion de la nuit (jokers.pt) contre jokers_alt (iter 17), graines neuves
+    python -u scripts/joker_confirm.py checkpoints_jokers/jokers.pt /tmp/jokers_alt.pt --minutes "$M" --workers 4       --seed "$(( ${GITHUB_RUN_ID:-1} + 1 ))" --out joker_confirm_night
+    gh release upload checkpoint-latest joker_confirm_night.json joker_confirm_night.md --clobber
   elif [ "$AB_PART" = bots_alt ]; then
     python -u scripts/joker_moments.py --minutes "$M" --workers 4 --k 2 --checkpoint /tmp/jokers_alt.pt --matches 5440 --out-prefix joker_moments_alt
     gh release upload checkpoint-latest joker_moments_alt.json joker_moments_alt_summary.md --clobber
