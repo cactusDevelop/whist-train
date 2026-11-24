@@ -221,7 +221,7 @@ def policies_worker(args):
         for policy in [make_policy(w, m) for w, m in specs] + extra:
             match = jm.Match(cfg, mseed, deals=rec.recorded)
             r = p0 = 0.0
-            casts = {}
+            casts, by_seat = {}, {}
 
             def count(_hand, _seat, action):
                 if action:
@@ -229,10 +229,13 @@ def policies_worker(args):
             for _ in range(jm.HANDS_PER_MATCH):
                 hand = match.next_hand()
                 pts = jm.play_out(hand, policy, on_decision=count)
-                r += sum(jm.hand_reward(pts, s) for s in hand.holders())
+                for s in hand.holders():
+                    x = jm.hand_reward(pts, s)
+                    r += x
+                    by_seat[s] = by_seat.get(s, 0.0) + x
                 p0 += pts[jm.PLAYER]
                 match.finish(hand)
-            res.append((r, p0, casts))
+            res.append((r, p0, casts, by_seat))  # by_seat (24/11) : r par siege de bot
         out.append((seed, match.config, res))
     return out
 

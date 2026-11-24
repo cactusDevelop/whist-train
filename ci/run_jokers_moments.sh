@@ -8,6 +8,13 @@ M="${FREE_MINUTES:-150}"
 #   part=confirm : contre-mesure iter 17 (jokers.pt) contre iter 56 (asset chiffre jokers_alt.pt.enc), graines neuves
 #   part=bots_alt : moments sous les regles actuelles avec les bots iter 56, sorties joker_moments_alt* (ne touche
 #                   pas joker_moments.json, celui du jeu) ; memes graines que la mesure precedente (apparie)
+#   part=boss_check (conseil 24/11) : mesure pre-enregistree hybride champion vs heuristique sur les matchs
+#                   fossoyeur seuls, graines neuves (scripts/joker_boss_check.py), sorties joker_boss_check*
+if [ "${AB_PART:-}" = boss_check ]; then
+  python -u scripts/joker_boss_check.py checkpoints_jokers/jokers.pt --boss fossoyeur --minutes "$M" --workers 4 --seed "${GITHUB_RUN_ID:-1}"
+  gh release upload checkpoint-latest joker_boss_check.json joker_boss_check.md --clobber
+  exit 0
+fi
 if [ -n "${AB_PART:-}" ]; then
   gh release download checkpoint-latest -p jokers_alt.pt.enc -D /tmp --clobber
   openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass env:STATE_KEY -in /tmp/jokers_alt.pt.enc -out /tmp/jokers_alt.pt
