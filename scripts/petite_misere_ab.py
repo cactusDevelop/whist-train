@@ -13,7 +13,10 @@ Critere fixe avant tout resultat (24/11) : une regle est PROMUE si, sur la petit
 gain du camp concerne z > 3, ET aucune sorte de misere ni le champ "jeu" ne la fait perdre z < -2.
 IDENTITE doit donner exactement 0.
 
-Usage (cloud) : python -u scripts/petite_misere_ab.py --minutes 300 --workers 4
+Confirmation (meme critere, graines neuves) : runs paralleles --seed <autre>, ci/run_misere_ab.sh (input part = graine).
+Une regle n'est promue que si elle passe le critere sur la graine principale ET sur chaque run de confirmation.
+
+Usage (cloud) : python -u scripts/petite_misere_ab.py --minutes 300 --workers 4 [--seed N]
 """
 
 import argparse
@@ -119,19 +122,21 @@ def main():
     p.add_argument("--minutes", type=float, default=300)
     p.add_argument("--workers", type=int, default=4)
     p.add_argument("--weights", default="godot_weights_ingame")
+    p.add_argument("--seed", type=int, default=SEED, help="graines de confirmation : autre valeur (runs paralleles)")
     a = p.parse_args()
     load_game_ai(a.weights)
     t0 = time.time()
     deadline = t0 + 60 * a.minutes
     with mp.get_context("fork").Pool(a.workers) as pool:
-        parts = pool.map(chunk, [(SEED + 1000 * i, deadline) for i in range(a.workers)])
+        parts = pool.map(chunk, [(a.seed + 1000 * i, deadline) for i in range(a.workers)])
     seen = sum(x["seen"] for x in parts)
     n = sum((x["n"] for x in parts), collections.Counter())
     rows = collections.defaultdict(list)
     for x in parts:
         for k, v in x["rows"].items():
             rows[k].extend(v)
-    print("=== %d donnes, contrats de misere : %s ; %.0f min ===" % (seen, dict(n), (time.time() - t0) / 60))
+    print("=== graine %d : %d donnes, contrats de misere : %s ; %.0f min ===" % (
+        a.seed, seen, dict(n), (time.time() - t0) / 60))
     kinds = ["petite"] + sorted(k for k in n if k != "petite")
     verdict = {}
     for kind in kinds:
