@@ -198,6 +198,10 @@ DEF_NT_KEEP_MASTERS = None  # defense SANS atout en main (contrat a atout) : ne 
 UNBLOCK_LAST = False  # dernier a jouer, coequipier gagnant, on fournit : la plus haute NON maitresse (deblocage) (A/B 09/11)
 DEF_LEAD_SHORT = False  # defense avec atout : entamer aussi un PETIT singleton / doubleton annexe (chercher la coupe) (A/B 09/11)
 THIRD_HAND_CHEAP = False  # 3e, pas de gagnante sure : la plus PETITE gagnante au lieu de la plus forte (A/B 09/11)
+# Signalement 24/11 Petite Misere en Practice -- A/B scripts/petite_misere_ab.py, defauts inchanges :
+MIS_DEF_FORCED_HIGH = False  # H1 defense misere, declarant gagnant, rien en dessous, plus aucun declarant apres : la plus HAUTE
+MIS_DEF_MATE_HIGH = False  # H2 defense misere, un defenseur gagne, declarants deja joues : la plus HAUTE de la couleur
+MIS_DECL_LEAD_GUARD = False  # H3 declarant misere, entame : ne pas laisser seche une carte plus haute prenable (doubleton)
 # Deduction par l'enchere (utilisateur 2026-10-26 : « en comptant les cartes, en supposant la
 # main du coequipier [...] le proposant et l'emballant ont d'office plus d'atout ») : camp
 # declarant, quand les atouts non vus moins ceux supposes chez le partenaire = 0, les
@@ -994,7 +998,13 @@ def _misere_declarer(v):
             s = suit_of(c)
             above = sum(1 for u in v.unseen_in(s) if rank_of(u) > rank_of(c))
             nobody = not any(v.may_hold(o, s) for o in range(NUM_PLAYERS) if o != v.seat)
-            return (nobody, -above, rank_of(c))
+            bare = False
+            if MIS_DECL_LEAD_GUARD:  # H3 : doubleton, on entame la petite -> la haute reste seche et prenable
+                mine = [x for x in v.hand if suit_of(x) == s]
+                if len(mine) == 2 and rank_of(c) < max(rank_of(x) for x in mine):
+                    top = max(rank_of(x) for x in mine)
+                    bare = any(rank_of(u) < top for u in v.unseen_in(s))
+            return (nobody, bare, -above, rank_of(c))
         return min(v.legal, key=risk)
     led = suit_of(v.current_trick[0][1])
     winner_seat = trick_winner(v.current_trick, None)
@@ -1061,9 +1071,14 @@ def _misere_defense(v):
             over = [c for c in following if rank_of(c) > rank_of(win_card)]
             if over:
                 return _lowest(over)
+        later_decl = [d for d in v.still_to_play() if d in v.declarer_side]
         if winner_seat in v.declarer_side:
             under = [c for c in following if rank_of(c) < rank_of(win_card)]
-            return _highest(under) if under else _lowest(following)
+            if under:
+                return _highest(under)
+            return _highest(following) if MIS_DEF_FORCED_HIGH and not later_decl else _lowest(following)
+        if MIS_DEF_MATE_HIGH and not later_decl and not block:
+            return _highest(following)
         return _lowest(following)
     return _highest(v.legal)  # defausse : se debarrasser des hautes cartes
 
