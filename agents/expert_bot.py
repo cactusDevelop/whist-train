@@ -198,10 +198,10 @@ DEF_NT_KEEP_MASTERS = None  # defense SANS atout en main (contrat a atout) : ne 
 UNBLOCK_LAST = False  # dernier a jouer, coequipier gagnant, on fournit : la plus haute NON maitresse (deblocage) (A/B 09/11)
 DEF_LEAD_SHORT = False  # defense avec atout : entamer aussi un PETIT singleton / doubleton annexe (chercher la coupe) (A/B 09/11)
 THIRD_HAND_CHEAP = False  # 3e, pas de gagnante sure : la plus PETITE gagnante au lieu de la plus forte (A/B 09/11)
-# Signalement 24/11 Petite Misere en Practice -- A/B scripts/petite_misere_ab.py, defauts inchanges :
-MIS_DEF_FORCED_HIGH = False  # H1 defense misere, declarant gagnant, rien en dessous, plus aucun declarant apres : la plus HAUTE
-MIS_DEF_MATE_HIGH = False  # H2 defense misere, un defenseur gagne, declarants deja joues : la plus HAUTE de la couleur
-MIS_DECL_LEAD_GUARD = False  # H3 declarant misere, entame : ne pas laisser seche une carte plus haute prenable (doubleton)
+# Signalement 24/11 Petite Misere en Practice -- A/B scripts/petite_misere_ab.py (graines 20261124 + 98000001) :
+MIS_DEF_FORCED_HIGH = True  # H1 (promue A/B 25/11, z +16.6 / +19.8) defense misere, declarant gagnant, rien en dessous, plus aucun declarant apres : la plus HAUTE
+MIS_DEF_MATE_HIGH = True  # H2 (promue A/B 25/11, z +26.0 / +31.8) defense misere, un defenseur gagne, declarants deja joues : la plus HAUTE de la couleur
+MIS_DECL_LEAD_GUARD = False  # H3 (rejetee A/B 25/11, piccolo z -17 / -22) declarant misere, entame : ne pas laisser seche une carte plus haute prenable (doubleton)
 # Deduction par l'enchere (utilisateur 2026-10-26 : « en comptant les cartes, en supposant la
 # main du coequipier [...] le proposant et l'emballant ont d'office plus d'atout ») : camp
 # declarant, quand les atouts non vus moins ceux supposes chez le partenaire = 0, les
